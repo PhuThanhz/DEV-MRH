@@ -1,9 +1,11 @@
 package vn.system.app.modules.sourcelink.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.modules.facebook.domain.FacebookPage;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,6 +25,7 @@ public class SourceGroup {
     private String name;
 
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("group")
     private List<SourceLink> links = new ArrayList<>();
 
     private Instant createdAt;

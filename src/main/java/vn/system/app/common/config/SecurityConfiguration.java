@@ -50,9 +50,13 @@ public class SecurityConfiguration {
                 "/v3/api-docs/**",
                 "/swagger-ui/**",
                 "/swagger-ui.html",
-                "/api/v1/source-links/**",
-                "/api/v1/download/**",
+                "/api/v1/facebook-pages/**",
                 "/api/v1/source-groups/**",
+                "/api/v1/source-links/**",
+                "/api/v1/facebook-post/**",
+                "/api/v1/facebook-schedule-settings/**",
+                "/api/v1/facebook-schedule/**",
+                "/api/v1/source-groups/*/facebook-page/*",
         };
 
         http

@@ -22,10 +22,10 @@ import jakarta.validation.Valid;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.auth.domain.reponse.ResLoginDTO;
 import vn.system.app.modules.auth.domain.request.ReqLoginDTO;
+import vn.system.app.modules.auth.domain.response.ResLoginDTO;
 import vn.system.app.modules.user.domain.User;
-import vn.system.app.modules.user.domain.reponse.ResCreateUserDTO;
+import vn.system.app.modules.user.domain.response.ResCreateUserDTO;
 import vn.system.app.modules.user.service.UserService;
 
 @RestController

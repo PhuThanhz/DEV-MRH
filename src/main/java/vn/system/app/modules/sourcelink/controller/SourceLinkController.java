@@ -1,12 +1,15 @@
 package vn.system.app.modules.sourcelink.controller;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.sourcelink.domain.SourceLink;
+import vn.system.app.modules.sourcelink.domain.request.ReqUpdateCaptionDTO;
 import vn.system.app.modules.sourcelink.service.SourceLinkService;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Map;
@@ -22,26 +25,48 @@ public class SourceLinkController {
     }
 
     // ============================================================
-    // 1️ Xử lý tải toàn bộ link trong group
+    // 1 Xử lý tải toàn bộ link trong group
     // ============================================================
     @PostMapping("/{groupId}/process")
     @ApiMessage("Xử lý tải toàn bộ link trong group")
-    public ResponseEntity<?> processGroup(@PathVariable Long groupId) {
-        try {
-            linkService.processGroup(groupId);
-            return ResponseEntity.ok(Map.of("message", "Đang xử lý tải group ID = " + groupId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
-        }
+    public ResponseEntity<Map<String, Object>> processGroup(@PathVariable("groupId") Long groupId) {
+        linkService.handleProcessGroup(groupId);
+        return ResponseEntity.ok(Map.of(
+                "message", "Đang xử lý tải group ID = " + groupId));
+    }
+
+    @GetMapping("/group/{groupId}")
+    @ApiMessage("Lấy danh sách link trong group")
+    public ResponseEntity<ResultPaginationDTO> getLinksByGroup(
+            @PathVariable("groupId") Long groupId,
+            @RequestParam(value = "status", required = false) String status,
+            Pageable pageable) {
+
+        ResultPaginationDTO result = linkService.handleGetLinksByGroup(groupId, pageable, status);
+        return ResponseEntity.ok(result);
     }
 
     // ============================================================
-    // 2 Lấy danh sách link SUCCESS
+    // 2 Cập nhật caption của 1 link
     // ============================================================
-    @GetMapping("/{groupId}/success")
-    @ApiMessage("Lấy danh sách link đã tải SUCCESS trong group")
-    public ResponseEntity<List<SourceLink>> getSuccessLinks(@PathVariable Long groupId) {
-        List<SourceLink> links = linkService.getSuccessLinksByGroup(groupId);
-        return ResponseEntity.ok(links);
+    @PutMapping("/{linkId}/caption")
+    @ApiMessage("Cập nhật caption cho link")
+    public ResponseEntity<SourceLink> updateCaption(
+            @PathVariable("linkId") Long linkId,
+            @Valid @RequestBody ReqUpdateCaptionDTO req) {
+
+        SourceLink updated = linkService.handleUpdateCaption(linkId, req.getCaption());
+        return ResponseEntity.ok(updated);
     }
+
+    // ============================================================
+    // 3 Lấy chi tiết 1 link theo ID
+    // ============================================================
+    @GetMapping("/{linkId}")
+    @ApiMessage("Lấy chi tiết 1 link theo ID")
+    public ResponseEntity<SourceLink> getLinkDetail(@PathVariable("linkId") Long linkId) {
+        SourceLink link = linkService.findById(linkId);
+        return ResponseEntity.ok(link);
+    }
+
 }

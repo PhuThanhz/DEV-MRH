@@ -1,7 +1,7 @@
 package vn.system.app.modules.dowload.service;
 
 import lombok.extern.slf4j.Slf4j;
-import vn.system.app.modules.dowload.domain.reponse.DownloadResponse;
+import vn.system.app.modules.dowload.domain.response.DownloadResponse;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -100,7 +100,7 @@ public class DownloadService {
                 in.transferTo(fos);
             }
 
-            log.info("✅ Video đã tải về: {}", outputFile.getAbsolutePath());
+            log.info(" Video đã tải về: {}", outputFile.getAbsolutePath());
 
             // ==== Lưu kết quả (chỉ lưu file, không lưu URL) ====
             res.setSuccess(true);

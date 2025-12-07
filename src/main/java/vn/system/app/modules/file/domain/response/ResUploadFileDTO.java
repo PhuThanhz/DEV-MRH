@@ -1,4 +1,4 @@
-package vn.system.app.modules.file.domain.reponse;
+package vn.system.app.modules.file.domain.response;
 
 import java.time.Instant;
 

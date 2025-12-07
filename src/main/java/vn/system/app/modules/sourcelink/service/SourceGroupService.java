@@ -1,15 +1,18 @@
 package vn.system.app.modules.sourcelink.service;
 
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.sourcelink.domain.SourceGroup;
 import vn.system.app.modules.sourcelink.domain.SourceLink;
+import vn.system.app.modules.sourcelink.domain.request.ReqCreateGroupDTO;
+import vn.system.app.modules.sourcelink.domain.response.ResSourceGroupDTO;
+import vn.system.app.modules.sourcelink.domain.response.ResSourceGroupSummaryDTO;
 import vn.system.app.modules.sourcelink.repository.SourceGroupRepository;
 import vn.system.app.modules.sourcelink.repository.SourceLinkRepository;
 
-import java.util.List;
-
-@Slf4j
 @Service
 public class SourceGroupService {
 
@@ -22,89 +25,110 @@ public class SourceGroupService {
     }
 
     // ============================================================
-    // 1️⃣ Tạo group mới với 1 link khởi tạo
+    // 1 CREATE GROUP (Không có link ban đầu)
     // ============================================================
-    public SourceGroup createGroup(String name, String url) {
-        if (url == null || url.isBlank()) {
-            throw new IllegalArgumentException("URL không được để trống");
-        }
-
+    public SourceGroup handleCreate(ReqCreateGroupDTO req) {
         SourceGroup group = new SourceGroup();
-        group.setName((name == null || name.isBlank()) ? "Unnamed Group" : name.trim());
-        groupRepo.save(group);
-
-        addLinkToGroup(group.getId(), url);
-
-        log.info("Tạo group '{}' (ID={}) với link đầu tiên", group.getName(), group.getId());
-        return group;
+        group.setName(req.getGroupName().trim());
+        return groupRepo.save(group);
     }
 
     // ============================================================
-    // 2️⃣ Thêm 1 link mới vào group
+    // 2 GET ALL (Pagination)
     // ============================================================
-    public SourceLink addLinkToGroup(Long groupId, String url) {
-        SourceGroup group = getGroup(groupId);
+    public ResultPaginationDTO handleGetAll(Pageable pageable) {
+        Page<SourceGroup> page = groupRepo.findAll(pageable);
 
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+        mt.setPage(pageable.getPageNumber() + 1);
+        mt.setPageSize(pageable.getPageSize());
+        mt.setPages(page.getTotalPages());
+        mt.setTotal(page.getTotalElements());
+
+        rs.setMeta(mt);
+
+        // Chỉ map sang SummaryDTO (không bao gồm links)
+        rs.setResult(page.getContent().stream().map(this::convertToSummaryDTO).toList());
+        return rs;
+    }
+
+    // ============================================================
+    // 3 FIND BY ID
+    // ============================================================
+    public SourceGroup findById(Long id) {
+        return groupRepo.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy group ID = " + id));
+    }
+
+    // ============================================================
+    // 4 UPDATE NAME
+    // ============================================================
+    public SourceGroup handleUpdateName(Long id, String newName) {
+        SourceGroup group = findById(id);
+        group.setName(newName.trim());
+        return groupRepo.save(group);
+    }
+
+    // ============================================================
+    // 5 DELETE GROUP
+    // ============================================================
+    public void handleDelete(Long id) {
+        SourceGroup group = findById(id);
+        linkRepo.deleteAll(group.getLinks());
+        groupRepo.delete(group);
+    }
+
+    // ============================================================
+    // 6 ADD LINK TO GROUP
+    // ============================================================
+    public SourceGroup handleAddLink(Long groupId, String url) {
+        SourceGroup group = findById(groupId);
         SourceLink link = new SourceLink();
         link.setUrl(url.trim());
         link.setGroup(group);
         linkRepo.save(link);
-
-        log.info("Thêm link vào group '{}': {}", group.getName(), url);
-        return link;
-    }
-
-    // ============================================================
-    // 3️⃣ Lấy tất cả group
-    // ============================================================
-    public List<SourceGroup> getAllGroups() {
-        return groupRepo.findAll();
-    }
-
-    // ============================================================
-    // 4️⃣ Lấy chi tiết group (kèm link)
-    // ============================================================
-    public SourceGroup getGroup(Long id) {
-        return groupRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy group ID=" + id));
-    }
-
-    // ============================================================
-    // 5️⃣ Cập nhật tên group
-    // ============================================================
-    public SourceGroup rename(Long id, String newName) {
-        SourceGroup group = getGroup(id);
-        if (newName != null && !newName.isBlank()) {
-            group.setName(newName.trim());
-            groupRepo.save(group);
-        }
-        log.info("Đổi tên group ID={} thành '{}'", id, group.getName());
         return group;
     }
 
     // ============================================================
-    // 6️⃣ Xóa group và toàn bộ link
+    // 7 DELETE LINK
     // ============================================================
-    public void deleteGroup(Long id) {
-        SourceGroup group = getGroup(id);
-        linkRepo.deleteAll(group.getLinks());
-        groupRepo.delete(group);
-        log.info("Đã xóa group '{}' (ID={})", group.getName(), group.getId());
-    }
-
-    // ============================================================
-    // 7️⃣ Xóa 1 link trong group
-    // ============================================================
-    public void deleteLink(Long groupId, Long linkId) {
-        SourceGroup group = getGroup(groupId);
+    public SourceGroup handleDeleteLink(Long groupId, Long linkId) {
+        SourceGroup group = findById(groupId);
         SourceLink link = linkRepo.findById(linkId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy link ID=" + linkId));
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy link ID = " + linkId));
 
         if (!link.getGroup().getId().equals(groupId)) {
-            throw new RuntimeException("Link không thuộc group ID=" + groupId);
+            throw new IdInvalidException("Link không thuộc group ID = " + groupId);
         }
 
         linkRepo.delete(link);
-        log.info("Đã xóa link ID={} khỏi group '{}'", linkId, group.getName());
+        return group;
     }
+
+    // ============================================================
+    // 8 CONVERT ENTITY -> DTO
+    // ============================================================
+    public ResSourceGroupDTO convertToResDTO(SourceGroup group) {
+        ResSourceGroupDTO dto = new ResSourceGroupDTO();
+        dto.setId(group.getId());
+        dto.setName(group.getName());
+        dto.setCreatedAt(group.getCreatedAt());
+        dto.setUpdatedAt(group.getUpdatedAt());
+        dto.setTotalLinks(group.getLinks() != null ? group.getLinks().size() : 0);
+
+        return dto;
+    }
+
+    public ResSourceGroupSummaryDTO convertToSummaryDTO(SourceGroup group) {
+        ResSourceGroupSummaryDTO dto = new ResSourceGroupSummaryDTO();
+        dto.setId(group.getId());
+        dto.setName(group.getName());
+        dto.setCreatedAt(group.getCreatedAt());
+        dto.setUpdatedAt(group.getUpdatedAt());
+        dto.setTotalLinks(group.getLinks() != null ? group.getLinks().size() : 0);
+        return dto;
+    }
+
 }

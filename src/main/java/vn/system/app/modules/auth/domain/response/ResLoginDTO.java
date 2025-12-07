@@ -1,4 +1,4 @@
-package vn.system.app.modules.auth.domain.reponse;
+package vn.system.app.modules.auth.domain.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;

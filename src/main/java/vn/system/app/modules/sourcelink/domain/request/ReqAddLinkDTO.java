@@ -6,8 +6,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ReqCreateGroupDTO {
+public class ReqAddLinkDTO {
 
-    @NotBlank(message = "Tên group không được để trống")
-    private String groupName;
+    @NotBlank(message = "URL không được để trống")
+    private String url;
 }

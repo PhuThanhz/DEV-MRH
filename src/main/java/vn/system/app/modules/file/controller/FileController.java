@@ -22,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.StorageException;
-import vn.system.app.modules.file.domain.reponse.ResUploadFileDTO;
+import vn.system.app.modules.file.domain.response.ResUploadFileDTO;
 import vn.system.app.modules.file.service.FileService;
 
 @RestController

@@ -1,11 +1,12 @@
 package vn.system.app.modules.sourcelink.domain;
 
-import java.time.Instant;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "source_links")
@@ -20,21 +21,24 @@ public class SourceLink {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String url;
 
-    // ==== Liên kết nhóm link (group) ====
+    // ============================================
+    // Liên kết ngược ManyToOne -> tránh vòng lặp JSON
+    // ============================================
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id")
-    private SourceGroup group; // Nhóm mà link này thuộc về
+    @JsonIgnore // tránh vòng lặp group <-> links
+    private SourceGroup group;
 
     // ==== Thông tin người đăng ====
-    private String name; // Ví dụ: "Ngoc Anh"
-    private String userId; // Ví dụ: "@minirabit_"
+    private String name;
+    private String userId;
 
     // ==== Nội dung bài ====
     @Column(columnDefinition = "TEXT")
     private String caption; // Mô tả bài đăng
 
     @Column(columnDefinition = "TEXT")
-    private String contentGenerated; // Tên file video đã tải về
+    private String contentGenerated; // Tên file/video đã tải về
 
     @Column(columnDefinition = "TEXT")
     private String errorMessage; // Lưu lỗi khi xử lý
@@ -83,5 +87,13 @@ public class SourceLink {
         VIDEO,
         TEXT,
         UNKNOWN
+    }
+
+    @JsonIgnore
+    public boolean isPendingOrFailed() {
+        return this.status == null
+                || this.status == ProcessingStatus.FAILED
+                || this.contentGenerated == null
+                || this.contentGenerated.isBlank();
     }
 }

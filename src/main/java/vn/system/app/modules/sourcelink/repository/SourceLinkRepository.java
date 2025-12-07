@@ -1,14 +1,14 @@
 package vn.system.app.modules.sourcelink.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import vn.system.app.modules.sourcelink.domain.SourceGroup;
 import vn.system.app.modules.sourcelink.domain.SourceLink;
-import java.util.List;
+import vn.system.app.modules.sourcelink.domain.SourceLink.ProcessingStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-@Repository
 public interface SourceLinkRepository extends JpaRepository<SourceLink, Long> {
-    List<SourceLink> findByStatus(SourceLink.ProcessingStatus status);
+    Page<SourceLink> findAllByGroup(SourceGroup group, Pageable pageable);
 
-    // Nếu bạn cần lấy link theo group
-    List<SourceLink> findByGroupId(Long groupId);
+    Page<SourceLink> findAllByGroupAndStatus(SourceGroup group, ProcessingStatus status, Pageable pageable);
 }
