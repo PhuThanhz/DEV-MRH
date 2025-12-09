@@ -38,27 +38,27 @@ public class FacebookSchedulerService {
     }
 
     // ============================================================
-    // 🕒 Sinh lịch thực tế từ cấu hình đã lưu
+    // Sinh lịch thực tế từ cấu hình đã lưu
     // ============================================================
     public Map<String, Object> generateSchedule(Long groupId, Instant startTime, Integer intervalMinutes,
             String orderedJson) {
 
-        // 1️⃣ Lấy group và kiểm tra
+        // 1️ Lấy group và kiểm tra
         SourceGroup group = groupService.findById(groupId);
         if (group == null) {
             throw new RuntimeException("Không tìm thấy group ID = " + groupId);
         }
 
-        // 2️⃣ Lấy cấu hình (bao gồm fanpage)
+        // 2️ Lấy cấu hình (bao gồm fanpage)
         FacebookScheduleSetting setting = settingRepo.findBySourceGroup_Id(groupId);
         if (setting == null || setting.getFacebookPage() == null) {
             throw new RuntimeException("Group này chưa được gán fanpage trong cấu hình!");
         }
 
         var page = setting.getFacebookPage();
-        log.info("📆 Bắt đầu sinh lịch đăng cho group '{}' -> fanpage '{}'", group.getName(), page.getName());
+        log.info(" Bắt đầu sinh lịch đăng cho group '{}' -> fanpage '{}'", group.getName(), page.getName());
 
-        // 3️⃣ Xử lý danh sách ID link theo thứ tự (nếu có)
+        // 3️ Xử lý danh sách ID link theo thứ tự (nếu có)
         List<Long> orderedIds = new ArrayList<>();
         if (orderedJson != null && !orderedJson.isBlank()) {
             orderedIds = Arrays.stream(orderedJson
@@ -70,7 +70,7 @@ public class FacebookSchedulerService {
                     .toList();
         }
 
-        // 4️⃣ Lấy danh sách link cần đăng theo thứ tự
+        // 4️ Lấy danh sách link cần đăng theo thứ tự
         List<SourceLink> links = new ArrayList<>();
         if (!orderedIds.isEmpty()) {
             for (Long id : orderedIds) {
@@ -87,18 +87,18 @@ public class FacebookSchedulerService {
             throw new RuntimeException("Group này không có link nào để đăng!");
         }
 
-        // 5️⃣ Mặc định khoảng cách 10 phút nếu chưa có
+        // 5️ Mặc định khoảng cách 10 phút nếu chưa có
         if (intervalMinutes == null || intervalMinutes <= 0) {
             intervalMinutes = 10;
         }
 
-        // 6️⃣ Xử lý base path chuẩn (file:/// → D:/...)
+        // 6️ Xử lý base path chuẩn (file:/// → D:/...)
         String basePath = uploadBasePath
                 .replace("file:///", "")
                 .replace("file://", "")
                 .replace("/", File.separator);
 
-        // 7️⃣ Tạo danh sách lịch đăng
+        // 7️ Tạo danh sách lịch đăng
         List<Map<String, Object>> schedule = new ArrayList<>();
         Instant cursor = startTime;
 
@@ -107,14 +107,14 @@ public class FacebookSchedulerService {
 
             scheduler.schedule(() -> {
                 try {
-                    // 🧩 Caption
-                    String caption = "📢 " + Optional.ofNullable(link.getCaption()).orElse("(Không có mô tả)")
+                    // Caption
+                    String caption = " " + Optional.ofNullable(link.getCaption()).orElse("(Không có mô tả)")
                             + "\n\n👤 Nguồn: " + Optional.ofNullable(link.getUserId()).orElse("Ẩn danh");
 
-                    // 🧩 Xác định đường dẫn video
+                    // Xác định đường dẫn video
                     String videoFile = link.getContentGenerated();
                     if (videoFile == null || videoFile.isBlank()) {
-                        log.warn("⚠️ Link ID={} không có file video (bỏ qua).", link.getId());
+                        log.warn(" Link ID={} không có file video (bỏ qua).", link.getId());
                         return;
                     }
 
@@ -125,11 +125,11 @@ public class FacebookSchedulerService {
                     String fullPath = basePath + File.separator + videoFile;
                     File file = new File(fullPath);
                     if (!file.exists()) {
-                        log.error("❌ Không tìm thấy file video: {}", fullPath);
+                        log.error(" Không tìm thấy file video: {}", fullPath);
                         return;
                     }
 
-                    // 🧩 Gọi Facebook API
+                    // Gọi Facebook API
                     var result = facebookPostService.postVideoToPage(
                             page.getPageId(),
                             caption,
@@ -137,14 +137,14 @@ public class FacebookSchedulerService {
                             page.getAccessToken());
 
                     if (Boolean.TRUE.equals(result.get("success"))) {
-                        log.info("✅ Đã đăng link ID={} lên page '{}' lúc {}", link.getId(), page.getName(),
+                        log.info(" Đã đăng link ID={} lên page '{}' lúc {}", link.getId(), page.getName(),
                                 finalCursor);
                     } else {
-                        log.error("❌ Đăng thất bại link ID={} - lỗi: {}", link.getId(), result.get("error"));
+                        log.error(" Đăng thất bại link ID={} - lỗi: {}", link.getId(), result.get("error"));
                     }
 
                 } catch (Exception e) {
-                    log.error("💥 Lỗi khi đăng link ID={}: {}", link.getId(), e.getMessage());
+                    log.error(" Lỗi khi đăng link ID={}: {}", link.getId(), e.getMessage());
                 }
             }, Date.from(finalCursor));
 
@@ -155,10 +155,10 @@ public class FacebookSchedulerService {
             cursor = cursor.plusSeconds(intervalMinutes * 60L);
         }
 
-        log.info("🗓️ Đã sinh {} bài đăng cho group '{}' (bắt đầu từ {})",
+        log.info(" Đã sinh {} bài đăng cho group '{}' (bắt đầu từ {})",
                 schedule.size(), group.getName(), startTime);
 
-        // 8️⃣ Trả về thông tin kết quả
+        // 8️ Trả về thông tin kết quả
         return Map.of(
                 "group", group.getName(),
                 "page", page.getName(),

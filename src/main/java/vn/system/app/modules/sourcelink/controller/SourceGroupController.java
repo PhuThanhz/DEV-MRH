@@ -7,8 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
-import vn.system.app.modules.facebook.domain.FacebookPage;
-import vn.system.app.modules.facebook.repository.FacebookPageRepository;
 import vn.system.app.modules.sourcelink.domain.SourceGroup;
 import vn.system.app.modules.sourcelink.domain.request.ReqAddLinkDTO;
 import vn.system.app.modules.sourcelink.domain.request.ReqCreateGroupDTO;
@@ -20,12 +18,9 @@ import vn.system.app.modules.sourcelink.service.SourceGroupService;
 public class SourceGroupController {
 
     private final SourceGroupService groupService;
-    private final FacebookPageRepository facebookPageRepo;
 
-    public SourceGroupController(SourceGroupService groupService,
-            FacebookPageRepository facebookPageRepo) {
+    public SourceGroupController(SourceGroupService groupService) {
         this.groupService = groupService;
-        this.facebookPageRepo = facebookPageRepo;
     }
 
     // ============================================================

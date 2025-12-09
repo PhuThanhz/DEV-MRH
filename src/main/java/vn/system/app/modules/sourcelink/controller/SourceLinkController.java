@@ -11,7 +11,6 @@ import vn.system.app.modules.sourcelink.domain.request.ReqUpdateCaptionDTO;
 import vn.system.app.modules.sourcelink.service.SourceLinkService;
 import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,9 +23,6 @@ public class SourceLinkController {
         this.linkService = linkService;
     }
 
-    // ============================================================
-    // 1 Xử lý tải toàn bộ link trong group
-    // ============================================================
     @PostMapping("/{groupId}/process")
     @ApiMessage("Xử lý tải toàn bộ link trong group")
     public ResponseEntity<Map<String, Object>> processGroup(@PathVariable("groupId") Long groupId) {
@@ -46,9 +42,6 @@ public class SourceLinkController {
         return ResponseEntity.ok(result);
     }
 
-    // ============================================================
-    // 2 Cập nhật caption của 1 link
-    // ============================================================
     @PutMapping("/{linkId}/caption")
     @ApiMessage("Cập nhật caption cho link")
     public ResponseEntity<SourceLink> updateCaption(
@@ -59,9 +52,6 @@ public class SourceLinkController {
         return ResponseEntity.ok(updated);
     }
 
-    // ============================================================
-    // 3 Lấy chi tiết 1 link theo ID
-    // ============================================================
     @GetMapping("/{linkId}")
     @ApiMessage("Lấy chi tiết 1 link theo ID")
     public ResponseEntity<SourceLink> getLinkDetail(@PathVariable("linkId") Long linkId) {

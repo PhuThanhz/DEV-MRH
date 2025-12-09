@@ -57,6 +57,8 @@ public class SecurityConfiguration {
                 "/api/v1/facebook-schedule-settings/**",
                 "/api/v1/facebook-schedule/**",
                 "/api/v1/source-groups/*/facebook-page/*",
+                "/api/v1/facebook/**",
+
         };
 
         http
