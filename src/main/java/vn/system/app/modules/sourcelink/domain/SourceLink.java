@@ -21,79 +21,63 @@ public class SourceLink {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String url;
 
-    // ============================================
-    // Liên kết ngược ManyToOne -> tránh vòng lặp JSON
-    // ============================================
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id")
-    @JsonIgnore // tránh vòng lặp group <-> links
+    @JsonIgnore
     private SourceGroup group;
 
-    // ==== Thông tin người đăng ====
     private String name;
     private String userId;
 
-    // ==== Nội dung bài ====
     @Column(columnDefinition = "TEXT")
-    private String caption; // Mô tả bài đăng
+    private String caption;
 
     @Column(columnDefinition = "TEXT")
-    private String contentGenerated; // Tên file/video đã tải về
+    private String contentGenerated;
 
     @Column(columnDefinition = "TEXT")
-    private String errorMessage; // Lưu lỗi khi xử lý
+    private String errorMessage;
 
-    // ==== Trạng thái xử lý ====
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    private ProcessingStatus status; // SUCCESS / FAILED
+    private ProcessingStatus status;
 
-    // ==== Loại nội dung ====
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private ContentType type = ContentType.VIDEO;
 
-    // ==== Audit fields ====
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
 
-    // ==== Lifecycle hooks ====
     @PrePersist
-    public void handleBeforeCreate() {
-        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
-        this.createdAt = Instant.now();
-        if (this.type == null) {
-            this.type = ContentType.VIDEO;
-        }
+    public void onCreate() {
+        createdAt = Instant.now();
+        createdBy = SecurityUtil.getCurrentUserLogin().orElse("system");
+        if (type == null)
+            type = ContentType.VIDEO;
     }
 
     @PreUpdate
-    public void handleBeforeUpdate() {
-        this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
-        this.updatedAt = Instant.now();
+    public void onUpdate() {
+        updatedAt = Instant.now();
+        updatedBy = SecurityUtil.getCurrentUserLogin().orElse("system");
     }
 
-    // ==== Enum định nghĩa trạng thái xử lý ====
     public enum ProcessingStatus {
-        SUCCESS,
-        FAILED
+        SUCCESS, FAILED
     }
 
-    // ==== Enum loại nội dung ====
     public enum ContentType {
-        IMAGE,
-        VIDEO,
-        TEXT,
-        UNKNOWN
+        IMAGE, VIDEO, TEXT, UNKNOWN
     }
 
     @JsonIgnore
     public boolean isPendingOrFailed() {
-        return this.status == null
-                || this.status == ProcessingStatus.FAILED
-                || this.contentGenerated == null
-                || this.contentGenerated.isBlank();
+        return status == null
+                || status == ProcessingStatus.FAILED
+                || contentGenerated == null
+                || contentGenerated.isBlank();
     }
 }

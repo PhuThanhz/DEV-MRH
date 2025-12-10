@@ -5,7 +5,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.modules.facebook.domain.FacebookPage;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,6 +23,11 @@ public class SourceGroup {
     @Column(nullable = false, length = 255)
     private String name;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "main_group_id")
+    @JsonIgnoreProperties("groups")
+    private SourceGroupMain mainGroup;
+
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnoreProperties("group")
     private List<SourceLink> links = new ArrayList<>();
@@ -35,23 +39,23 @@ public class SourceGroup {
 
     public void addLink(SourceLink link) {
         link.setGroup(this);
-        this.links.add(link);
+        links.add(link);
     }
 
     public void removeLink(SourceLink link) {
-        this.links.remove(link);
+        links.remove(link);
         link.setGroup(null);
     }
 
     @PrePersist
     public void onCreate() {
-        this.createdAt = Instant.now();
-        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("system");
+        createdAt = Instant.now();
+        createdBy = SecurityUtil.getCurrentUserLogin().orElse("system");
     }
 
     @PreUpdate
     public void onUpdate() {
-        this.updatedAt = Instant.now();
-        this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("system");
+        updatedAt = Instant.now();
+        updatedBy = SecurityUtil.getCurrentUserLogin().orElse("system");
     }
 }

@@ -6,7 +6,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ReqCreateGroupDTO {
+public class ReqCreateGroupInMainDTO {
 
     @NotBlank(message = "Tên group không được để trống")
     private String groupName;

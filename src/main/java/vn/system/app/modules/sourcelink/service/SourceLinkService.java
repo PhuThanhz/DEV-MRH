@@ -48,7 +48,7 @@ public class SourceLinkService {
     // ============================================================
     @Async
     public void processAsync(SourceLink link) {
-        final String DEFAULT_FOLDER = "threads_video"; // mặc định 1 folder
+        final String DEFAULT_FOLDER = "threads_video";
 
         try {
             log.info("Bắt đầu tải video ID={} | {}", link.getId(), link.getUrl());

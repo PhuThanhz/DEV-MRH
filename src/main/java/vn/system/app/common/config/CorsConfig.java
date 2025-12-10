@@ -19,7 +19,7 @@ public class CorsConfig {
         configuration.setAllowedOrigins(
                 Arrays.asList(
                         "http://localhost:3000",
-                        "http://192.168.0.103:3000",
+                        "http://192.168.2.239:3000",
                         "http://10.0.2.215:3000"));
 
         // các method nào đc kết nối

@@ -6,10 +6,10 @@ import java.time.Instant;
 
 @Getter
 @Setter
-public class ResSourceGroupSummaryDTO {
+public class ResSourceGroupMainDTO {
     private Long id;
     private String name;
     private Instant createdAt;
     private Instant updatedAt;
-    private int totalLinks;
+    private int totalGroups;
 }

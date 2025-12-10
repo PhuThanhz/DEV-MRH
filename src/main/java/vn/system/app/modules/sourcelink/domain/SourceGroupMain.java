@@ -1,0 +1,56 @@
+package vn.system.app.modules.sourcelink.domain;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import vn.system.app.common.util.SecurityUtil;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "source_group_mains")
+@Getter
+@Setter
+public class SourceGroupMain {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, length = 255)
+    private String name;
+
+    @OneToMany(mappedBy = "mainGroup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("mainGroup")
+    private List<SourceGroup> groups = new ArrayList<>();
+
+    private Instant createdAt;
+    private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
+
+    public void addGroup(SourceGroup group) {
+        group.setMainGroup(this);
+        this.groups.add(group);
+    }
+
+    public void removeGroup(SourceGroup group) {
+        this.groups.remove(group);
+        group.setMainGroup(null);
+    }
+
+    @PrePersist
+    public void onCreate() {
+        this.createdAt = Instant.now();
+        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("system");
+    }
+
+    @PreUpdate
+    public void onUpdate() {
+        this.updatedAt = Instant.now();
+        this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("system");
+    }
+}
