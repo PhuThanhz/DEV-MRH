@@ -27,6 +27,8 @@ import vn.system.app.modules.user.domain.User;
 @Table(name = "roles")
 @Getter
 @Setter
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" }) // ⭐ FIX LỖI LAZY PROXY
+
 public class Role {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -1,15 +1,16 @@
 package vn.system.app.modules.company.service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.domain.request.ReqCreateCompanyDTO;
 import vn.system.app.modules.company.domain.request.ReqUpdateCompanyDTO;
@@ -27,110 +28,109 @@ public class CompanyService {
         this.companyRepository = companyRepository;
     }
 
-    // ================= CREATE =================
+    /* ================= CREATE ================= */
+
+    @Transactional
     public Company handleCreateCompany(Company company) {
-        return this.companyRepository.save(company);
+        return companyRepository.save(company);
     }
 
-    // ================= DELETE (KHÔNG XOÁ, CHỈ INACTIVE) =================
-    public Company handleInactiveCompany(long id) {
-        Company currentCompany = this.fetchCompanyById(id);
-        if (currentCompany != null) {
-            currentCompany.setStatus(0); // inactive
-            currentCompany = this.companyRepository.save(currentCompany);
-        }
-        return currentCompany;
+    /* ================= UPDATE ================= */
+
+    @Transactional
+    public Company handleUpdateCompany(ReqUpdateCompanyDTO req) {
+        Company current = fetchEntityById(req.getId());
+        current.setName(req.getName());
+        current.setEnglishName(req.getEnglishName());
+        return companyRepository.save(current);
     }
 
-    // ================= FETCH =================
-    public Company fetchCompanyById(long id) {
-        Optional<Company> companyOptional = this.companyRepository.findById(id);
-        if (companyOptional.isPresent()) {
-            return companyOptional.get();
-        }
-        return null;
+    /* ================= DELETE (SOFT) ================= */
+
+    @Transactional
+    public void handleInactiveCompany(Long id) {
+        Company company = fetchEntityById(id);
+        company.setStatus(0);
+        companyRepository.save(company);
     }
+
+    /* ================= FETCH ENTITY (FOR SERVICE) ================= */
+
+    public Company fetchEntityById(Long id) {
+        return companyRepository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy công ty"));
+    }
+
+    /* ================= FETCH ALL ================= */
 
     public ResultPaginationDTO fetchAllCompany(
             Specification<Company> spec,
             Pageable pageable) {
 
-        Page<Company> pageCompany = this.companyRepository.findAll(spec, pageable);
+        Page<Company> page = companyRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
 
         meta.setPage(pageable.getPageNumber() + 1);
         meta.setPageSize(pageable.getPageSize());
-        meta.setPages(pageCompany.getTotalPages());
-        meta.setTotal(pageCompany.getTotalElements());
-
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
 
-        List<ResCompanyDTO> listCompany = pageCompany.getContent()
+        List<ResCompanyDTO> list = page.getContent()
                 .stream()
                 .map(this::convertToResCompanyDTO)
                 .collect(Collectors.toList());
 
-        rs.setResult(listCompany);
+        rs.setResult(list);
         return rs;
     }
 
-    // ================= UPDATE =================
-    public Company handleUpdateCompany(ReqUpdateCompanyDTO req) {
-        Company currentCompany = this.fetchCompanyById(req.getId());
-        if (currentCompany != null) {
-            currentCompany.setName(req.getName());
-            currentCompany.setEnglishName(req.getEnglishName());
+    /* ================= CHECK ================= */
 
-            currentCompany = this.companyRepository.save(currentCompany);
-        }
-        return currentCompany;
-    }
-
-    // ================= CHECK =================
     public boolean isCodeExist(String code) {
-        return this.companyRepository.existsByCode(code);
+        return companyRepository.existsByCode(code);
     }
 
-    // ================= CONVERT REQUEST → ENTITY =================
+    /* ================= CONVERT ================= */
+
     public Company convertCreateReqToEntity(ReqCreateCompanyDTO req) {
-        Company company = new Company();
-        company.setCode(req.getCode());
-        company.setName(req.getName());
-        company.setEnglishName(req.getEnglishName());
-        return company;
+        Company c = new Company();
+        c.setCode(req.getCode());
+        c.setName(req.getName());
+        c.setEnglishName(req.getEnglishName());
+        return c;
     }
 
-    // ================= CONVERT ENTITY → RESPONSE =================
-    public ResCreateCompanyDTO convertToResCreateCompanyDTO(Company company) {
+    public ResCreateCompanyDTO convertToResCreateCompanyDTO(Company c) {
         ResCreateCompanyDTO res = new ResCreateCompanyDTO();
-        res.setId(company.getId());
-        res.setCode(company.getCode());
-        res.setName(company.getName());
-        res.setEnglishName(company.getEnglishName());
-        res.setCreatedAt(company.getCreatedAt());
+        res.setId(c.getId());
+        res.setCode(c.getCode());
+        res.setName(c.getName());
+        res.setEnglishName(c.getEnglishName());
+        res.setCreatedAt(c.getCreatedAt());
         return res;
     }
 
-    public ResUpdateCompanyDTO convertToResUpdateCompanyDTO(Company company) {
+    public ResUpdateCompanyDTO convertToResUpdateCompanyDTO(Company c) {
         ResUpdateCompanyDTO res = new ResUpdateCompanyDTO();
-        res.setId(company.getId());
-        res.setName(company.getName());
-        res.setEnglishName(company.getEnglishName());
-        res.setUpdatedAt(company.getUpdatedAt());
+        res.setId(c.getId());
+        res.setName(c.getName());
+        res.setEnglishName(c.getEnglishName());
+        res.setUpdatedAt(c.getUpdatedAt());
         return res;
     }
 
-    public ResCompanyDTO convertToResCompanyDTO(Company company) {
+    public ResCompanyDTO convertToResCompanyDTO(Company c) {
         ResCompanyDTO res = new ResCompanyDTO();
-        res.setId(company.getId());
-        res.setCode(company.getCode());
-        res.setName(company.getName());
-        res.setEnglishName(company.getEnglishName());
-        res.setStatus(company.getStatus());
-        res.setCreatedAt(company.getCreatedAt());
-        res.setUpdatedAt(company.getUpdatedAt());
+        res.setId(c.getId());
+        res.setCode(c.getCode());
+        res.setName(c.getName());
+        res.setEnglishName(c.getEnglishName());
+        res.setStatus(c.getStatus());
+        res.setCreatedAt(c.getCreatedAt());
+        res.setUpdatedAt(c.getUpdatedAt());
         return res;
     }
 }

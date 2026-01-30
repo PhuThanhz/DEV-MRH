@@ -17,44 +17,50 @@ public class Department {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id; // id phòng ban
+    private Long id;
 
     @NotBlank(message = "Mã phòng ban không được để trống")
-    @Column(unique = true)
-    private String code; // mã phòng ban
+    @Column(unique = true, nullable = false)
+    private String code;
 
     @NotBlank(message = "Tên phòng ban không được để trống")
-    private String name; // tên phòng ban
+    @Column(nullable = false)
+    private String name;
 
-    private String englishName; // tên tiếng Anh (không bắt buộc)
+    private String englishName;
 
     private Integer status; // 1 = active, 0 = inactive
 
-    @ManyToOne
+    // =======================
+    // PHÒNG BAN THUỘC CÔNG TY
+    // =======================
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
-    private Company company; // thuộc công ty nào
+    private Company company;
 
+    // =======================
+    // ❌ XOÁ — KHÔNG CÒN MANY TO MANY VỚI JOBTITLE
+    // =======================
+    // private List<JobTitle> jobTitles;
+
+    // =======================
+    // AUDIT FIELDS
+    // =======================
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
 
     @PrePersist
-    public void handleBeforeCreate() {
+    public void beforeCreate() {
         this.status = 1;
-
-        this.createdBy = SecurityUtil.getCurrentUserLogin().isPresent()
-                ? SecurityUtil.getCurrentUserLogin().get()
-                : "";
-
         this.createdAt = Instant.now();
+        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }
 
     @PreUpdate
-    public void handleBeforeUpdate() {
-        this.updatedBy = SecurityUtil.getCurrentUserLogin().isPresent()
-                ? SecurityUtil.getCurrentUserLogin().get()
-                : "";
+    public void beforeUpdate() {
         this.updatedAt = Instant.now();
+        this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }
 }

@@ -3,6 +3,8 @@ package vn.system.app.modules.permission.domain;
 import java.time.Instant;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -24,6 +26,8 @@ import vn.system.app.modules.role.domain.Role;
 @Getter
 @Setter
 @NoArgsConstructor
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" }) // ⭐ FIX PROXY
+
 public class Permission {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

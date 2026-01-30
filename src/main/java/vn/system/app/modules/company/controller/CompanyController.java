@@ -30,45 +30,48 @@ public class CompanyController {
         this.companyService = companyService;
     }
 
-    // ================= CREATE =================
+    /* ================= CREATE ================= */
+
     @PostMapping("/companies")
     @ApiMessage("Create a new company")
     public ResponseEntity<ResCreateCompanyDTO> createCompany(
             @Valid @RequestBody ReqCreateCompanyDTO req)
             throws IdInvalidException {
 
-        boolean isCodeExist = this.companyService.isCodeExist(req.getCode());
+        boolean isCodeExist = companyService.isCodeExist(req.getCode());
         if (isCodeExist) {
             throw new IdInvalidException(
                     "Mã công ty " + req.getCode() + " đã tồn tại");
         }
 
-        Company company = this.companyService.convertCreateReqToEntity(req);
-        Company savedCompany = this.companyService.handleCreateCompany(company);
+        Company company = companyService.convertCreateReqToEntity(req);
+        Company savedCompany = companyService.handleCreateCompany(company);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(this.companyService.convertToResCreateCompanyDTO(savedCompany));
+                .body(companyService.convertToResCreateCompanyDTO(savedCompany));
     }
 
-    // ================= GET BY ID =================
+    /* ================= GET ONE ================= */
+
     @GetMapping("/companies/{id}")
     @ApiMessage("Fetch company by id")
     public ResponseEntity<ResCompanyDTO> getCompanyById(
             @PathVariable("id") long id)
             throws IdInvalidException {
 
-        Company company = this.companyService.fetchCompanyById(id);
+        Company company = companyService.fetchEntityById(id);
         if (company == null) {
             throw new IdInvalidException(
                     "Company với id = " + id + " không tồn tại");
         }
 
         return ResponseEntity.ok(
-                this.companyService.convertToResCompanyDTO(company));
+                companyService.convertToResCompanyDTO(company));
     }
 
-    // ================= GET ALL =================
+    /* ================= GET ALL ================= */
+
     @GetMapping("/companies")
     @ApiMessage("Fetch all companies")
     public ResponseEntity<ResultPaginationDTO> getAllCompanies(
@@ -76,40 +79,42 @@ public class CompanyController {
             Pageable pageable) {
 
         return ResponseEntity.ok(
-                this.companyService.fetchAllCompany(spec, pageable));
+                companyService.fetchAllCompany(spec, pageable));
     }
 
-    // ================= UPDATE =================
+    /* ================= UPDATE ================= */
+
     @PutMapping("/companies")
     @ApiMessage("Update a company")
     public ResponseEntity<ResUpdateCompanyDTO> updateCompany(
             @Valid @RequestBody ReqUpdateCompanyDTO req)
             throws IdInvalidException {
 
-        Company updatedCompany = this.companyService.handleUpdateCompany(req);
+        Company updatedCompany = companyService.handleUpdateCompany(req);
         if (updatedCompany == null) {
             throw new IdInvalidException(
                     "Company với id = " + req.getId() + " không tồn tại");
         }
 
         return ResponseEntity.ok(
-                this.companyService.convertToResUpdateCompanyDTO(updatedCompany));
+                companyService.convertToResUpdateCompanyDTO(updatedCompany));
     }
 
-    // ================= INACTIVE (KHÔNG XOÁ) =================
+    /* ================= INACTIVE (SOFT DELETE) ================= */
+
     @PutMapping("/companies/{id}/inactive")
     @ApiMessage("Inactive a company")
-    public ResponseEntity<ResCompanyDTO> inactiveCompany(
+    public ResponseEntity<Void> inactiveCompany(
             @PathVariable("id") long id)
             throws IdInvalidException {
 
-        Company company = this.companyService.handleInactiveCompany(id);
+        Company company = companyService.fetchEntityById(id);
         if (company == null) {
             throw new IdInvalidException(
                     "Company với id = " + id + " không tồn tại");
         }
 
-        return ResponseEntity.ok(
-                this.companyService.convertToResCompanyDTO(company));
+        companyService.handleInactiveCompany(id);
+        return ResponseEntity.ok().build();
     }
 }

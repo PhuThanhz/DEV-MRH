@@ -9,80 +9,102 @@ import org.springframework.web.bind.annotation.*;
 import com.turkraft.springfilter.boot.Filter;
 
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
 import vn.system.app.modules.department.domain.request.UpdateDepartmentRequest;
 import vn.system.app.modules.department.domain.response.DepartmentResponse;
 import vn.system.app.modules.department.service.DepartmentService;
 
 @RestController
-@RequestMapping("/api/v1/departments")
-@RequiredArgsConstructor
+@RequestMapping("/api/v1")
 public class DepartmentController {
 
     private final DepartmentService departmentService;
 
-    // ============================================================
-    // CREATE
-    // ============================================================
-    @PostMapping
-    @ApiMessage("Tạo phòng ban mới")
-    public ResponseEntity<DepartmentResponse> createDepartment(
-            @Valid @RequestBody CreateDepartmentRequest req) {
-
-        DepartmentResponse res = this.departmentService.handleCreateDepartment(req);
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    public DepartmentController(DepartmentService departmentService) {
+        this.departmentService = departmentService;
     }
 
-    // ============================================================
-    // UPDATE
-    // ============================================================
-    @PutMapping("/{id}")
+    /* ================= CREATE ================= */
+
+    @PostMapping("/departments")
+    @ApiMessage("Tạo phòng ban mới")
+    public ResponseEntity<DepartmentResponse> createDepartment(
+            @Valid @RequestBody CreateDepartmentRequest req)
+            throws IdInvalidException {
+
+        DepartmentResponse res = departmentService.handleCreateDepartment(req);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(res);
+    }
+
+    /* ================= UPDATE ================= */
+
+    @PutMapping("/departments/{id}")
     @ApiMessage("Cập nhật phòng ban")
     public ResponseEntity<DepartmentResponse> updateDepartment(
             @PathVariable("id") Long id,
-            @RequestBody UpdateDepartmentRequest req) {
+            @RequestBody UpdateDepartmentRequest req)
+            throws IdInvalidException {
 
-        DepartmentResponse res = this.departmentService.handleUpdateDepartment(id, req);
+        DepartmentResponse res = departmentService.handleUpdateDepartment(id, req);
+        if (res == null) {
+            throw new IdInvalidException(
+                    "Phòng ban với id = " + id + " không tồn tại");
+        }
+
         return ResponseEntity.ok(res);
     }
 
-    // ============================================================
-    // DELETE (soft delete)
-    // ============================================================
-    @DeleteMapping("/{id}")
-    @ApiMessage("Xoá phòng ban")
-    public ResponseEntity<Void> deleteDepartment(@PathVariable("id") Long id) {
+    /* ================= DELETE (SOFT DELETE) ================= */
 
-        this.departmentService.handleDeleteDepartment(id);
-        return ResponseEntity.ok(null);
+    @DeleteMapping("/departments/{id}")
+    @ApiMessage("Xoá phòng ban")
+    public ResponseEntity<Void> deleteDepartment(
+            @PathVariable("id") Long id)
+            throws IdInvalidException {
+
+        DepartmentResponse res = departmentService.fetchDepartmentById(id);
+        if (res == null) {
+            throw new IdInvalidException(
+                    "Phòng ban với id = " + id + " không tồn tại");
+        }
+
+        departmentService.handleDeleteDepartment(id);
+        return ResponseEntity.ok().build();
     }
 
-    // ============================================================
-    // GET ONE
-    // ============================================================
-    @GetMapping("/{id}")
+    /* ================= GET ONE ================= */
+
+    @GetMapping("/departments/{id}")
     @ApiMessage("Chi tiết phòng ban")
     public ResponseEntity<DepartmentResponse> fetchDepartmentById(
-            @PathVariable("id") Long id) {
+            @PathVariable("id") Long id)
+            throws IdInvalidException {
 
-        DepartmentResponse res = this.departmentService.fetchDepartmentById(id);
+        DepartmentResponse res = departmentService.fetchDepartmentById(id);
+        if (res == null) {
+            throw new IdInvalidException(
+                    "Phòng ban với id = " + id + " không tồn tại");
+        }
+
         return ResponseEntity.ok(res);
     }
 
-    // ============================================================
-    // GET ALL + FILTER + PAGINATION
-    // ============================================================
-    @GetMapping
+    /* ================= GET ALL ================= */
+
+    @GetMapping("/departments")
     @ApiMessage("Danh sách phòng ban")
     public ResponseEntity<ResultPaginationDTO> fetchAllDepartments(
-            @Filter Specification<?> spec,
+            @Filter Specification<Department> spec,
             Pageable pageable) {
 
-        ResultPaginationDTO result = this.departmentService.fetchAllDepartments(spec, pageable);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(
+                departmentService.fetchAllDepartments(spec, pageable));
     }
 }

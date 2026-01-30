@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
-import vn.system.app.modules.company.repository.CompanyRepository;
+import vn.system.app.modules.company.service.CompanyService;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
 import vn.system.app.modules.department.domain.request.UpdateDepartmentRequest;
@@ -23,117 +23,95 @@ import vn.system.app.modules.department.repository.DepartmentRepository;
 public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyService companyService;
 
     public DepartmentService(
             DepartmentRepository departmentRepository,
-            CompanyRepository companyRepository) {
+            CompanyService companyService) {
+
         this.departmentRepository = departmentRepository;
-        this.companyRepository = companyRepository;
+        this.companyService = companyService;
     }
 
-    // ============================================================
-    // CREATE
-    // ============================================================
+    /* ================= CREATE ================= */
+
     @Transactional
     public DepartmentResponse handleCreateDepartment(CreateDepartmentRequest req) {
 
-        // check duplicate code
-        if (this.departmentRepository.existsByCode(req.getCode())) {
-            throw new IdInvalidException("Mã phòng ban " + req.getCode() + " đã tồn tại.");
+        if (departmentRepository.existsByCode(req.getCode())) {
+            throw new IdInvalidException("Mã phòng ban đã tồn tại");
         }
 
-        // check company
-        Company company = this.companyRepository.findById(req.getCompanyId())
-                .orElseThrow(() -> new IdInvalidException("Company không tồn tại."));
-
-        // check parent
-        Department parent = null;
-        if (req.getParentId() != null) {
-            parent = this.departmentRepository.findById(req.getParentId())
-                    .orElseThrow(() -> new IdInvalidException("Parent department không tồn tại."));
-        }
+        Company company = companyService.fetchEntityById(req.getCompanyId());
 
         Department d = new Department();
-        d.setCode(req.getCode()); // mã phòng ban
-        d.setName(req.getName()); // tên phòng ban
-        d.setEnglishName(req.getEnglishName()); // tên tiếng Anh
-        d.setDescription(req.getDescription()); // mô tả
-        d.setCompany(company); // thuộc công ty nào
-        d.setParent(parent); // bộ phận cha (nếu có)
+        d.setCode(req.getCode());
+        d.setName(req.getName());
+        d.setEnglishName(req.getEnglishName());
+        d.setCompany(company);
 
-        d = this.departmentRepository.save(d);
-
-        return this.convertToResponseDTO(d);
+        d = departmentRepository.save(d);
+        return convertToResponseDTO(d);
     }
 
-    // ============================================================
-    // UPDATE
-    // ============================================================
+    /* ================= UPDATE ================= */
+
     @Transactional
     public DepartmentResponse handleUpdateDepartment(Long id, UpdateDepartmentRequest req) {
 
-        Department d = this.departmentRepository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Department không tồn tại."));
+        Department d = fetchEntityById(id);
 
         if (req.getName() != null)
             d.setName(req.getName());
         if (req.getEnglishName() != null)
             d.setEnglishName(req.getEnglishName());
-        if (req.getDescription() != null)
-            d.setDescription(req.getDescription());
         if (req.getStatus() != null)
             d.setStatus(req.getStatus());
 
-        if (req.getParentId() != null) {
-            Department parent = this.departmentRepository.findById(req.getParentId())
-                    .orElseThrow(() -> new IdInvalidException("Parent department không tồn tại."));
-            d.setParent(parent);
-        }
-
-        d = this.departmentRepository.save(d);
-
-        return this.convertToResponseDTO(d);
+        d = departmentRepository.save(d);
+        return convertToResponseDTO(d);
     }
 
-    // ============================================================
-    // DELETE (soft delete)
-    // ============================================================
+    /* ================= DELETE (SOFT) ================= */
+
     @Transactional
     public void handleDeleteDepartment(Long id) {
-        Department d = this.departmentRepository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Department không tồn tại."));
-
-        d.setStatus(0); // xoá mềm
-        this.departmentRepository.save(d);
+        Department d = fetchEntityById(id);
+        d.setStatus(0);
+        departmentRepository.save(d);
     }
 
-    // ============================================================
-    // GET ONE
-    // ============================================================
+    /* ================= FETCH ENTITY (FOR SERVICE) ================= */
+
+    public Department fetchEntityById(Long id) {
+        return departmentRepository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+    }
+
+    /* ================= FETCH ONE ================= */
+
     public DepartmentResponse fetchDepartmentById(Long id) {
-        Department d = this.departmentRepository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Department không tồn tại."));
-        return this.convertToResponseDTO(d);
+        return convertToResponseDTO(fetchEntityById(id));
     }
 
-    // ============================================================
-    // GET ALL (paginate + filter)
-    // ============================================================
-    public ResultPaginationDTO fetchAllDepartments(Specification<?> spec, Pageable pageable) {
+    /* ================= FETCH ALL ================= */
 
-        Page<Department> pageDept = this.departmentRepository.findAll((Specification<Department>) spec, pageable);
+    public ResultPaginationDTO fetchAllDepartments(
+            Specification<Department> spec,
+            Pageable pageable) {
+
+        Page<Department> page = departmentRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
-        ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
 
-        mt.setPage(pageable.getPageNumber() + 1);
-        mt.setPageSize(pageable.getPageSize());
-        mt.setPages(pageDept.getTotalPages());
-        mt.setTotal(pageDept.getTotalElements());
-        rs.setMeta(mt);
+        meta.setPage(pageable.getPageNumber() + 1);
+        meta.setPageSize(pageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        rs.setMeta(meta);
 
-        List<DepartmentResponse> list = pageDept.getContent()
+        List<DepartmentResponse> list = page.getContent()
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
@@ -142,32 +120,25 @@ public class DepartmentService {
         return rs;
     }
 
-    // ============================================================
-    // CONVERT ENTITY -> RESPONSE DTO
-    // ============================================================
-    public DepartmentResponse convertToResponseDTO(Department d) {
-        DepartmentResponse res = new DepartmentResponse();
+    /* ================= CONVERT ================= */
 
+    public DepartmentResponse convertToResponseDTO(Department d) {
+
+        DepartmentResponse res = new DepartmentResponse();
         res.setId(d.getId());
         res.setCode(d.getCode());
         res.setName(d.getName());
         res.setEnglishName(d.getEnglishName());
-        res.setDescription(d.getDescription());
-
-        // --------------------------
-        // COMPANY INFO (id + name)
-        // --------------------------
-        DepartmentResponse.CompanyInfo ci = new DepartmentResponse.CompanyInfo();
-        ci.setId(d.getCompany().getId());
-        ci.setName(d.getCompany().getName());
-        res.setCompany(ci);
-
-        res.setParentId(d.getParent() != null ? d.getParent().getId() : null);
         res.setStatus(d.getStatus());
         res.setCreatedAt(d.getCreatedAt());
         res.setUpdatedAt(d.getUpdatedAt());
         res.setCreatedBy(d.getCreatedBy());
         res.setUpdatedBy(d.getUpdatedBy());
+
+        DepartmentResponse.CompanyInfo ci = new DepartmentResponse.CompanyInfo();
+        ci.setId(d.getCompany().getId());
+        ci.setName(d.getCompany().getName());
+        res.setCompany(ci);
 
         return res;
     }
