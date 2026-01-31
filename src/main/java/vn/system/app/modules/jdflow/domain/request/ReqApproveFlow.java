@@ -1,12 +1,13 @@
 package vn.system.app.modules.jdflow.domain.request;
 
-import lombok.Getter;
-import lombok.Setter;
-
-@Getter
-@Setter
 public class ReqApproveFlow {
-
-    // Nếu null → kết thúc duyệt
     private Long nextUserId;
+
+    public Long getNextUserId() {
+        return nextUserId;
+    }
+
+    public void setNextUserId(Long nextUserId) {
+        this.nextUserId = nextUserId;
+    }
 }

@@ -10,7 +10,6 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import vn.system.app.common.util.SecurityUtil;
@@ -33,7 +32,7 @@ public class User {
     @NotBlank(message = "email không được để trống")
     private String email;
 
-    @NotBlank(message = "password không được để trống")
+    // Cho phép null trong update
     private String password;
 
     private int age;
@@ -54,7 +53,7 @@ public class User {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "role_id")
-    @JsonIgnoreProperties({ "users", "permissions" }) // tránh vòng lặp JSON
+    @JsonIgnoreProperties({ "users", "permissions" })
     private Role role;
 
     /*
@@ -64,24 +63,56 @@ public class User {
      */
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "user_job_title", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "job_title_id"))
-    @JsonIgnoreProperties({ "users" }) // tránh load ngược
+    @JsonIgnoreProperties({ "users" })
     private List<JobTitle> jobTitles = new ArrayList<>();
 
     /*
      * ==========================
-     * HÀM LẤY CẤP CAO NHẤT
+     * HÀM TÁCH LEVEL TỪ CODE
+     * ==========================
+     */
+    @Transient
+    private Integer extractLevel(String code) {
+        return Integer.parseInt(code.replaceAll("[^0-9]", ""));
+    }
+
+    /*
+     * ==========================
+     * HÀM TÍNH RANK CẤP BẬC
+     *
+     * Rank = bandOrder * 1000 + level
+     *
+     * bandOrder nhỏ hơn → cấp cao hơn
+     * level nhỏ hơn → cấp cao hơn trong cùng band
+     *
+     * rank nhỏ nhất = cấp cao nhất
+     * ==========================
+     */
+    @Transient
+    public Integer getRank() {
+        if (jobTitles == null || jobTitles.isEmpty()) {
+            return null;
+        }
+
+        return jobTitles.stream()
+                .filter(jt -> jt.getPositionLevel() != null)
+                .map(jt -> {
+                    int bandOrder = jt.getPositionLevel().getBandOrder();
+                    int level = extractLevel(jt.getPositionLevel().getCode());
+                    return bandOrder * 1000 + level;
+                })
+                .min(Integer::compareTo)
+                .orElse(null);
+    }
+
+    /*
+     * ==========================
+     * TƯƠNG THÍCH HỆ THỐNG CŨ
      * ==========================
      */
     @Transient
     public Integer getHighestLevel() {
-        if (jobTitles == null || jobTitles.isEmpty())
-            return null;
-
-        return jobTitles.stream()
-                .filter(jt -> jt.getPositionLevel() != null)
-                .map(jt -> jt.getPositionLevel().getBandOrder())
-                .min(Integer::compareTo)
-                .orElse(null);
+        return getRank();
     }
 
     /*

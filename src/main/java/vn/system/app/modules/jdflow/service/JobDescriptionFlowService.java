@@ -47,13 +47,13 @@ public class JobDescriptionFlowService {
 
     /*
      * =====================================================
-     * CREATE FLOW – Gửi duyệt lần đầu
+     * CREATE FLOW – SUBMIT JD (GỬI DUYỆT LẦN ĐẦU)
      * =====================================================
      */
     public ResJobDescriptionFlowDTO createFlow(ReqCreateFlow req)
             throws IdInvalidException {
 
-        if (req.getJobDescriptionId() == null || req.getToUserId() == null) {
+        if (req == null || req.getJobDescriptionId() == null || req.getToUserId() == null) {
             throw new IdInvalidException("Thiếu dữ liệu bắt buộc");
         }
 
@@ -68,29 +68,31 @@ public class JobDescriptionFlowService {
             throw new IdInvalidException("JD đang trong quá trình duyệt");
         }
 
-        User creator = getCurrentUser();
+        User actor = getCurrentUser();
 
         User approver = userRepo.findById(req.getToUserId())
                 .orElseThrow(() -> new IdInvalidException("Người duyệt không tồn tại"));
 
-        // kiểm tra cấp bậc và quyền duyệt
-        permissionService.validateNextApprover(creator, approver);
+        // === CHECK ĐÚNG NGHIỆP VỤ SUBMIT ===
+        permissionService.validateSubmit(actor, approver);
 
         JobDescriptionFlow flow = new JobDescriptionFlow();
         flow.setJobDescriptionId(jd.getId());
-        flow.setFromUserId(creator.getId());
+        flow.setFromUserId(actor.getId());
         flow.setToUserId(approver.getId());
         flow.setStatus(FlowStatus.PENDING);
+
+        JobDescriptionFlow saved = flowRepo.save(flow);
 
         jd.setStatus("PROCESSING");
         jdRepo.save(jd);
 
-        return toRes(flowRepo.save(flow));
+        return toRes(saved);
     }
 
     /*
      * =====================================================
-     * APPROVE
+     * APPROVE – DUYỆT & CHUYỂN CẤP
      * =====================================================
      */
     public ResJobDescriptionFlowDTO approve(Long flowId, Long nextUserId)
@@ -104,13 +106,13 @@ public class JobDescriptionFlowService {
 
     /*
      * =====================================================
-     * REJECT
+     * REJECT – TỪ CHỐI JD
      * =====================================================
      */
     public ResJobDescriptionFlowDTO reject(Long flowId, ReqRejectFlow req)
             throws IdInvalidException {
 
-        if (req == null || req.getComment() == null) {
+        if (req == null || req.getComment() == null || req.getComment().isBlank()) {
             throw new IdInvalidException("Thiếu lý do từ chối");
         }
 
@@ -122,7 +124,7 @@ public class JobDescriptionFlowService {
 
     /*
      * =====================================================
-     * ISSUE
+     * ISSUE – BAN HÀNH JD
      * =====================================================
      */
     public ResJobDescriptionFlowDTO issue(Long flowId)

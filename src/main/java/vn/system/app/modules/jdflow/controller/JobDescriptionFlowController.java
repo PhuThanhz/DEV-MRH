@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.jdflow.domain.request.ReqApproveFlow;
 import vn.system.app.modules.jdflow.domain.request.ReqCreateFlow;
 import vn.system.app.modules.jdflow.domain.request.ReqRejectFlow;
 import vn.system.app.modules.jdflow.domain.response.ResApproverDTO;
@@ -33,6 +34,7 @@ public class JobDescriptionFlowController {
     /*
      * =====================================================
      * 1. GỬI JD ĐI DUYỆT LẦN ĐẦU
+     * Quyền: JD_SUBMIT (check trong service)
      * =====================================================
      */
     @PostMapping
@@ -48,12 +50,9 @@ public class JobDescriptionFlowController {
     /*
      * =====================================================
      * 2. DUYỆT & CHUYỂN CẤP
+     * Quyền: JD_APPROVE (check trong service)
      * =====================================================
      */
-    public static class ReqApproveFlow {
-        public Long nextUserId;
-    }
-
     @PostMapping("/{flowId}/approve")
     @ApiMessage("Duyệt JD và chuyển cấp")
     public ResponseEntity<ResJobDescriptionFlowDTO> approve(
@@ -62,12 +61,13 @@ public class JobDescriptionFlowController {
             throws IdInvalidException {
 
         return ResponseEntity.status(HttpStatus.OK)
-                .body(flowService.approve(flowId, req.nextUserId));
+                .body(flowService.approve(flowId, req.getNextUserId()));
     }
 
     /*
      * =====================================================
      * 3. TỪ CHỐI
+     * Quyền: JD_APPROVE (check trong service)
      * =====================================================
      */
     @PostMapping("/{flowId}/reject")
@@ -84,6 +84,7 @@ public class JobDescriptionFlowController {
     /*
      * =====================================================
      * 4. BAN HÀNH JD
+     * Quyền: JD_ISSUE (check trong service)
      * =====================================================
      */
     @PostMapping("/{flowId}/issue")

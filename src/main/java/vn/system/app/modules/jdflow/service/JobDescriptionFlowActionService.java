@@ -39,7 +39,54 @@ public class JobDescriptionFlowActionService {
 
     /*
      * =====================================================
-     * APPROVE (Duyệt & chuyển cấp)
+     * SUBMIT – GỬI JD LẦN ĐẦU
+     * =====================================================
+     */
+    public JobDescriptionFlow submit(
+            Long jobDescriptionId,
+            User actor,
+            Long toUserId)
+            throws IdInvalidException {
+
+        JobDescription jd = jdRepo.findById(jobDescriptionId)
+                .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
+
+        if (!jd.getStatus().equals("DRAFT")) {
+            throw new IdInvalidException("JD không ở trạng thái DRAFT");
+        }
+
+        User nextUser = userRepo.findById(toUserId)
+                .orElseThrow(() -> new IdInvalidException("Người nhận không tồn tại"));
+
+        // Check quyền SUBMIT + validate người nhận
+        permissionService.validateSubmit(actor, nextUser);
+
+        // tạo flow mới
+        JobDescriptionFlow flow = new JobDescriptionFlow();
+        flow.setJobDescriptionId(jobDescriptionId);
+        flow.setFromUserId(actor.getId());
+        flow.setToUserId(nextUser.getId());
+        flow.setStatus(FlowStatus.PENDING);
+
+        JobDescriptionFlow saved = flowRepo.save(flow);
+
+        jd.setStatus("PROCESSING");
+        jdRepo.save(jd);
+
+        logService.log(
+                jobDescriptionId,
+                saved.getId(),
+                "SUBMIT",
+                actor.getId(),
+                nextUser.getId(),
+                "Gửi JD đi duyệt");
+
+        return saved;
+    }
+
+    /*
+     * =====================================================
+     * APPROVE – DUYỆT & CHUYỂN CẤP
      * =====================================================
      */
     public JobDescriptionFlow approve(
@@ -52,19 +99,18 @@ public class JobDescriptionFlowActionService {
             throw new IdInvalidException("Flow không ở trạng thái duyệt");
         }
 
-        if (!Long.valueOf(actor.getId()).equals(flow.getToUserId())) {
+        if (!actor.getId().equals(flow.getToUserId())) {
             throw new IdInvalidException("Bạn không phải người đang được giao duyệt");
         }
 
-        permissionService.checkActorApprovePermission(actor);
+        // check quyền duyệt
+        permissionService.checkApprovePermission(actor);
 
         JobDescription jd = jdRepo.findById(flow.getJobDescriptionId())
                 .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
-        jd.setStatus("PROCESSING");
-        jdRepo.save(jd);
 
         /*
-         * ========== KẾT THÚC DUYỆT ==========
+         * ===== KẾT THÚC DUYỆT – CHỜ BAN HÀNH =====
          */
         if (nextUserId == null) {
 
@@ -86,22 +132,25 @@ public class JobDescriptionFlowActionService {
         }
 
         /*
-         * ========== CHUYỂN TIẾP DUYỆT ==========
+         * ===== CHUYỂN TIẾP DUYỆT =====
          */
-        if (Long.valueOf(nextUserId).equals(actor.getId())) {
+        if (actor.getId().equals(nextUserId)) {
             throw new IdInvalidException("Không thể giao duyệt cho chính mình");
         }
 
         User nextUser = userRepo.findById(nextUserId)
                 .orElseThrow(() -> new IdInvalidException("Người duyệt tiếp theo không tồn tại"));
 
-        permissionService.validateNextApprover(actor, nextUser);
+        permissionService.validateApproveAndNext(actor, nextUser);
 
         flow.setFromUserId(actor.getId());
         flow.setToUserId(nextUser.getId());
         flow.setStatus(FlowStatus.PENDING);
 
         JobDescriptionFlow saved = flowRepo.save(flow);
+
+        jd.setStatus("PROCESSING");
+        jdRepo.save(jd);
 
         logService.log(
                 flow.getJobDescriptionId(),
@@ -116,7 +165,7 @@ public class JobDescriptionFlowActionService {
 
     /*
      * =====================================================
-     * REJECT
+     * REJECT – TỪ CHỐI JD
      * =====================================================
      */
     public JobDescriptionFlow reject(
@@ -133,14 +182,15 @@ public class JobDescriptionFlowActionService {
             throw new IdInvalidException("Flow không ở trạng thái duyệt");
         }
 
-        if (!Long.valueOf(actor.getId()).equals(flow.getToUserId())) {
+        if (!actor.getId().equals(flow.getToUserId())) {
             throw new IdInvalidException("Bạn không phải người đang được giao duyệt");
         }
 
-        permissionService.checkActorApprovePermission(actor);
+        permissionService.checkApprovePermission(actor);
 
         JobDescription jd = jdRepo.findById(flow.getJobDescriptionId())
                 .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
+
         jd.setStatus("DRAFT");
         jdRepo.save(jd);
 
@@ -177,7 +227,7 @@ public class JobDescriptionFlowActionService {
             throw new IdInvalidException("JD chưa sẵn sàng để ban hành");
         }
 
-        if (!Long.valueOf(actor.getId()).equals(flow.getToUserId())) {
+        if (!actor.getId().equals(flow.getToUserId())) {
             throw new IdInvalidException("Bạn không phải người được giao ban hành JD");
         }
 
@@ -191,6 +241,7 @@ public class JobDescriptionFlowActionService {
 
         JobDescription jd = jdRepo.findById(flow.getJobDescriptionId())
                 .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
+
         jd.setStatus("PUBLIC");
         jdRepo.save(jd);
 

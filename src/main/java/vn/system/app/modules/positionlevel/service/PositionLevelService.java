@@ -26,9 +26,9 @@ public class PositionLevelService {
         this.repo = repo;
     }
 
-    // ---------------------------------------------
+    // ================================
     // Helper Methods
-    // ---------------------------------------------
+    // ================================
     private String extractBand(String code) {
         return code.replaceAll("[0-9]", "");
     }
@@ -40,30 +40,51 @@ public class PositionLevelService {
     private Integer findBandOrder(String band) {
         return repo.findAll().stream()
                 .filter(x -> extractBand(x.getCode()).equals(band))
-                .map(x -> x.getBandOrder())
+                .map(PositionLevel::getBandOrder)
                 .findFirst()
                 .orElse(null);
     }
 
-    // ---------------------------------------------
-    // EXISTS
-    // ---------------------------------------------
+    // ================================
+    // So sánh cấp bậc
+    // return < 0 : p1 cao hơn p2
+    // return > 0 : p1 thấp hơn p2
+    // return = 0 : bằng nhau
+    // ================================
+    public int compareLevels(PositionLevel p1, PositionLevel p2) {
+
+        // 1) So sánh theo bandOrder
+        int bandCompare = p1.getBandOrder().compareTo(p2.getBandOrder());
+        if (bandCompare != 0) {
+            return bandCompare; // bandOrder nhỏ hơn = cấp cao hơn
+        }
+
+        // 2) Nếu band giống nhau → so sánh levelNumber
+        int level1 = extractLevel(p1.getCode());
+        int level2 = extractLevel(p2.getCode());
+
+        return Integer.compare(level1, level2);
+    }
+
+    // ================================
+    // Exists
+    // ================================
     public boolean existsById(Long id) {
         return repo.existsById(id);
     }
 
-    // ---------------------------------------------
-    // DELETE (hard delete)
-    // ---------------------------------------------
+    // ================================
+    // DELETE
+    // ================================
     public void handleDelete(Long id) {
         PositionLevel pl = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tồn tại ID để xoá."));
         repo.delete(pl);
     }
 
-    // ---------------------------------------------
+    // ================================
     // CREATE
-    // ---------------------------------------------
+    // ================================
     public ResCreatePositionLevelDTO handleCreate(ReqCreatePositionLevelDTO req) {
 
         if (repo.existsByCode(req.getCode())) {
@@ -80,6 +101,7 @@ public class PositionLevelService {
         pl.setCode(req.getCode());
 
         if (!bandExists) {
+
             if (level != 1) {
                 throw new IdInvalidException("Band mới phải bắt đầu từ cấp 1 (S1, M1...).");
             }
@@ -103,9 +125,9 @@ public class PositionLevelService {
         return convertToResCreateDTO(pl);
     }
 
-    // ---------------------------------------------
+    // ================================
     // UPDATE
-    // ---------------------------------------------
+    // ================================
     public ResPositionLevelDTO handleUpdate(ReqUpdatePositionLevelDTO req) {
 
         PositionLevel current = repo.findById(req.getId())
@@ -139,24 +161,21 @@ public class PositionLevelService {
         }
 
         current = repo.save(current);
-
         return convertToResDTO(current);
     }
 
-    // ---------------------------------------------
+    // ================================
     // FETCH ONE
-    // ---------------------------------------------
+    // ================================
     public ResPositionLevelDTO fetchById(Long id) {
-
         PositionLevel pl = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tồn tại."));
-
         return convertToResDTO(pl);
     }
 
-    // ---------------------------------------------
+    // ================================
     // FETCH ALL
-    // ---------------------------------------------
+    // ================================
     public ResultPaginationDTO fetchAll(Specification<PositionLevel> spec, Pageable pageable) {
 
         Page<PositionLevel> pagePL = repo.findAll(spec, pageable);
@@ -179,9 +198,9 @@ public class PositionLevelService {
         return rs;
     }
 
-    // ---------------------------------------------
-    // CONVERT DTO METHODS
-    // ---------------------------------------------
+    // ================================
+    // CONVERT METHODS
+    // ================================
     private ResCreatePositionLevelDTO convertToResCreateDTO(PositionLevel pl) {
         ResCreatePositionLevelDTO res = new ResCreatePositionLevelDTO();
 

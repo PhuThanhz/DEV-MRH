@@ -18,101 +18,149 @@ public class JobDescriptionFlowPermissionService {
         this.userRepo = userRepo;
     }
 
-    /*
-     * =====================================================
-     * KIỂM TRA QUYỀN DUYỆT CỦA NGƯỜI HIỆN TẠI
-     * =====================================================
-     */
-    public void checkActorApprovePermission(User actor) throws IdInvalidException {
-        if (actor.getRole() == null || actor.getRole().getPermissions() == null) {
-            throw new IdInvalidException("User không có quyền duyệt");
+    // =====================================================
+    // CHECK QUYỀN GỬI JD (SUBMIT)
+    // =====================================================
+    public void checkSubmitPermission(User actor) {
+
+        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
+            throw new IdInvalidException("User không có quyền gửi JD");
         }
 
         boolean hasPermission = actor.getRole().getPermissions().stream()
-                .anyMatch(p -> p.getName().equals("JD_APPROVE"));
+                .anyMatch(p -> "JD_SUBMIT".equals(p.getName()));
+
+        if (!hasPermission) {
+            throw new IdInvalidException("User không có permission JD_SUBMIT");
+        }
+    }
+
+    // =====================================================
+    // CHECK QUYỀN DUYỆT JD (APPROVE)
+    // =====================================================
+    public void checkApprovePermission(User actor) {
+
+        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
+            throw new IdInvalidException("User không có quyền duyệt JD");
+        }
+
+        boolean hasPermission = actor.getRole().getPermissions().stream()
+                .anyMatch(p -> "JD_APPROVE".equals(p.getName()));
 
         if (!hasPermission) {
             throw new IdInvalidException("User không có permission duyệt JD");
         }
     }
 
-    /*
-     * =====================================================
-     * KIỂM TRA QUYỀN BAN HÀNH JD (ISSUE)
-     * =====================================================
-     */
-    public void checkIssuePermission(User actor) throws IdInvalidException {
-        if (actor.getRole() == null || actor.getRole().getPermissions() == null) {
+    // =====================================================
+    // CHECK QUYỀN BAN HÀNH JD (ISSUE)
+    // =====================================================
+    public void checkIssuePermission(User actor) {
+
+        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
             throw new IdInvalidException("User không có quyền ban hành JD");
         }
 
         boolean hasPermission = actor.getRole().getPermissions().stream()
-                .anyMatch(p -> p.getName().equals("JD_ISSUE"));
+                .anyMatch(p -> "JD_ISSUE".equals(p.getName()));
 
         if (!hasPermission) {
-            throw new IdInvalidException("User không có quyền ban hành JD");
+            throw new IdInvalidException("User không có permission ban hành JD");
         }
     }
 
-    /*
-     * =====================================================
-     * VALIDATE NGƯỜI DUYỆT TIẾP theo cấp bậc
-     *
-     * nextUser phải:
-     * 1. Có quyền duyệt
-     * 2. Cấp cao hơn actor (bandOrder nhỏ hơn)
-     * =====================================================
-     */
-    public void validateNextApprover(User actor, User nextUser) throws IdInvalidException {
+    // =====================================================
+    // VALIDATE GỬI JD LẦN ĐẦU (SUBMIT)
+    // =====================================================
+    public void validateSubmit(User actor, User nextUser) {
+
+        if (actor == null || nextUser == null) {
+            throw new IdInvalidException("User không hợp lệ");
+        }
+
+        if (actor.getId().equals(nextUser.getId())) {
+            throw new IdInvalidException("Không thể gửi JD cho chính mình");
+        }
+
+        checkSubmitPermission(actor);
+        checkApprovePermission(nextUser);
+
+        Integer actorRank = actor.getRank();
+        Integer nextRank = nextUser.getRank();
+
+        if (actorRank == null || nextRank == null) {
+            throw new IdInvalidException("User chưa được gán chức danh / cấp bậc");
+        }
+
+        // rank nhỏ hơn = cấp cao hơn
+        if (nextRank >= actorRank) {
+            throw new IdInvalidException("Người nhận phải có cấp bậc cao hơn người gửi");
+        }
+    }
+
+    // =====================================================
+    // VALIDATE DUYỆT & CHUYỂN CẤP (APPROVE)
+    // =====================================================
+    public void validateApproveAndNext(User actor, User nextUser) {
+
+        if (actor == null || nextUser == null) {
+            throw new IdInvalidException("User không hợp lệ");
+        }
 
         if (actor.getId().equals(nextUser.getId())) {
             throw new IdInvalidException("Không thể giao duyệt cho chính mình");
         }
 
-        // Check quyền duyệt
-        checkActorApprovePermission(nextUser);
+        checkApprovePermission(actor);
+        checkApprovePermission(nextUser);
 
-        Integer actorLevel = actor.getHighestLevel();
-        Integer nextLevel = nextUser.getHighestLevel();
+        Integer actorRank = actor.getRank();
+        Integer nextRank = nextUser.getRank();
 
-        if (actorLevel == null || nextLevel == null) {
-            throw new IdInvalidException("Không lấy được cấp bậc để so sánh");
+        if (actorRank == null || nextRank == null) {
+            throw new IdInvalidException("User chưa được gán chức danh / cấp bậc");
         }
 
-        // nextUser phải ở cấp cao hơn (bandOrder nhỏ hơn)
-        if (nextLevel > actorLevel) {
-            throw new IdInvalidException("Người duyệt tiếp theo phải có cấp cao hơn bạn");
+        if (nextRank >= actorRank) {
+            throw new IdInvalidException("Người duyệt tiếp theo phải có cấp bậc cao hơn");
         }
     }
 
-    /*
-     * =====================================================
-     * LẤY DANH SÁCH NGƯỜI CÓ THỂ DUYỆT (CAO CẤP HƠN ACTOR)
-     * =====================================================
-     */
-    public List<User> getApproversHigherThan(User actor) throws IdInvalidException {
+    // =====================================================
+    // LẤY DANH SÁCH NGƯỜI DUYỆT CAO HƠN (CHO UI)
+    // =====================================================
+    public List<User> getApproversHigherThan(User actor) {
 
-        Integer actorLevel = actor.getHighestLevel();
-        if (actorLevel == null) {
-            throw new IdInvalidException("User không có cấp bậc hợp lệ");
+        if (actor == null) {
+            throw new IdInvalidException("User không hợp lệ");
+        }
+
+        Integer actorRank = actor.getRank();
+        if (actorRank == null) {
+            throw new IdInvalidException("User chưa được gán chức danh / cấp bậc");
         }
 
         return userRepo.findAll().stream()
                 .filter(u -> {
-                    Integer lvl = u.getHighestLevel();
-                    if (lvl == null)
+
+                    if (u.getId().equals(actor.getId()))
                         return false;
 
-                    // chỉ lấy cấp cao hơn
-                    if (lvl > actorLevel)
+                    if (u.getRole() == null || u.getRole().getPermissions() == null)
                         return false;
 
-                    // phải có quyền duyệt
-                    boolean hasApprove = u.getRole() != null &&
-                            u.getRole().getPermissions().stream()
-                                    .anyMatch(p -> p.getName().equals("JD_APPROVE"));
+                    boolean hasApprove = u.getRole().getPermissions().stream()
+                            .anyMatch(p -> "JD_APPROVE".equals(p.getName()));
 
-                    return hasApprove && !u.getId().equals(actor.getId());
+                    if (!hasApprove)
+                        return false;
+
+                    Integer userRank = u.getRank();
+                    if (userRank == null)
+                        return false;
+
+                    // rank nhỏ hơn = cấp cao hơn
+                    return userRank < actorRank;
                 })
                 .collect(Collectors.toList());
     }
