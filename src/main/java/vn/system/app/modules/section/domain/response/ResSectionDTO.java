@@ -1,7 +1,6 @@
 package vn.system.app.modules.section.domain.response;
 
 import java.time.Instant;
-
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,7 +14,9 @@ public class ResSectionDTO {
 
     private DepartmentInfo department;
 
-    private Integer status;
+    private Integer status; // dữ liệu gốc
+    private boolean active; // ⭐ thêm giống User → FE xài chuẩn
+
     private Instant createdAt;
     private Instant updatedAt;
 

@@ -45,7 +45,7 @@ public class CompanyService {
         return companyRepository.save(current);
     }
 
-    /* ================= DELETE (SOFT) ================= */
+    /* ================= INACTIVE (SOFT DELETE) ================= */
 
     @Transactional
     public void handleInactiveCompany(Long id) {
@@ -54,7 +54,16 @@ public class CompanyService {
         companyRepository.save(company);
     }
 
-    /* ================= FETCH ENTITY (FOR SERVICE) ================= */
+    /* ================= ACTIVE ================= */
+
+    @Transactional
+    public void handleActiveCompany(Long id) {
+        Company company = fetchEntityById(id);
+        company.setStatus(1);
+        companyRepository.save(company);
+    }
+
+    /* ================= FETCH ENTITY ================= */
 
     public Company fetchEntityById(Long id) {
         return companyRepository.findById(id)
@@ -76,6 +85,7 @@ public class CompanyService {
         meta.setPageSize(pageable.getPageSize());
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
+
         rs.setMeta(meta);
 
         List<ResCompanyDTO> list = page.getContent()

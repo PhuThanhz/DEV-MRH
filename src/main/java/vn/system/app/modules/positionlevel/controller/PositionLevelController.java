@@ -51,23 +51,37 @@ public class PositionLevelController {
     }
 
     // -------------------------------------------------------------
-    // DELETE (inactive)
+    // INACTIVE (soft delete)
     // -------------------------------------------------------------
     @DeleteMapping("/{id}")
-    @ApiMessage("Xóa bậc chức danh")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    @ApiMessage("Ngừng kích hoạt bậc chức danh")
+    public ResponseEntity<Void> inactive(@PathVariable Long id) {
 
-        boolean exists = service.existsById(id);
-        if (!exists) {
+        if (!service.existsById(id)) {
             throw new IdInvalidException("Bậc chức danh với id = " + id + " không tồn tại");
         }
 
-        service.handleDelete(id);
+        service.inactive(id); // ⭐ Soft delete = status = 0
         return ResponseEntity.ok(null);
     }
 
     // -------------------------------------------------------------
-    // GET ALL (có filter, giống UserController)
+    // ACTIVE
+    // -------------------------------------------------------------
+    @PutMapping("/{id}/active")
+    @ApiMessage("Kích hoạt lại bậc chức danh")
+    public ResponseEntity<Void> active(@PathVariable Long id) {
+
+        if (!service.existsById(id)) {
+            throw new IdInvalidException("Bậc chức danh với id = " + id + " không tồn tại");
+        }
+
+        service.active(id); // ⭐ Set status = 1
+        return ResponseEntity.ok(null);
+    }
+
+    // -------------------------------------------------------------
+    // GET ALL
     // -------------------------------------------------------------
     @GetMapping
     @ApiMessage("Danh sách bậc chức danh")

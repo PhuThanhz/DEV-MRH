@@ -11,7 +11,6 @@ import com.turkraft.springfilter.boot.Filter;
 import jakarta.validation.Valid;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
-import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.domain.request.ReqCreateCompanyDTO;
 import vn.system.app.modules.company.domain.request.ReqUpdateCompanyDTO;
@@ -35,13 +34,10 @@ public class CompanyController {
     @PostMapping("/companies")
     @ApiMessage("Create a new company")
     public ResponseEntity<ResCreateCompanyDTO> createCompany(
-            @Valid @RequestBody ReqCreateCompanyDTO req)
-            throws IdInvalidException {
+            @Valid @RequestBody ReqCreateCompanyDTO req) {
 
-        boolean isCodeExist = companyService.isCodeExist(req.getCode());
-        if (isCodeExist) {
-            throw new IdInvalidException(
-                    "Mã công ty " + req.getCode() + " đã tồn tại");
+        if (companyService.isCodeExist(req.getCode())) {
+            throw new RuntimeException("Mã công ty " + req.getCode() + " đã tồn tại");
         }
 
         Company company = companyService.convertCreateReqToEntity(req);
@@ -57,15 +53,9 @@ public class CompanyController {
     @GetMapping("/companies/{id}")
     @ApiMessage("Fetch company by id")
     public ResponseEntity<ResCompanyDTO> getCompanyById(
-            @PathVariable("id") long id)
-            throws IdInvalidException {
+            @PathVariable("id") long id) {
 
         Company company = companyService.fetchEntityById(id);
-        if (company == null) {
-            throw new IdInvalidException(
-                    "Company với id = " + id + " không tồn tại");
-        }
-
         return ResponseEntity.ok(
                 companyService.convertToResCompanyDTO(company));
     }
@@ -87,14 +77,9 @@ public class CompanyController {
     @PutMapping("/companies")
     @ApiMessage("Update a company")
     public ResponseEntity<ResUpdateCompanyDTO> updateCompany(
-            @Valid @RequestBody ReqUpdateCompanyDTO req)
-            throws IdInvalidException {
+            @Valid @RequestBody ReqUpdateCompanyDTO req) {
 
         Company updatedCompany = companyService.handleUpdateCompany(req);
-        if (updatedCompany == null) {
-            throw new IdInvalidException(
-                    "Company với id = " + req.getId() + " không tồn tại");
-        }
 
         return ResponseEntity.ok(
                 companyService.convertToResUpdateCompanyDTO(updatedCompany));
@@ -105,16 +90,20 @@ public class CompanyController {
     @PutMapping("/companies/{id}/inactive")
     @ApiMessage("Inactive a company")
     public ResponseEntity<Void> inactiveCompany(
-            @PathVariable("id") long id)
-            throws IdInvalidException {
-
-        Company company = companyService.fetchEntityById(id);
-        if (company == null) {
-            throw new IdInvalidException(
-                    "Company với id = " + id + " không tồn tại");
-        }
+            @PathVariable("id") long id) {
 
         companyService.handleInactiveCompany(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /* ================= ACTIVE ================= */
+
+    @PutMapping("/companies/{id}/active")
+    @ApiMessage("Active a company")
+    public ResponseEntity<Void> activeCompany(
+            @PathVariable("id") long id) {
+
+        companyService.handleActiveCompany(id);
         return ResponseEntity.ok().build();
     }
 }

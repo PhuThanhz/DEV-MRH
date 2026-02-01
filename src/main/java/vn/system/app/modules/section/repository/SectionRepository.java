@@ -14,5 +14,8 @@ public interface SectionRepository
 
     boolean existsByCode(String code);
 
+    // ⭐ ĐÚNG CHUẨN thay cho UniqueConstraint
+    boolean existsByCodeAndDepartmentId(String code, Long departmentId);
+
     Optional<Section> findByCode(String code);
 }

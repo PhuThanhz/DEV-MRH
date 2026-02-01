@@ -12,7 +12,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
-import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.domain.request.ReqCreateSectionDTO;
 import vn.system.app.modules.section.domain.request.ReqUpdateSectionDTO;
 import vn.system.app.modules.section.domain.response.ResSectionDTO;
@@ -29,11 +28,8 @@ public class SectionController {
 
     @PostMapping
     @ApiMessage("Tạo bộ phận mới")
-    public ResponseEntity<ResSectionDTO> create(
-            @Valid @RequestBody ReqCreateSectionDTO req) {
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
+    public ResponseEntity<ResSectionDTO> create(@Valid @RequestBody ReqCreateSectionDTO req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
                 .body(sectionService.createSection(req));
     }
 
@@ -41,19 +37,26 @@ public class SectionController {
 
     @PutMapping
     @ApiMessage("Cập nhật bộ phận")
-    public ResponseEntity<ResSectionDTO> update(
-            @Valid @RequestBody ReqUpdateSectionDTO req) {
-
+    public ResponseEntity<ResSectionDTO> update(@Valid @RequestBody ReqUpdateSectionDTO req) {
         return ResponseEntity.ok(sectionService.updateSection(req));
     }
 
-    /* ================= DELETE (SOFT) ================= */
+    /* ================= INACTIVE (TẮT BỘ PHẬN) ================= */
 
-    @DeleteMapping("/{id}")
-    @ApiMessage("Xoá bộ phận")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        sectionService.handleDelete(id);
-        return ResponseEntity.ok().build();
+    @PutMapping("/{id}/inactive")
+    @ApiMessage("Vô hiệu hoá bộ phận")
+    public ResponseEntity<String> inactive(@PathVariable Long id) {
+        sectionService.setInactive(id);
+        return ResponseEntity.ok("Đã vô hiệu hoá bộ phận ID = " + id);
+    }
+
+    /* ================= ACTIVE (BẬT LẠI BỘ PHẬN) ================= */
+
+    @PutMapping("/{id}/active")
+    @ApiMessage("Kích hoạt lại bộ phận")
+    public ResponseEntity<String> active(@PathVariable Long id) {
+        sectionService.setActive(id);
+        return ResponseEntity.ok("Đã kích hoạt bộ phận ID = " + id);
     }
 
     /* ================= FETCH ONE ================= */
@@ -69,7 +72,7 @@ public class SectionController {
     @GetMapping
     @ApiMessage("Danh sách bộ phận")
     public ResponseEntity<ResultPaginationDTO> fetchAll(
-            @Filter Specification<Section> spec,
+            @Filter Specification spec,
             Pageable pageable) {
 
         return ResponseEntity.ok(sectionService.fetchAll(spec, pageable));

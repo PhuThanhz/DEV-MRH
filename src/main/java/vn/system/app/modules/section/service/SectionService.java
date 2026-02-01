@@ -32,13 +32,17 @@ public class SectionService {
         this.departmentService = departmentService;
     }
 
-    /* ================= CREATE ================= */
-
+    /*
+     * ============================================================
+     * CREATE
+     * ============================================================
+     */
     @Transactional
     public ResSectionDTO createSection(ReqCreateSectionDTO req) {
 
-        if (sectionRepo.existsByCode(req.getCode())) {
-            throw new IdInvalidException("Mã bộ phận đã tồn tại");
+        // Validate duplicate: code + department
+        if (sectionRepo.existsByCodeAndDepartmentId(req.getCode(), req.getDepartmentId())) {
+            throw new IdInvalidException("Mã bộ phận đã tồn tại trong phòng ban này");
         }
 
         Department dept = departmentService.fetchEntityById(req.getDepartmentId());
@@ -49,11 +53,15 @@ public class SectionService {
         s.setDepartment(dept);
 
         s = sectionRepo.save(s);
+
         return convertToDTO(s);
     }
 
-    /* ================= UPDATE ================= */
-
+    /*
+     * ============================================================
+     * UPDATE
+     * ============================================================
+     */
     @Transactional
     public ResSectionDTO updateSection(ReqUpdateSectionDTO req) {
 
@@ -68,43 +76,58 @@ public class SectionService {
         }
 
         s = sectionRepo.save(s);
+
         return convertToDTO(s);
     }
 
-    /* ================= DELETE (SOFT) ================= */
-
+    /*
+     * ============================================================
+     * INACTIVATE (TẮT BỘ PHẬN)
+     * ============================================================
+     */
     @Transactional
-    public void handleDelete(Long id) {
+    public void setInactive(Long id) {
         Section s = fetchEntityById(id);
         s.setStatus(0);
         sectionRepo.save(s);
     }
 
-    /* ================= FETCH ENTITY (FOR SERVICE) ================= */
-
-    public Section fetchEntityById(Long id) {
-        return sectionRepo.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Không tìm thấy bộ phận"));
+    /*
+     * ============================================================
+     * ACTIVATE (BẬT LẠI BỘ PHẬN)
+     * ============================================================
+     */
+    @Transactional
+    public void setActive(Long id) {
+        Section s = fetchEntityById(id);
+        s.setStatus(1);
+        sectionRepo.save(s);
     }
 
     /*
-     * ================= FETCH ENTITY BY CODE (FOR OTHER SERVICES) =================
+     * ============================================================
+     * FETCH ENTITY
+     * ============================================================
      */
-
-    public Section fetchEntityByCode(String code) {
-        return sectionRepo.findByCode(code)
-                .orElseThrow(() -> new IdInvalidException(
-                        "Không tìm thấy bộ phận với code = " + code));
+    public Section fetchEntityById(Long id) {
+        return sectionRepo.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy bộ phận với id = " + id));
     }
 
-    /* ================= FETCH ONE ================= */
-
+    /*
+     * ============================================================
+     * FETCH ONE DTO
+     * ============================================================
+     */
     public ResSectionDTO fetchOne(Long id) {
         return convertToDTO(fetchEntityById(id));
     }
 
-    /* ================= FETCH ALL ================= */
-
+    /*
+     * ============================================================
+     * FETCH ALL (PAGINATION + FILTER)
+     * ============================================================
+     */
     public ResultPaginationDTO fetchAll(
             Specification<Section> spec,
             Pageable pageable) {
@@ -118,8 +141,8 @@ public class SectionService {
         meta.setPageSize(pageable.getPageSize());
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
-        rs.setMeta(meta);
 
+        rs.setMeta(meta);
         rs.setResult(
                 page.getContent()
                         .stream()
@@ -129,15 +152,22 @@ public class SectionService {
         return rs;
     }
 
-    /* ================= CONVERT ================= */
-
+    /*
+     * ============================================================
+     * CONVERT ENTITY -> DTO
+     * ============================================================
+     */
     private ResSectionDTO convertToDTO(Section s) {
 
         ResSectionDTO res = new ResSectionDTO();
+
         res.setId(s.getId());
         res.setCode(s.getCode());
         res.setName(s.getName());
+
         res.setStatus(s.getStatus());
+        res.setActive(s.getStatus() != null && s.getStatus() == 1);
+
         res.setCreatedAt(s.getCreatedAt());
         res.setUpdatedAt(s.getUpdatedAt());
         res.setCreatedBy(s.getCreatedBy());
@@ -147,7 +177,6 @@ public class SectionService {
         d.setId(s.getDepartment().getId());
         d.setName(s.getDepartment().getName());
         res.setDepartment(d);
-
         return res;
     }
 }

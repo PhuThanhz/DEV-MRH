@@ -9,14 +9,17 @@ import lombok.Setter;
 @Setter
 public class ResPositionLevelDTO {
 
-    private Long id; // ID
-    private String code; // S1, S2...
-    private String band; // S / M / L...
-    private Integer bandOrder; // thứ tự band
-    private Integer levelNumber; // cấp độ (tách từ code)
+    private Long id;
+    private String code;
+    private String band;
+    private Integer bandOrder;
+    private Integer levelNumber;
 
-    private Instant createdAt; // thời gian tạo
-    private Instant updatedAt; // thời gian cập nhật
-    private String createdBy; // người tạo
-    private String updatedBy; // người cập nhật
+    private Integer status;
+    private boolean active; // ⭐ MATCH FE
+
+    private Instant createdAt;
+    private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
 }

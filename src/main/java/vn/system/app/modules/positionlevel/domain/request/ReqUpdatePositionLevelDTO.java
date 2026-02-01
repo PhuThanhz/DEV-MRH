@@ -1,5 +1,6 @@
 package vn.system.app.modules.positionlevel.domain.request;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,7 +8,9 @@ import lombok.Setter;
 @Setter
 public class ReqUpdatePositionLevelDTO {
 
+    @NotNull(message = "ID không được để trống")
     private Long id;
+
     private String code;
     private Integer bandOrder;
 }

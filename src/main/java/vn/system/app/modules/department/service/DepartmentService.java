@@ -28,7 +28,6 @@ public class DepartmentService {
     public DepartmentService(
             DepartmentRepository departmentRepository,
             CompanyService companyService) {
-
         this.departmentRepository = departmentRepository;
         this.companyService = companyService;
     }
@@ -37,7 +36,6 @@ public class DepartmentService {
 
     @Transactional
     public DepartmentResponse handleCreateDepartment(CreateDepartmentRequest req) {
-
         if (departmentRepository.existsByCode(req.getCode())) {
             throw new IdInvalidException("Mã phòng ban đã tồn tại");
         }
@@ -49,6 +47,7 @@ public class DepartmentService {
         d.setName(req.getName());
         d.setEnglishName(req.getEnglishName());
         d.setCompany(company);
+        d.setStatus(1); // Mặc định khi tạo là đang hoạt động
 
         d = departmentRepository.save(d);
         return convertToResponseDTO(d);
@@ -58,7 +57,6 @@ public class DepartmentService {
 
     @Transactional
     public DepartmentResponse handleUpdateDepartment(Long id, UpdateDepartmentRequest req) {
-
         Department d = fetchEntityById(id);
 
         if (req.getName() != null)
@@ -77,8 +75,24 @@ public class DepartmentService {
     @Transactional
     public void handleDeleteDepartment(Long id) {
         Department d = fetchEntityById(id);
+        if (d.getStatus() == 0) {
+            throw new IdInvalidException("Phòng ban đã bị vô hiệu hóa trước đó");
+        }
         d.setStatus(0);
         departmentRepository.save(d);
+    }
+
+    /* ================= ACTIVE (RE-ACTIVATE) ================= */
+
+    @Transactional
+    public DepartmentResponse handleActiveDepartment(Long id) {
+        Department d = fetchEntityById(id);
+        if (d.getStatus() == 1) {
+            throw new IdInvalidException("Phòng ban này đang hoạt động");
+        }
+        d.setStatus(1);
+        d = departmentRepository.save(d);
+        return convertToResponseDTO(d);
     }
 
     /* ================= FETCH ENTITY (FOR SERVICE) ================= */
@@ -123,7 +137,6 @@ public class DepartmentService {
     /* ================= CONVERT ================= */
 
     public DepartmentResponse convertToResponseDTO(Department d) {
-
         DepartmentResponse res = new DepartmentResponse();
         res.setId(d.getId());
         res.setCode(d.getCode());
