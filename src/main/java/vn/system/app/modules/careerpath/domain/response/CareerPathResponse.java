@@ -1,7 +1,6 @@
 package vn.system.app.modules.careerpath.domain.response;
 
 import java.time.Instant;
-
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,7 +15,6 @@ public class CareerPathResponse {
 
     private Long jobTitleId;
     private String jobTitleName;
-
     private String positionLevelCode;
     private Integer bandOrder;
 
@@ -26,11 +24,13 @@ public class CareerPathResponse {
     private String requiredTime;
     private String trainingOutcome;
     private String performanceRequirement;
-
-    // 🔹 dòng lương
     private String salaryNote;
 
     private Integer status;
+    private boolean active;
+
     private Instant createdAt;
     private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
 }

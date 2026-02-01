@@ -1,7 +1,6 @@
 package vn.system.app.modules.companyprocedure.domain;
 
 import java.time.Instant;
-
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,9 +9,7 @@ import vn.system.app.modules.companyprocedure.domain.enums.ProcedureStatus;
 import vn.system.app.modules.section.domain.Section;
 
 @Entity
-@Table(name = "company_procedures", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "section_id", "procedure_name" })
-})
+@Table(name = "company_procedures") // ❌ bỏ uniqueConstraints cho đồng bộ với các entity khác
 @Getter
 @Setter
 public class CompanyProcedure {
@@ -21,51 +18,43 @@ public class CompanyProcedure {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Tên quy trình / quy định
     @Column(name = "procedure_name", nullable = false)
     private String procedureName;
 
-    // Link file PDF / URL
     @Column(length = 500)
     private String fileUrl;
 
-    // Bộ phận / team phụ trách
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "section_id", nullable = false)
     private Section section;
 
-    /*
-     * Trạng thái quy trình:
-     * NEED_CREATE : Cần xây dựng mới
-     * IN_PROGRESS : Đang xây dựng
-     * NEED_UPDATE : Cần cập nhật
-     * TERMINATED : Chấm dứt
-     */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProcedureStatus status;
 
-    // Kế hoạch năm (ví dụ: 2026)
     private Integer planYear;
 
-    // Ghi chú
     @Column(columnDefinition = "TEXT")
     private String note;
 
-    // Audit
+    @Column(nullable = false)
+    private boolean active = true;
+
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
 
     @PrePersist
-    public void beforeCreate() {
+    public void handleBeforeCreate() {
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+        if (!this.active)
+            this.active = true;
     }
 
     @PreUpdate
-    public void beforeUpdate() {
+    public void handleBeforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

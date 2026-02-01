@@ -16,4 +16,6 @@ public class ReqCreateJobTitleDTO {
 
     @NotNull(message = "PositionLevelId không được để trống")
     private Long positionLevelId;
+
+    private Boolean active = true; // thêm để đồng bộ
 }

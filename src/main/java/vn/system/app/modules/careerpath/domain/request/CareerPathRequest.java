@@ -16,8 +16,6 @@ public class CareerPathRequest {
     private String requiredTime;
     private String trainingOutcome;
     private String performanceRequirement;
-
-    // 🔹 dòng lương
     private String salaryNote;
 
     private Integer status;

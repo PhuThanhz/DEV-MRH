@@ -50,13 +50,15 @@ public class JobTitleController {
     }
 
     // =========================
-    // DELETE (SOFT)
+    // DELETE (SOFT DELETE)
     // =========================
     @DeleteMapping("/{id}")
     @ApiMessage("Xoá chức danh")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
+
         jobTitleService.handleDelete(id);
-        return ResponseEntity.ok().build();
+
+        return ResponseEntity.noContent().build(); // ⭐ CHUẨN REST
     }
 
     // =========================
@@ -65,6 +67,7 @@ public class JobTitleController {
     @GetMapping("/{id}")
     @ApiMessage("Chi tiết chức danh")
     public ResponseEntity<ResJobTitleDTO> fetchOne(@PathVariable Long id) {
+
         return ResponseEntity.ok(jobTitleService.getJobTitle(id));
     }
 

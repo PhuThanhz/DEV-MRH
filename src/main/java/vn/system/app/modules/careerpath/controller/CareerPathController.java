@@ -6,72 +6,100 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import lombok.RequiredArgsConstructor;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.careerpath.domain.CareerPath;
 import vn.system.app.modules.careerpath.domain.request.CareerPathRequest;
 import vn.system.app.modules.careerpath.domain.response.CareerPathResponse;
 import vn.system.app.modules.careerpath.service.CareerPathService;
 
 @RestController
 @RequestMapping("/api/v1/career-paths")
+@RequiredArgsConstructor
 public class CareerPathController {
 
     private final CareerPathService service;
 
-    public CareerPathController(CareerPathService service) {
-        this.service = service;
-    }
-
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
     @PostMapping
-    @ApiMessage("Create career path")
-    public ResponseEntity<CareerPathResponse> create(
-            @RequestBody CareerPathRequest request) {
-
-        CareerPath entity = service.handleCreate(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.convertToResponse(entity));
+    @ApiMessage("Tạo mới lộ trình thăng tiến")
+    public ResponseEntity<CareerPathResponse> create(@RequestBody CareerPathRequest request) {
+        CareerPathResponse res = service.handleCreate(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
+    /*
+     * =====================================================
+     * UPDATE
+     * =====================================================
+     */
     @PutMapping("/{id}")
-    @ApiMessage("Update career path")
+    @ApiMessage("Cập nhật lộ trình thăng tiến")
     public ResponseEntity<CareerPathResponse> update(
             @PathVariable Long id,
-            @RequestBody CareerPathRequest request) throws IdInvalidException {
-
-        CareerPath entity = service.handleUpdate(id, request);
-        if (entity == null) {
-            throw new IdInvalidException("Lộ trình thăng tiến không tồn tại");
-        }
-
-        return ResponseEntity.ok(service.convertToResponse(entity));
+            @RequestBody CareerPathRequest request) {
+        CareerPathResponse res = service.handleUpdate(id, request);
+        return ResponseEntity.ok(res);
     }
 
+    /*
+     * =====================================================
+     * TOGGLE ACTIVE (BẬT / TẮT)
+     * =====================================================
+     */
+    @PutMapping("/{id}/active")
+    @ApiMessage("Thay đổi trạng thái kích hoạt lộ trình thăng tiến")
+    public ResponseEntity<Void> toggleActive(@PathVariable Long id) {
+        service.handleToggleActive(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /*
+     * =====================================================
+     * DELETE
+     * =====================================================
+     */
     @DeleteMapping("/{id}")
-    @ApiMessage("Delete career path")
+    @ApiMessage("Xóa lộ trình thăng tiến")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.handleDelete(id);
-        return ResponseEntity.ok(null);
+        return ResponseEntity.ok().build();
     }
 
+    /*
+     * =====================================================
+     * GET ONE
+     * =====================================================
+     */
     @GetMapping("/{id}")
-    @ApiMessage("Get career path by id")
-    public ResponseEntity<CareerPathResponse> getById(@PathVariable Long id)
-            throws IdInvalidException {
-
-        CareerPath entity = service.fetchById(id);
-        if (entity == null) {
-            throw new IdInvalidException("Lộ trình thăng tiến không tồn tại");
-        }
-
-        return ResponseEntity.ok(service.convertToResponse(entity));
+    @ApiMessage("Chi tiết lộ trình thăng tiến")
+    public ResponseEntity<CareerPathResponse> getOne(@PathVariable Long id) {
+        return ResponseEntity.ok(service.convertToResponse(service.fetchById(id)));
     }
 
+    /*
+     * =====================================================
+     * GET BY DEPARTMENT
+     * =====================================================
+     */
     @GetMapping("/by-department/{departmentId}")
-    @ApiMessage("Get career paths by department")
-    public ResponseEntity<List<CareerPathResponse>> getByDepartment(
-            @PathVariable Long departmentId) {
-
+    @ApiMessage("Danh sách lộ trình theo phòng ban")
+    public ResponseEntity<List<CareerPathResponse>> getByDepartment(@PathVariable Long departmentId) {
         return ResponseEntity.ok(service.fetchByDepartment(departmentId));
+    }
+
+    /*
+     * =====================================================
+     * GET ALL ACTIVE
+     * =====================================================
+     */
+    @GetMapping("/active")
+    @ApiMessage("Danh sách lộ trình đang hoạt động")
+    public ResponseEntity<List<CareerPathResponse>> getAllActive() {
+        return ResponseEntity.ok(service.fetchAllActive());
     }
 }

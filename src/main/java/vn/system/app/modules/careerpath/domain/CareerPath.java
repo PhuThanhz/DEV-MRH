@@ -10,9 +10,7 @@ import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
 
 @Entity
-@Table(name = "career_paths", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "department_id", "job_title_id" })
-})
+@Table(name = "career_paths")
 @Getter
 @Setter
 public class CareerPath {
@@ -21,46 +19,59 @@ public class CareerPath {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // phòng ban
+    /*
+     * ==========================
+     * Liên kết
+     * ==========================
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
-    // chức danh
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_title_id", nullable = false)
     private JobTitle jobTitle;
 
-    // tiêu chuẩn chức danh
+    /*
+     * ==========================
+     * Các trường nhập text
+     * ==========================
+     */
+    // Tiêu chuẩn chức danh
     @Column(columnDefinition = "TEXT")
     private String jobStandard;
 
-    // yêu cầu đào tạo
+    // Yêu cầu đào tạo
     @Column(columnDefinition = "TEXT")
     private String trainingRequirement;
 
-    // phương pháp đánh giá
+    // Phương pháp đánh giá
     @Column(columnDefinition = "TEXT")
     private String evaluationMethod;
 
-    // thời gian giữ vị trí
+    // Thời gian giữ vị trí
     @Column(columnDefinition = "TEXT")
     private String requiredTime;
 
-    // kết quả đào tạo
+    // Kết quả đào tạo
     @Column(columnDefinition = "TEXT")
     private String trainingOutcome;
 
-    // hiệu quả công việc
+    // Hiệu quả công việc
     @Column(columnDefinition = "TEXT")
     private String performanceRequirement;
 
-    // 🔹 DÒNG LƯƠNG (bạn nói bị thiếu)
+    // Salary
     @Column(columnDefinition = "TEXT")
     private String salaryNote;
 
-    // trạng thái
+    /*
+     * ==========================
+     * Trạng thái & audit
+     * ==========================
+     */
     private Integer status;
+    private boolean active = true;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -69,7 +80,6 @@ public class CareerPath {
 
     @PrePersist
     public void beforeCreate() {
-        this.status = this.status == null ? 1 : this.status;
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

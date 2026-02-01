@@ -1,7 +1,6 @@
 package vn.system.app.modules.companyprocedure.domain.response;
 
 import java.time.Instant;
-
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.modules.companyprocedure.domain.enums.ProcedureStatus;
@@ -27,17 +26,16 @@ public class CompanyProcedureResponse {
     // ===== Procedure =====
     private String procedureName;
     private String fileUrl;
-
-    // Trạng thái quy trình
     private ProcedureStatus status;
-
-    // Kế hoạch năm
     private Integer planYear;
-
-    // Ghi chú
     private String note;
 
-    // Audit
+    // ===== Active flag (giống các module khác) =====
+    private boolean active;
+
+    // ===== Audit =====
     private Instant createdAt;
     private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
 }

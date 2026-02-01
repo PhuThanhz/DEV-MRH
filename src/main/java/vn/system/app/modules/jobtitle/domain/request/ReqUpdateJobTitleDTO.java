@@ -13,6 +13,8 @@ public class ReqUpdateJobTitleDTO {
 
     private String nameVi;
     private String nameEn;
-    private Integer status;
+
+    private Boolean active; // đổi từ status → active
+
     private Long positionLevelId;
 }

@@ -13,4 +13,6 @@ public class ReqUpdatePositionLevelDTO {
 
     private String code;
     private Integer bandOrder;
+    private Integer status; // ⭐ MUST HAVE
+
 }

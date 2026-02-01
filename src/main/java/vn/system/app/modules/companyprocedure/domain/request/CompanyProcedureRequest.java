@@ -1,5 +1,7 @@
 package vn.system.app.modules.companyprocedure.domain.request;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.modules.companyprocedure.domain.enums.ProcedureStatus;
@@ -8,21 +10,22 @@ import vn.system.app.modules.companyprocedure.domain.enums.ProcedureStatus;
 @Setter
 public class CompanyProcedureRequest {
 
-    // Bộ phận / team (Section đã bao gồm Department + Company)
+    @NotNull(message = "SectionId không được để trống")
     private Long sectionId;
 
-    // Tên quy trình / quy định
+    @NotBlank(message = "Tên quy trình không được để trống")
     private String procedureName;
 
-    // Link file PDF
     private String fileUrl;
 
-    // Trạng thái quy trình
+    @NotNull(message = "Trạng thái không được để trống")
     private ProcedureStatus status;
 
-    // Kế hoạch năm (ví dụ: 2026)
     private Integer planYear;
 
-    // Ghi chú
     private String note;
+
+    // ✅ Thêm để đồng bộ với các module khác (Role, JobTitle)
+    // Giúp bật/tắt quy trình mà không cần endpoint riêng
+    private Boolean active;
 }

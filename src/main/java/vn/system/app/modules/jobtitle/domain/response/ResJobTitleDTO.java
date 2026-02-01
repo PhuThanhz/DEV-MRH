@@ -11,7 +11,8 @@ public class ResJobTitleDTO {
     private Long id;
     private String nameVi;
     private String nameEn;
-    private Integer status;
+    private Boolean active;
+
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

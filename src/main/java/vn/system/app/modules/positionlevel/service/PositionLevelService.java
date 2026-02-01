@@ -140,6 +140,11 @@ public class PositionLevelService {
             current.setBandOrder(req.getBandOrder());
         }
 
+        // ⭐⭐⭐ UPDATE STATUS — FIX BUG "KHÔNG BẬT TẮT ĐƯỢC"
+        if (req.getStatus() != null) {
+            current.setStatus(req.getStatus());
+        }
+
         current = repo.save(current);
         return convertToRes(current);
     }

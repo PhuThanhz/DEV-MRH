@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.careerpath.domain.CareerPath;
@@ -32,14 +33,18 @@ public class CareerPathService {
         this.jobTitleRepository = jobTitleRepository;
     }
 
-    // ===== CREATE =====
-    public CareerPath handleCreate(CareerPathRequest request) {
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
+    @Transactional
+    public CareerPathResponse handleCreate(CareerPathRequest request) {
 
         if (repository.existsByDepartment_IdAndJobTitle_Id(
                 request.getDepartmentId(),
                 request.getJobTitleId())) {
-            throw new IdInvalidException(
-                    "Phòng ban này đã có lộ trình cho chức danh này");
+            throw new IdInvalidException("Phòng ban này đã có lộ trình cho chức danh này");
         }
 
         Department department = departmentRepository.findById(request.getDepartmentId())
@@ -59,27 +64,21 @@ public class CareerPathService {
         entity.setPerformanceRequirement(request.getPerformanceRequirement());
         entity.setSalaryNote(request.getSalaryNote());
         entity.setStatus(request.getStatus());
+        entity.setActive(true);
 
-        return repository.save(entity);
+        entity = repository.save(entity);
+        return convertToResponse(entity);
     }
 
-    // ===== DELETE =====
-    public void handleDelete(Long id) {
-        repository.deleteById(id);
-    }
+    /*
+     * =====================================================
+     * UPDATE
+     * =====================================================
+     */
+    @Transactional
+    public CareerPathResponse handleUpdate(Long id, CareerPathRequest request) {
 
-    // ===== FETCH BY ID =====
-    public CareerPath fetchById(Long id) {
-        Optional<CareerPath> optional = repository.findById(id);
-        return optional.orElse(null);
-    }
-
-    // ===== UPDATE =====
-    public CareerPath handleUpdate(Long id, CareerPathRequest request) {
         CareerPath current = fetchById(id);
-        if (current == null)
-            return null;
-
         current.setJobStandard(request.getJobStandard());
         current.setTrainingRequirement(request.getTrainingRequirement());
         current.setEvaluationMethod(request.getEvaluationMethod());
@@ -89,29 +88,89 @@ public class CareerPathService {
         current.setSalaryNote(request.getSalaryNote());
         current.setStatus(request.getStatus());
 
-        return repository.save(current);
+        current = repository.save(current);
+        return convertToResponse(current);
     }
 
-    // ===== GET BY DEPARTMENT =====
-    public List<CareerPathResponse> fetchByDepartment(Long departmentId) {
+    /*
+     * =====================================================
+     * TOGGLE ACTIVE (BẬT / TẮT)
+     * =====================================================
+     */
+    @Transactional
+    public void handleToggleActive(Long id) {
+        CareerPath current = fetchById(id);
+        current.setActive(!current.isActive());
+        repository.save(current);
+    }
 
-        return repository
-                .findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDesc(departmentId)
+    /*
+     * =====================================================
+     * DELETE (SOFT DELETE)
+     * =====================================================
+     */
+    @Transactional
+    public void handleDelete(Long id) {
+        CareerPath current = fetchById(id);
+        repository.delete(current);
+    }
+
+    /*
+     * =====================================================
+     * FETCH ONE
+     * =====================================================
+     */
+    public CareerPath fetchById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy lộ trình thăng tiến"));
+    }
+
+    /*
+     * =====================================================
+     * FETCH BY DEPARTMENT
+     * =====================================================
+     */
+    public List<CareerPathResponse> fetchByDepartment(Long departmentId) {
+        return repository.findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDesc(departmentId)
                 .stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
     }
 
-    // ===== CONVERT RESPONSE =====
+    /*
+     * =====================================================
+     * FETCH ALL ACTIVE
+     * =====================================================
+     */
+    public List<CareerPathResponse> fetchAllActive() {
+        return repository.findByActiveTrue()
+                .stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    /*
+     * =====================================================
+     * CONVERT ENTITY → RESPONSE
+     * =====================================================
+     */
     public CareerPathResponse convertToResponse(CareerPath e) {
         CareerPathResponse r = new CareerPathResponse();
         r.setId(e.getId());
+
+        // ===== Department =====
         r.setDepartmentId(e.getDepartment().getId());
         r.setDepartmentName(e.getDepartment().getName());
+
+        // ===== Job Title =====
         r.setJobTitleId(e.getJobTitle().getId());
         r.setJobTitleName(e.getJobTitle().getNameVi());
-        r.setPositionLevelCode(e.getJobTitle().getPositionLevel().getCode());
-        r.setBandOrder(e.getJobTitle().getPositionLevel().getBandOrder());
+        if (e.getJobTitle().getPositionLevel() != null) {
+            r.setPositionLevelCode(e.getJobTitle().getPositionLevel().getCode());
+            r.setBandOrder(e.getJobTitle().getPositionLevel().getBandOrder());
+        }
+
+        // ===== Career Path Fields =====
         r.setJobStandard(e.getJobStandard());
         r.setTrainingRequirement(e.getTrainingRequirement());
         r.setEvaluationMethod(e.getEvaluationMethod());
@@ -120,8 +179,14 @@ public class CareerPathService {
         r.setPerformanceRequirement(e.getPerformanceRequirement());
         r.setSalaryNote(e.getSalaryNote());
         r.setStatus(e.getStatus());
+        r.setActive(e.isActive());
+
+        // ===== Audit =====
         r.setCreatedAt(e.getCreatedAt());
         r.setUpdatedAt(e.getUpdatedAt());
+        r.setCreatedBy(e.getCreatedBy());
+        r.setUpdatedBy(e.getUpdatedBy());
+
         return r;
     }
 }

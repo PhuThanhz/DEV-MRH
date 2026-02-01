@@ -1,11 +1,15 @@
 package vn.system.app.modules.companyprocedure.service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
 import vn.system.app.modules.companyprocedure.domain.request.CompanyProcedureRequest;
@@ -27,8 +31,13 @@ public class CompanyProcedureService {
         this.sectionRepository = sectionRepository;
     }
 
-    // ================= CREATE =================
-    public CompanyProcedure handleCreate(CompanyProcedureRequest request) {
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
+    @Transactional
+    public CompanyProcedureResponse handleCreate(CompanyProcedureRequest request) {
 
         if (repository.existsBySection_IdAndProcedureName(
                 request.getSectionId(),
@@ -46,49 +55,84 @@ public class CompanyProcedureService {
         entity.setStatus(request.getStatus());
         entity.setPlanYear(request.getPlanYear());
         entity.setNote(request.getNote());
+        entity.setActive(true); // mặc định bật khi tạo mới
 
-        return repository.save(entity);
+        entity = repository.save(entity);
+        return convertToResponse(entity);
     }
 
-    // ================= UPDATE (THÊM MỚI) =================
-    public CompanyProcedure handleUpdate(Long id, CompanyProcedureRequest request) {
+    /*
+     * =====================================================
+     * UPDATE
+     * =====================================================
+     */
+    @Transactional
+    public CompanyProcedureResponse handleUpdate(Long id, CompanyProcedureRequest request) {
 
         CompanyProcedure current = fetchById(id);
-        if (current == null) {
-            throw new IdInvalidException("Quy trình không tồn tại");
-        }
 
-        // CHỈ CHO PHÉP UPDATE CÁC FIELD SAU
         current.setFileUrl(request.getFileUrl());
         current.setStatus(request.getStatus());
         current.setPlanYear(request.getPlanYear());
         current.setNote(request.getNote());
 
-        return repository.save(current);
+        current = repository.save(current);
+        return convertToResponse(current);
     }
 
-    // ================= FETCH BY ID =================
+    /*
+     * =====================================================
+     * TOGGLE ACTIVE (BẬT / TẮT)
+     * =====================================================
+     */
+    @Transactional
+    public void handleToggleActive(Long id) {
+        CompanyProcedure current = fetchById(id);
+        current.setActive(!current.isActive());
+        repository.save(current);
+    }
+
+    /*
+     * =====================================================
+     * FETCH ONE
+     * =====================================================
+     */
     public CompanyProcedure fetchById(Long id) {
-        Optional<CompanyProcedure> optional = repository.findById(id);
-        return optional.orElse(null);
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
     }
 
-    // ================= DELETE =================
-    public void handleDelete(Long id) {
-        repository.deleteById(id);
-    }
+    /*
+     * =====================================================
+     * FETCH ALL (PAGINATION + FILTER)
+     * =====================================================
+     */
+    public ResultPaginationDTO fetchAll(Specification<CompanyProcedure> spec, Pageable pageable) {
+        Page<CompanyProcedure> page = repository.findAll(spec, pageable);
 
-    // ================= GET ALL COMPANY =================
-    // Xem toàn bộ quy trình của toàn công ty
-    public List<CompanyProcedureResponse> fetchAllCompany() {
-        return repository.findAllByOrderBySection_Department_NameAsc()
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+
+        meta.setPage(pageable.getPageNumber() + 1);
+        meta.setPageSize(pageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        rs.setMeta(meta);
+
+        List<CompanyProcedureResponse> list = page.getContent()
                 .stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
+        rs.setResult(list);
+
+        return rs;
     }
 
-    // ================= GET BY DEPARTMENT =================
-    // Xem toàn bộ quy trình theo phòng ban
+    /*
+     * =====================================================
+     * FETCH BY DEPARTMENT
+     * =====================================================
+     */
     public List<CompanyProcedureResponse> fetchByDepartment(Long departmentId) {
         return repository.findBySection_Department_Id(departmentId)
                 .stream()
@@ -96,8 +140,11 @@ public class CompanyProcedureService {
                 .collect(Collectors.toList());
     }
 
-    // ================= GET BY SECTION =================
-    // Xem toàn bộ quy trình theo bộ phận / team
+    /*
+     * =====================================================
+     * FETCH BY SECTION
+     * =====================================================
+     */
     public List<CompanyProcedureResponse> fetchBySection(Long sectionId) {
         return repository.findBySection_Id(sectionId)
                 .stream()
@@ -105,24 +152,19 @@ public class CompanyProcedureService {
                 .collect(Collectors.toList());
     }
 
-    // ================= CONVERT RESPONSE =================
+    /*
+     * =====================================================
+     * CONVERT TO RESPONSE
+     * =====================================================
+     */
     public CompanyProcedureResponse convertToResponse(CompanyProcedure e) {
-
         CompanyProcedureResponse r = new CompanyProcedureResponse();
 
         r.setId(e.getId());
 
-        // ===== Company (TRẢ CODE, KHÔNG TRẢ ID) =====
-        r.setCompanyCode(
-                e.getSection()
-                        .getDepartment()
-                        .getCompany()
-                        .getCode());
-        r.setCompanyName(
-                e.getSection()
-                        .getDepartment()
-                        .getCompany()
-                        .getName());
+        // ===== Company =====
+        r.setCompanyCode(e.getSection().getDepartment().getCompany().getCode());
+        r.setCompanyName(e.getSection().getDepartment().getCompany().getName());
 
         // ===== Department =====
         r.setDepartmentId(e.getSection().getDepartment().getId());
@@ -138,10 +180,13 @@ public class CompanyProcedureService {
         r.setStatus(e.getStatus());
         r.setPlanYear(e.getPlanYear());
         r.setNote(e.getNote());
+        r.setActive(e.isActive());
 
         // ===== Audit =====
         r.setCreatedAt(e.getCreatedAt());
         r.setUpdatedAt(e.getUpdatedAt());
+        r.setCreatedBy(e.getCreatedBy());
+        r.setUpdatedBy(e.getUpdatedBy());
 
         return r;
     }

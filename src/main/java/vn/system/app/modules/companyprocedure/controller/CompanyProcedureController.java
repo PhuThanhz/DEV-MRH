@@ -1,9 +1,16 @@
 package vn.system.app.modules.companyprocedure.controller;
 
-import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import com.turkraft.springfilter.boot.Filter;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
@@ -11,88 +18,110 @@ import vn.system.app.modules.companyprocedure.domain.request.CompanyProcedureReq
 import vn.system.app.modules.companyprocedure.domain.response.CompanyProcedureResponse;
 import vn.system.app.modules.companyprocedure.service.CompanyProcedureService;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/company-procedures")
+@RequiredArgsConstructor
 public class CompanyProcedureController {
 
     private final CompanyProcedureService service;
 
-    public CompanyProcedureController(CompanyProcedureService service) {
-        this.service = service;
-    }
-
-    // ================= CREATE =================
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
     @PostMapping
-    @ApiMessage("Create company procedure")
+    @ApiMessage("Tạo quy trình mới")
     public ResponseEntity<CompanyProcedureResponse> create(
-            @RequestBody CompanyProcedureRequest request) {
+            @Valid @RequestBody CompanyProcedureRequest request) {
 
-        CompanyProcedure entity = service.handleCreate(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.convertToResponse(entity));
+        CompanyProcedureResponse res = service.handleCreate(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
-    // ================= UPDATE (THÊM MỚI) =================
+    /*
+     * =====================================================
+     * UPDATE
+     * =====================================================
+     */
     @PutMapping("/{id}")
-    @ApiMessage("Update company procedure")
+    @ApiMessage("Cập nhật quy trình")
     public ResponseEntity<CompanyProcedureResponse> update(
             @PathVariable Long id,
-            @RequestBody CompanyProcedureRequest request) {
+            @Valid @RequestBody CompanyProcedureRequest request) {
 
-        CompanyProcedure entity = service.handleUpdate(id, request);
+        CompanyProcedureResponse res = service.handleUpdate(id, request);
+        return ResponseEntity.ok(res);
+    }
+
+    /*
+     * =====================================================
+     * TOGGLE ACTIVE (BẬT / TẮT)
+     * =====================================================
+     */
+    @PutMapping("/{id}/active")
+    @ApiMessage("Thay đổi trạng thái kích hoạt quy trình")
+    public ResponseEntity<Void> toggleActive(@PathVariable Long id) {
+        service.handleToggleActive(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /*
+     * =====================================================
+     * GET ONE
+     * =====================================================
+     */
+    @GetMapping("/{id}")
+    @ApiMessage("Chi tiết quy trình")
+    public ResponseEntity<CompanyProcedureResponse> getOne(@PathVariable Long id) {
+
+        CompanyProcedure entity = service.fetchById(id);
+        if (entity == null) {
+            throw new IdInvalidException("Quy trình với id = " + id + " không tồn tại");
+        }
+
         return ResponseEntity.ok(service.convertToResponse(entity));
     }
 
-    // ================= GET ALL COMPANY =================
+    /*
+     * =====================================================
+     * GET ALL (LỌC + PHÂN TRANG)
+     * =====================================================
+     */
     @GetMapping
-    @ApiMessage("Get all company procedures")
-    public ResponseEntity<List<CompanyProcedureResponse>> getAllCompany() {
-        return ResponseEntity.ok(service.fetchAllCompany());
+    @ApiMessage("Danh sách quy trình")
+    public ResponseEntity<ResultPaginationDTO> getAll(
+            @Filter Specification<CompanyProcedure> spec,
+            Pageable pageable) {
+
+        return ResponseEntity.ok(service.fetchAll(spec, pageable));
     }
 
-    // ================= GET BY DEPARTMENT =================
+    /*
+     * =====================================================
+     * GET BY DEPARTMENT
+     * =====================================================
+     */
     @GetMapping("/by-department/{departmentId}")
-    @ApiMessage("Get company procedures by department")
+    @ApiMessage("Danh sách quy trình theo phòng ban")
     public ResponseEntity<List<CompanyProcedureResponse>> getByDepartment(
             @PathVariable Long departmentId) {
 
         return ResponseEntity.ok(service.fetchByDepartment(departmentId));
     }
 
-    // ================= GET BY SECTION =================
+    /*
+     * =====================================================
+     * GET BY SECTION
+     * =====================================================
+     */
     @GetMapping("/by-section/{sectionId}")
-    @ApiMessage("Get company procedures by section")
+    @ApiMessage("Danh sách quy trình theo bộ phận")
     public ResponseEntity<List<CompanyProcedureResponse>> getBySection(
             @PathVariable Long sectionId) {
 
         return ResponseEntity.ok(service.fetchBySection(sectionId));
-    }
-
-    // ================= GET BY ID =================
-    @GetMapping("/{id}")
-    @ApiMessage("Get company procedure detail")
-    public ResponseEntity<CompanyProcedureResponse> getById(
-            @PathVariable Long id) {
-
-        CompanyProcedure entity = service.fetchById(id);
-        if (entity == null) {
-            throw new IdInvalidException("Quy trình không tồn tại");
-        }
-
-        return ResponseEntity.ok(service.convertToResponse(entity));
-    }
-
-    // ================= DELETE =================
-    @DeleteMapping("/{id}")
-    @ApiMessage("Delete company procedure")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-
-        CompanyProcedure current = service.fetchById(id);
-        if (current == null) {
-            throw new IdInvalidException("Quy trình không tồn tại");
-        }
-
-        service.handleDelete(id);
-        return ResponseEntity.ok(null);
     }
 }

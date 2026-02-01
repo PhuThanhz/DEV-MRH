@@ -49,7 +49,9 @@ public class JobTitleService {
         jt.setNameVi(req.getNameVi());
         jt.setNameEn(req.getNameEn());
         jt.setPositionLevel(pl);
-        // status sẽ được set mặc định trong @PrePersist
+
+        // ⭐ Đổi từ status → active
+        jt.setActive(req.getActive() != null ? req.getActive() : true);
 
         jt = jobTitleRepo.save(jt);
         return convertToDTO(jt);
@@ -71,8 +73,9 @@ public class JobTitleService {
             jt.setNameEn(req.getNameEn());
         }
 
-        if (req.getStatus() != null) {
-            jt.setStatus(req.getStatus());
+        // ⭐ status → active
+        if (req.getActive() != null) {
+            jt.setActive(req.getActive());
         }
 
         if (req.getPositionLevelId() != null) {
@@ -86,17 +89,20 @@ public class JobTitleService {
     }
 
     // =========================
-    // DELETE (SOFT)
+    // DELETE (SOFT DELETE)
     // =========================
     @Transactional
     public void handleDelete(Long id) {
         JobTitle jt = fetchEntityById(id);
-        jt.setStatus(0);
+
+        // ⭐ soft delete dùng active = false
+        jt.setActive(false);
+
         jobTitleRepo.save(jt);
     }
 
     // =========================
-    // GET ONE (FOR CONTROLLER)
+    // GET ONE
     // =========================
     public ResJobTitleDTO getJobTitle(Long id) {
         JobTitle jt = fetchEntityById(id);
@@ -104,7 +110,7 @@ public class JobTitleService {
     }
 
     // =========================
-    // GET ENTITY (FOR SERVICE)
+    // GET ENTITY
     // =========================
     public JobTitle fetchEntityById(Long id) {
         return jobTitleRepo.findById(id)
@@ -139,15 +145,17 @@ public class JobTitleService {
     }
 
     // =========================
-    // CONVERT
+    // CONVERTER
     // =========================
     private ResJobTitleDTO convertToDTO(JobTitle jt) {
 
         ResJobTitleDTO res = new ResJobTitleDTO();
+
         res.setId(jt.getId());
         res.setNameVi(jt.getNameVi());
         res.setNameEn(jt.getNameEn());
-        res.setStatus(jt.getStatus());
+        res.setActive(jt.isActive());
+
         res.setCreatedAt(jt.getCreatedAt());
         res.setUpdatedAt(jt.getUpdatedAt());
         res.setCreatedBy(jt.getCreatedBy());
