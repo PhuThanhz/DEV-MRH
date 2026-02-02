@@ -31,14 +31,13 @@ public class DepartmentJobTitle {
     private Department department;
 
     // =========================
-    // STATUS
+    // ACTIVE FLAG (BOOLEAN)
     // =========================
-    // 1 = active, 0 = inactive (soft delete)
     @Column(nullable = false)
-    private Integer status;
+    private boolean active = true;
 
     // =========================
-    // AUDIT
+    // AUDIT FIELDS
     // =========================
     @Column(updatable = false)
     private Instant createdAt;
@@ -52,9 +51,9 @@ public class DepartmentJobTitle {
     // LIFECYCLE
     // =========================
     @PrePersist
-    protected void handleBeforeCreate() {
+    protected void beforeCreate() {
         Instant now = Instant.now();
-        this.status = this.status == null ? 1 : this.status;
+        this.active = true;
         this.createdAt = now;
         this.updatedAt = now;
 
@@ -64,7 +63,7 @@ public class DepartmentJobTitle {
     }
 
     @PreUpdate
-    protected void handleBeforeUpdate() {
+    protected void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

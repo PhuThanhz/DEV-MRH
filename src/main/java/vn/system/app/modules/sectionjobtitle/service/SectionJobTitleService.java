@@ -1,5 +1,6 @@
 package vn.system.app.modules.sectionjobtitle.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -10,7 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
+
+import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.service.JobTitleService;
 import vn.system.app.modules.section.domain.Section;
@@ -26,58 +30,147 @@ public class SectionJobTitleService {
     private final SectionJobTitleRepository repository;
     private final JobTitleService jobTitleService;
     private final SectionService sectionService;
+    private final DepartmentJobTitleService departmentJobTitleService;
 
     public SectionJobTitleService(
             SectionJobTitleRepository repository,
             JobTitleService jobTitleService,
-            SectionService sectionService) {
+            SectionService sectionService,
+            DepartmentJobTitleService departmentJobTitleService) {
+
         this.repository = repository;
         this.jobTitleService = jobTitleService;
         this.sectionService = sectionService;
+        this.departmentJobTitleService = departmentJobTitleService;
     }
 
-    /* ================= CREATE ================= */
-
+    /*
+     * =====================================================
+     * CREATE + REACTIVATE (GÁN CHỨC DANH → BỘ PHẬN)
+     * =====================================================
+     */
     @Transactional
     public SectionJobTitle handleCreate(ReqSectionJobTitleDTO dto) {
 
         JobTitle jobTitle = jobTitleService.fetchEntityById(dto.getJobTitleId());
         Section section = sectionService.fetchEntityById(dto.getSectionId());
 
-        if (repository.existsByJobTitle_IdAndSection_Id(
-                dto.getJobTitleId(), dto.getSectionId())) {
-            throw new IdInvalidException("Chức danh đã tồn tại trong bộ phận");
+        Long deptId = section.getDepartment().getId();
+        Long jobId = jobTitle.getId();
+
+        // VALIDATE 1: Không cho gán vào bộ phận nếu đã gán trực tiếp vào phòng ban
+        // (active)
+        if (departmentJobTitleService.existsActiveInDepartment(deptId, jobId)) {
+            throw new IdInvalidException(
+                    "Chức danh này đã được gán trực tiếp vào phòng ban. Không thể gán vào bộ phận.");
         }
 
+        // Tìm mapping hiện có trong bộ phận (bất kể active/inactive)
+        SectionJobTitle existing = repository.findByJobTitle_IdAndSection_Id(jobId, dto.getSectionId());
+
+        if (existing != null) {
+            if (existing.isActive()) {
+                throw new IdInvalidException("Chức danh đã được gán và đang hoạt động trong bộ phận.");
+            }
+
+            // REACTIVATE + cập nhật audit
+            existing.setActive(true);
+            existing.setUpdatedAt(Instant.now());
+            existing.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
+            SectionJobTitle saved = repository.save(existing);
+
+            // Sync lại với phòng ban
+            departmentJobTitleService.assignIfNotExists(deptId, jobId);
+
+            return saved;
+        }
+
+        // Tạo mới
         SectionJobTitle entity = new SectionJobTitle();
         entity.setJobTitle(jobTitle);
         entity.setSection(section);
+        entity.setActive(true);
 
-        return repository.save(entity);
+        SectionJobTitle saved = repository.save(entity);
+
+        // AUTO SYNC → PHÒNG BAN
+        departmentJobTitleService.assignIfNotExists(deptId, jobId);
+
+        return saved;
     }
 
-    /* ================= DELETE (SOFT) ================= */
-
+    /*
+     * =====================================================
+     * RESTORE (KÍCH HOẠT LẠI SAU KHI DEACTIVATE)
+     * =====================================================
+     */
     @Transactional
-    public void handleDelete(Long id) {
+    public SectionJobTitle restore(Long id) {
         SectionJobTitle entity = fetchEntityById(id);
-        entity.setStatus(0);
-        repository.save(entity);
+
+        if (entity.isActive()) {
+            throw new IdInvalidException("Bản ghi đang hoạt động, không cần khôi phục.");
+        }
+
+        entity.setActive(true);
+        entity.setUpdatedAt(Instant.now());
+        entity.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
+
+        SectionJobTitle saved = repository.save(entity);
+
+        // Sync lại phòng ban vì vừa bật active
+        Long deptId = entity.getSection().getDepartment().getId();
+        Long jobId = entity.getJobTitle().getId();
+        departmentJobTitleService.assignIfNotExists(deptId, jobId);
+
+        return saved;
     }
 
-    /* ================= FETCH ENTITY ================= */
+    /*
+     * =====================================================
+     * DEACTIVATE (SOFT DELETE)
+     * =====================================================
+     */
+    @Transactional
+    public void handleSoftDelete(Long id) {
+        SectionJobTitle entity = fetchEntityById(id);
 
+        if (!entity.isActive()) {
+            return; // đã deactivate rồi thì không làm gì
+        }
+
+        entity.setActive(false);
+        entity.setUpdatedAt(Instant.now());
+        entity.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
+        repository.save(entity);
+
+        // Kiểm tra xem chức danh còn active ở bộ phận nào khác trong phòng ban không
+        JobTitle jobTitle = entity.getJobTitle();
+        Long deptId = entity.getSection().getDepartment().getId();
+
+        boolean stillUsed = repository.existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(
+                deptId, jobTitle.getId());
+
+        if (!stillUsed) {
+            departmentJobTitleService.inactiveIfExists(deptId, jobTitle.getId());
+        }
+    }
+
+    /*
+     * =====================================================
+     * FETCH ENTITY
+     * =====================================================
+     */
     public SectionJobTitle fetchEntityById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("SectionJobTitle không tồn tại"));
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy gán chức danh - bộ phận với id: " + id));
     }
 
-    /* ================= FETCH ALL ================= */
+    // ────────────────────────────────────────────────────────────────
+    // Các method khác giữ nguyên (chỉ format sạch hơn)
+    // ────────────────────────────────────────────────────────────────
 
-    public ResultPaginationDTO fetchAll(
-            Specification<SectionJobTitle> spec,
-            Pageable pageable) {
-
+    public ResultPaginationDTO fetchAll(Specification<SectionJobTitle> spec, Pageable pageable) {
         Page<SectionJobTitle> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -89,38 +182,50 @@ public class SectionJobTitleService {
         meta.setTotal(page.getTotalElements());
 
         rs.setMeta(meta);
+        rs.setResult(page.getContent().stream().map(this::convertToResDTO).collect(Collectors.toList()));
 
-        List<ResSectionJobTitleDTO> list = page.getContent()
-                .stream()
-                .map(this::convertToResDTO)
-                .collect(Collectors.toList());
-
-        rs.setResult(list);
         return rs;
     }
 
-    /* ================= CONVERT RESPONSE ================= */
+    public List<SectionJobTitle> fetchActiveBySection(Long sectionId) {
+        return repository.findBySection_IdAndActiveTrue(sectionId);
+    }
 
-    public ResSectionJobTitleDTO convertToResDTO(SectionJobTitle entity) {
-
+    public ResSectionJobTitleDTO convertToResDTO(SectionJobTitle e) {
         ResSectionJobTitleDTO res = new ResSectionJobTitleDTO();
+        res.setId(e.getId());
+        res.setActive(e.isActive());
+        res.setCreatedAt(e.getCreatedAt());
+        res.setUpdatedAt(e.getUpdatedAt());
+        res.setCreatedBy(e.getCreatedBy());
+        res.setUpdatedBy(e.getUpdatedBy());
 
-        res.setId(entity.getId());
-        res.setStatus(entity.getStatus());
-        res.setCreatedAt(entity.getCreatedAt());
-        res.setUpdatedAt(entity.getUpdatedAt());
-        res.setCreatedBy(entity.getCreatedBy());
-        res.setUpdatedBy(entity.getUpdatedBy());
-
+        // Job Title
         ResSectionJobTitleDTO.JobTitleInfo jt = new ResSectionJobTitleDTO.JobTitleInfo();
-        jt.setId(entity.getJobTitle().getId());
-        jt.setNameVi(entity.getJobTitle().getNameVi());
+        jt.setId(e.getJobTitle().getId());
+        jt.setNameVi(e.getJobTitle().getNameVi());
+
+        if (e.getJobTitle().getPositionLevel() != null) {
+            var pl = e.getJobTitle().getPositionLevel();
+            jt.setPositionCode(pl.getCode());
+            jt.setBand(pl.getCode().replaceAll("[0-9]", ""));
+            jt.setLevel(Integer.parseInt(pl.getCode().replaceAll("[^0-9]", "")));
+            jt.setBandOrder(pl.getBandOrder());
+            jt.setLevelNumber(jt.getLevel());
+        }
         res.setJobTitle(jt);
 
-        ResSectionJobTitleDTO.SectionInfo s = new ResSectionJobTitleDTO.SectionInfo();
-        s.setId(entity.getSection().getId());
-        s.setName(entity.getSection().getName());
-        res.setSection(s);
+        // Section
+        ResSectionJobTitleDTO.SectionInfo sc = new ResSectionJobTitleDTO.SectionInfo();
+        sc.setId(e.getSection().getId());
+        sc.setName(e.getSection().getName());
+        res.setSection(sc);
+
+        // Department
+        ResSectionJobTitleDTO.DepartmentInfo dp = new ResSectionJobTitleDTO.DepartmentInfo();
+        dp.setId(e.getSection().getDepartment().getId());
+        dp.setName(e.getSection().getDepartment().getName());
+        res.setDepartment(dp);
 
         return res;
     }

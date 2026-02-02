@@ -10,7 +10,7 @@ import lombok.Setter;
 public class ResSectionJobTitleDTO {
 
     private Long id;
-    private Integer status;
+    private boolean active;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -19,17 +19,48 @@ public class ResSectionJobTitleDTO {
 
     private JobTitleInfo jobTitle;
     private SectionInfo section;
+    private DepartmentInfo department; // ⭐ THÊM PHÒNG BAN
 
+    /*
+     * ======================================================
+     * JOB TITLE INFO (bao gồm cấp bậc)
+     * ======================================================
+     */
     @Getter
     @Setter
     public static class JobTitleInfo {
         private Long id;
         private String nameVi;
+
+        // ⭐ Cấp bậc đầy đủ
+        private String positionCode;
+        private String band;
+        private Integer level;
+
+        private Integer bandOrder;
+        private Integer levelNumber;
     }
 
+    /*
+     * ======================================================
+     * SECTION INFO
+     * ======================================================
+     */
     @Getter
     @Setter
     public static class SectionInfo {
+        private Long id;
+        private String name;
+    }
+
+    /*
+     * ======================================================
+     * DEPARTMENT INFO (⭐ mới thêm)
+     * ======================================================
+     */
+    @Getter
+    @Setter
+    public static class DepartmentInfo {
         private Long id;
         private String name;
     }
