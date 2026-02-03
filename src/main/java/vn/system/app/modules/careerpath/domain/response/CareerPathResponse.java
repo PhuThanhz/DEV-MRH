@@ -1,3 +1,5 @@
+// vn.system.app.modules.careerpath.domain.response.CareerPathResponse
+
 package vn.system.app.modules.careerpath.domain.response;
 
 import java.time.Instant;
@@ -17,6 +19,7 @@ public class CareerPathResponse {
     private String jobTitleName;
     private String positionLevelCode;
     private Integer bandOrder;
+    private Integer levelNumber; // thêm để dễ sort
 
     private String jobStandard;
     private String trainingRequirement;

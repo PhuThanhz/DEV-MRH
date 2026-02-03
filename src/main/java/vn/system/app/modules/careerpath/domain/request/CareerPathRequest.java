@@ -1,3 +1,5 @@
+// vn.system.app.modules.careerpath.domain.request.CareerPathRequest
+
 package vn.system.app.modules.careerpath.domain.request;
 
 import lombok.Getter;

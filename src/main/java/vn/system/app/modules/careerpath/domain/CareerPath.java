@@ -1,3 +1,5 @@
+// vn.system.app.modules.careerpath.domain.CareerPath
+
 package vn.system.app.modules.careerpath.domain;
 
 import java.time.Instant;
@@ -19,11 +21,6 @@ public class CareerPath {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /*
-     * ==========================
-     * Liên kết
-     * ==========================
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
@@ -32,44 +29,27 @@ public class CareerPath {
     @JoinColumn(name = "job_title_id", nullable = false)
     private JobTitle jobTitle;
 
-    /*
-     * ==========================
-     * Các trường nhập text
-     * ==========================
-     */
-    // Tiêu chuẩn chức danh
     @Column(columnDefinition = "TEXT")
     private String jobStandard;
 
-    // Yêu cầu đào tạo
     @Column(columnDefinition = "TEXT")
     private String trainingRequirement;
 
-    // Phương pháp đánh giá
     @Column(columnDefinition = "TEXT")
     private String evaluationMethod;
 
-    // Thời gian giữ vị trí
     @Column(columnDefinition = "TEXT")
     private String requiredTime;
 
-    // Kết quả đào tạo
     @Column(columnDefinition = "TEXT")
     private String trainingOutcome;
 
-    // Hiệu quả công việc
     @Column(columnDefinition = "TEXT")
     private String performanceRequirement;
 
-    // Salary
     @Column(columnDefinition = "TEXT")
     private String salaryNote;
 
-    /*
-     * ==========================
-     * Trạng thái & audit
-     * ==========================
-     */
     private Integer status;
     private boolean active = true;
 

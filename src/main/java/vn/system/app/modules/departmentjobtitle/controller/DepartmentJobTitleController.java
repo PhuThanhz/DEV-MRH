@@ -1,7 +1,6 @@
 package vn.system.app.modules.departmentjobtitle.controller;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Pageable;
@@ -33,7 +32,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * CREATE (AUTO REACTIVATE IF INACTIVE)
+     * CREATE
      * =====================================================
      */
     @PostMapping("/department-job-titles")
@@ -43,14 +42,13 @@ public class DepartmentJobTitleController {
             throws IdInvalidException {
 
         DepartmentJobTitle entity = this.service.handleCreate(req);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
+        return ResponseEntity.status(HttpStatus.CREATED)
                 .body(this.service.convertToResDTO(entity));
     }
 
     /*
      * =====================================================
-     * DELETE (SOFT DELETE)
+     * SOFT DELETE
      * =====================================================
      */
     @DeleteMapping("/department-job-titles/{id}")
@@ -64,7 +62,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * RESTORE (REACTIVATE)
+     * RESTORE
      * =====================================================
      */
     @PatchMapping("/department-job-titles/{id}/restore")
@@ -83,8 +81,7 @@ public class DepartmentJobTitleController {
      */
     @GetMapping("/department-job-titles/{id}")
     @ApiMessage("Chi tiết gán chức danh phòng ban")
-    public ResponseEntity<ResDepartmentJobTitleDTO> fetchOne(
-            @PathVariable Long id)
+    public ResponseEntity<ResDepartmentJobTitleDTO> fetchOne(@PathVariable Long id)
             throws IdInvalidException {
 
         DepartmentJobTitle entity = this.service.fetchEntityById(id);
@@ -107,7 +104,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * GET BY DEPARTMENT
+     * GET JOB TITLES BY DEPARTMENT
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/job-titles")
@@ -124,31 +121,34 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
+     * ❌ REMOVE — Endpoint này TRÙNG với CareerPathController
      * GET CAREER PATH BY BAND
      * =====================================================
      */
-    @GetMapping("/departments/{departmentId}/career-paths/by-band")
-    @ApiMessage("Lộ trình thăng tiến theo từng cấp (band riêng)")
-    public ResponseEntity<Map<String, List<ResDepartmentJobTitleDTO>>> fetchCareerPathByBand(
-            @PathVariable("departmentId") Long departmentId)
-            throws IdInvalidException {
 
-        return ResponseEntity.ok(
-                this.service.fetchCareerPathByBand(departmentId));
-    }
+    // @GetMapping("/departments/{departmentId}/career-paths/by-band")
+    // @ApiMessage("Lộ trình thăng tiến theo từng cấp (band riêng)")
+    // public ResponseEntity<Map<String, List<ResDepartmentJobTitleDTO>>>
+    // fetchCareerPathByBand(
+    // @PathVariable("departmentId") Long departmentId)
+    // throws IdInvalidException {
+    //
+    // return ResponseEntity.ok(this.service.fetchCareerPathByBand(departmentId));
+    // }
 
     /*
      * =====================================================
+     * ❌ REMOVE — Endpoint này TRÙNG với CareerPathController
      * GET GLOBAL CAREER PATH
      * =====================================================
      */
-    @GetMapping("/departments/{departmentId}/career-paths/global")
-    @ApiMessage("Lộ trình thăng tiến liên cấp")
-    public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchGlobalCareerPath(
-            @PathVariable("departmentId") Long departmentId)
-            throws IdInvalidException {
 
-        return ResponseEntity.ok(
-                this.service.fetchGlobalCareerPath(departmentId));
-    }
+    // @GetMapping("/departments/{departmentId}/career-paths/global")
+    // @ApiMessage("Lộ trình thăng tiến liên cấp")
+    // public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchGlobalCareerPath(
+    // @PathVariable("departmentId") Long departmentId)
+    // throws IdInvalidException {
+    //
+    // return ResponseEntity.ok(this.service.fetchGlobalCareerPath(departmentId));
+    // }
 }

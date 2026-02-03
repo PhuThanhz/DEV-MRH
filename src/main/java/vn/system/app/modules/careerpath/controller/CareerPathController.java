@@ -6,15 +6,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.careerpath.domain.request.CareerPathRequest;
 import vn.system.app.modules.careerpath.domain.response.CareerPathResponse;
+import vn.system.app.modules.careerpath.domain.response.ResCareerPathBandGroupDTO;
 import vn.system.app.modules.careerpath.service.CareerPathService;
 
 @RestController
-@RequestMapping("/api/v1/career-paths")
+@RequestMapping("/api/v1")
 @RequiredArgsConstructor
 public class CareerPathController {
 
@@ -25,11 +27,11 @@ public class CareerPathController {
      * CREATE
      * =====================================================
      */
-    @PostMapping
+    @PostMapping("/career-paths")
     @ApiMessage("Tạo mới lộ trình thăng tiến")
-    public ResponseEntity<CareerPathResponse> create(@RequestBody CareerPathRequest request) {
-        CareerPathResponse res = service.handleCreate(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    public ResponseEntity<CareerPathResponse> create(@Valid @RequestBody CareerPathRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.handleCreate(req));
     }
 
     /*
@@ -37,37 +39,25 @@ public class CareerPathController {
      * UPDATE
      * =====================================================
      */
-    @PutMapping("/{id}")
+    @PutMapping("/career-paths/{id}")
     @ApiMessage("Cập nhật lộ trình thăng tiến")
     public ResponseEntity<CareerPathResponse> update(
             @PathVariable Long id,
-            @RequestBody CareerPathRequest request) {
-        CareerPathResponse res = service.handleUpdate(id, request);
-        return ResponseEntity.ok(res);
+            @Valid @RequestBody CareerPathRequest req) {
+
+        return ResponseEntity.ok(service.handleUpdate(id, req));
     }
 
     /*
      * =====================================================
-     * TOGGLE ACTIVE (BẬT / TẮT)
+     * DEACTIVATE (SOFT DELETE)
      * =====================================================
      */
-    @PutMapping("/{id}/active")
-    @ApiMessage("Thay đổi trạng thái kích hoạt lộ trình thăng tiến")
-    public ResponseEntity<Void> toggleActive(@PathVariable Long id) {
-        service.handleToggleActive(id);
-        return ResponseEntity.ok().build();
-    }
-
-    /*
-     * =====================================================
-     * DELETE
-     * =====================================================
-     */
-    @DeleteMapping("/{id}")
-    @ApiMessage("Xóa lộ trình thăng tiến")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.handleDelete(id);
-        return ResponseEntity.ok().build();
+    @PatchMapping("/career-paths/{id}/deactivate")
+    @ApiMessage("Vô hiệu hóa lộ trình thăng tiến")
+    public ResponseEntity<Void> deactivate(@PathVariable Long id) {
+        service.handleDeactivate(id);
+        return ResponseEntity.noContent().build();
     }
 
     /*
@@ -75,31 +65,59 @@ public class CareerPathController {
      * GET ONE
      * =====================================================
      */
-    @GetMapping("/{id}")
+    @GetMapping("/career-paths/{id}")
     @ApiMessage("Chi tiết lộ trình thăng tiến")
-    public ResponseEntity<CareerPathResponse> getOne(@PathVariable Long id) {
+    public ResponseEntity<CareerPathResponse> fetchOne(@PathVariable Long id) {
         return ResponseEntity.ok(service.convertToResponse(service.fetchById(id)));
     }
 
     /*
      * =====================================================
-     * GET BY DEPARTMENT
+     * GET ALL BY DEPARTMENT
      * =====================================================
      */
-    @GetMapping("/by-department/{departmentId}")
+    @GetMapping("/departments/{departmentId}/career-paths")
     @ApiMessage("Danh sách lộ trình theo phòng ban")
-    public ResponseEntity<List<CareerPathResponse>> getByDepartment(@PathVariable Long departmentId) {
+    public ResponseEntity<List<CareerPathResponse>> fetchByDepartment(
+            @PathVariable Long departmentId) {
+
         return ResponseEntity.ok(service.fetchByDepartment(departmentId));
     }
 
     /*
      * =====================================================
-     * GET ALL ACTIVE
+     * GET ACTIVE ONLY
      * =====================================================
      */
-    @GetMapping("/active")
+    @GetMapping("/career-paths/active")
     @ApiMessage("Danh sách lộ trình đang hoạt động")
-    public ResponseEntity<List<CareerPathResponse>> getAllActive() {
+    public ResponseEntity<List<CareerPathResponse>> fetchAllActive() {
         return ResponseEntity.ok(service.fetchAllActive());
+    }
+
+    /*
+     * =====================================================
+     * GET GROUP BY BAND
+     * =====================================================
+     */
+    @GetMapping("/departments/{departmentId}/career-paths/by-band")
+    @ApiMessage("Lộ trình thăng tiến theo từng cấp (band riêng)")
+    public ResponseEntity<List<ResCareerPathBandGroupDTO>> fetchByBand(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(service.fetchByDepartmentGroupedByBand(departmentId));
+    }
+
+    /*
+     * =====================================================
+     * GLOBAL (SORT CROSS-LEVEL)
+     * =====================================================
+     */
+    @GetMapping("/departments/{departmentId}/career-paths/global")
+    @ApiMessage("Lộ trình thăng tiến liên cấp")
+    public ResponseEntity<List<CareerPathResponse>> fetchGlobal(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(service.fetchGlobalCareerPath(departmentId));
     }
 }

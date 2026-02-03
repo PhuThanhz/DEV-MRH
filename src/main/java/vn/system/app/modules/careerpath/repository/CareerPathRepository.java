@@ -10,13 +10,18 @@ import vn.system.app.modules.careerpath.domain.CareerPath;
 @Repository
 public interface CareerPathRepository extends JpaRepository<CareerPath, Long> {
 
-    // Kiểm tra trùng lặp lộ trình trong cùng phòng ban
     boolean existsByDepartment_IdAndJobTitle_Id(Long departmentId, Long jobTitleId);
 
-    // Lấy danh sách theo phòng ban, sắp xếp theo thứ tự band (cao → thấp)
+    // Lộ trình theo phòng ban -> sort bandOrder DESC
     List<CareerPath> findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDesc(Long departmentId);
 
-    // Lấy danh sách toàn bộ lộ trình đang active (nếu cần dùng trong dropdown)
+    // Lấy toàn bộ active
     List<CareerPath> findByActiveTrue();
 
+    // Lấy active theo phòng ban
+    List<CareerPath> findByDepartment_IdAndActiveTrue(Long departmentId);
+
+    // ⭐ Tối ưu Global sort: bandOrder desc, level asc
+    List<CareerPath> findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDescJobTitle_PositionLevel_CodeAsc(
+            Long departmentId);
 }
