@@ -1,4 +1,4 @@
-package vn.system.app.modules.salarygrade.domain.response;
+package vn.system.app.modules.salarygrade.company.domain.response;
 
 import java.time.Instant;
 
@@ -7,11 +7,10 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ResSalaryGradeDTO {
+public class ResCompanyJobTitleSalaryGradeDTO {
 
     private Long id;
-    private String contextType;
-    private Long contextId;
+    private Long companyJobTitleId;
     private Integer gradeLevel;
     private boolean active;
 

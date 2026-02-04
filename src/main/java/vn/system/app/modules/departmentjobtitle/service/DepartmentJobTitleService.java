@@ -14,6 +14,8 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
 
+import vn.system.app.modules.companyjobtitle.domain.CompanyJobTitle;
+import vn.system.app.modules.companyjobtitle.repository.CompanyJobTitleRepository;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.service.DepartmentService;
 import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
@@ -22,6 +24,7 @@ import vn.system.app.modules.departmentjobtitle.domain.response.ResDepartmentJob
 import vn.system.app.modules.departmentjobtitle.repository.DepartmentJobTitleRepository;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.service.JobTitleService;
+import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
 import vn.system.app.modules.sectionjobtitle.repository.SectionJobTitleRepository;
 
 @Service
@@ -29,24 +32,27 @@ public class DepartmentJobTitleService {
 
     private final DepartmentJobTitleRepository repository;
     private final SectionJobTitleRepository sectionRepo;
+    private final CompanyJobTitleRepository companyRepo;
     private final JobTitleService jobTitleService;
     private final DepartmentService departmentService;
 
     public DepartmentJobTitleService(
             DepartmentJobTitleRepository repository,
             SectionJobTitleRepository sectionRepo,
+            CompanyJobTitleRepository companyRepo,
             JobTitleService jobTitleService,
             DepartmentService departmentService) {
 
         this.repository = repository;
         this.sectionRepo = sectionRepo;
+        this.companyRepo = companyRepo;
         this.jobTitleService = jobTitleService;
         this.departmentService = departmentService;
     }
 
     /*
      * =====================================================
-     * CREATE + REACTIVATE (GÁN CHỨC DANH → PHÒNG BAN)
+     * CREATE + REACTIVATE
      * =====================================================
      */
     @Transactional
@@ -57,32 +63,33 @@ public class DepartmentJobTitleService {
 
         Long deptId = department.getId();
         Long jobId = jobTitle.getId();
+        Long companyId = department.getCompany().getId();
 
-        // VALIDATE 1: Không cho gán trực tiếp nếu đang active ở bất kỳ Section nào
-        boolean existsInSection = sectionRepo
-                .existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(deptId, jobId);
-
-        if (existsInSection) {
+        // block nếu đang active ở company
+        if (companyRepo.existsByCompany_IdAndJobTitle_IdAndActiveTrue(companyId, jobId)) {
             throw new IdInvalidException(
-                    "Chức danh này đang được gán trong một bộ phận thuộc phòng ban. Không thể gán trực tiếp vào phòng ban.");
+                    "Chức danh đã được gán ở cấp công ty, không thể gán ở phòng ban.");
         }
 
-        // Tìm mapping hiện có (bất kể active/inactive)
+        // block nếu đang active ở section
+        if (sectionRepo.existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(deptId, jobId)) {
+            throw new IdInvalidException(
+                    "Chức danh đang được gán ở bộ phận, không thể gán trực tiếp vào phòng ban.");
+        }
+
         DepartmentJobTitle existing = repository.findByDepartment_IdAndJobTitle_Id(deptId, jobId);
 
         if (existing != null) {
             if (existing.isActive()) {
-                throw new IdInvalidException("Chức danh đã được gán và đang hoạt động trong phòng ban.");
+                throw new IdInvalidException(
+                        "Chức danh đã được gán và đang hoạt động trong phòng ban.");
             }
-
-            // REACTIVATE + cập nhật audit field
             existing.setActive(true);
             existing.setUpdatedAt(Instant.now());
             existing.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
             return repository.save(existing);
         }
 
-        // Tạo mới
         DepartmentJobTitle entity = new DepartmentJobTitle();
         entity.setDepartment(department);
         entity.setJobTitle(jobTitle);
@@ -93,15 +100,45 @@ public class DepartmentJobTitleService {
 
     /*
      * =====================================================
-     * RESTORE (KÍCH HOẠT LẠI SAU KHI ĐÃ DEACTIVATE)
+     * SOFT DELETE
+     * =====================================================
+     */
+    @Transactional
+    public void handleDelete(Long id) {
+
+        DepartmentJobTitle entity = fetchEntityById(id);
+
+        if (!entity.isActive()) {
+            return;
+        }
+
+        entity.setActive(false);
+        entity.setUpdatedAt(Instant.now());
+        entity.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
+
+        repository.save(entity);
+    }
+
+    /*
+     * =====================================================
+     * RESTORE
      * =====================================================
      */
     @Transactional
     public DepartmentJobTitle restore(Long id) {
+
         DepartmentJobTitle entity = fetchEntityById(id);
 
         if (entity.isActive()) {
             throw new IdInvalidException("Bản ghi đang hoạt động, không cần khôi phục.");
+        }
+
+        Long companyId = entity.getDepartment().getCompany().getId();
+        Long jobId = entity.getJobTitle().getId();
+
+        if (companyRepo.existsByCompany_IdAndJobTitle_IdAndActiveTrue(companyId, jobId)) {
+            throw new IdInvalidException(
+                    "Chức danh đang được gán ở cấp công ty, không thể khôi phục.");
         }
 
         entity.setActive(true);
@@ -113,7 +150,7 @@ public class DepartmentJobTitleService {
 
     /*
      * =====================================================
-     * CHECK ACTIVE JOB-TITLE IN DEPARTMENT
+     * CHECK ACTIVE IN DEPARTMENT
      * =====================================================
      */
     public boolean existsActiveInDepartment(Long departmentId, Long jobTitleId) {
@@ -128,6 +165,13 @@ public class DepartmentJobTitleService {
     @Transactional
     public void assignIfNotExists(Long departmentId, Long jobTitleId) {
 
+        Department dept = departmentService.fetchEntityById(departmentId);
+        Long companyId = dept.getCompany().getId();
+
+        if (companyRepo.existsByCompany_IdAndJobTitle_IdAndActiveTrue(companyId, jobTitleId)) {
+            return;
+        }
+
         DepartmentJobTitle existing = repository.findByDepartment_IdAndJobTitle_Id(departmentId, jobTitleId);
 
         if (existing != null) {
@@ -141,7 +185,6 @@ public class DepartmentJobTitleService {
         }
 
         JobTitle jt = jobTitleService.fetchEntityById(jobTitleId);
-        Department dept = departmentService.fetchEntityById(departmentId);
 
         DepartmentJobTitle entity = new DepartmentJobTitle();
         entity.setDepartment(dept);
@@ -171,19 +214,62 @@ public class DepartmentJobTitleService {
 
     /*
      * =====================================================
-     * SOFT DELETE / DEACTIVATE (REQUEST FROM UI)
+     * VIEW TỔNG HỢP COMPANY_JOB_TITLE TẠI PHÒNG BAN
      * =====================================================
      */
-    @Transactional
-    public void handleDelete(Long id) {
-        DepartmentJobTitle entity = fetchEntityById(id);
-        if (!entity.isActive()) {
-            return; // đã deactivate rồi thì không làm gì thêm
+    @Transactional(readOnly = true)
+    public List<ResDepartmentJobTitleDTO> fetchAllCompanyJobTitlesOfDepartment(Long departmentId) {
+
+        Department department = departmentService.fetchEntityById(departmentId);
+        Long companyId = department.getCompany().getId();
+
+        List<SectionJobTitle> sectionList = sectionRepo.findBySection_Department_IdAndActiveTrue(departmentId);
+
+        List<DepartmentJobTitle> departmentList = repository.findByDepartment_IdAndActiveTrue(departmentId);
+
+        List<CompanyJobTitle> companyList = companyRepo.findByCompany_IdAndActiveTrue(companyId);
+
+        Map<Long, ResDepartmentJobTitleDTO> resultMap = new LinkedHashMap<>();
+
+        // SECTION
+        for (SectionJobTitle sjt : sectionList) {
+            Long jobId = sjt.getJobTitle().getId();
+            ResDepartmentJobTitleDTO dto = convertToResDTO(
+                    buildVirtualDepartmentJobTitle(department, sjt.getJobTitle()));
+            dto.setSource("SECTION");
+            resultMap.put(jobId, dto);
         }
-        entity.setActive(false);
-        entity.setUpdatedAt(Instant.now());
-        entity.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
-        repository.save(entity);
+
+        // DEPARTMENT
+        for (DepartmentJobTitle djt : departmentList) {
+            Long jobId = djt.getJobTitle().getId();
+            if (!resultMap.containsKey(jobId)) {
+                ResDepartmentJobTitleDTO dto = convertToResDTO(djt);
+                dto.setSource("DEPARTMENT");
+                resultMap.put(jobId, dto);
+            }
+        }
+
+        // COMPANY (virtual)
+        for (CompanyJobTitle cjt : companyList) {
+            Long jobId = cjt.getJobTitle().getId();
+            if (!resultMap.containsKey(jobId)) {
+                ResDepartmentJobTitleDTO dto = convertToResDTO(
+                        buildVirtualDepartmentJobTitle(department, cjt.getJobTitle()));
+                dto.setSource("COMPANY");
+                resultMap.put(jobId, dto);
+            }
+        }
+
+        return resultMap.values().stream()
+                .sorted(Comparator
+                        .comparing((ResDepartmentJobTitleDTO dto) -> dto.getJobTitle().getBandOrder() != null
+                                ? dto.getJobTitle().getBandOrder()
+                                : Integer.MAX_VALUE)
+                        .thenComparing(dto -> dto.getJobTitle().getLevelNumber() != null
+                                ? dto.getJobTitle().getLevelNumber()
+                                : Integer.MAX_VALUE))
+                .collect(Collectors.toList());
     }
 
     /*
@@ -193,13 +279,15 @@ public class DepartmentJobTitleService {
      */
     public DepartmentJobTitle fetchEntityById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Không tìm thấy gán chức danh - phòng ban với id: " + id));
+                .orElseThrow(() -> new IdInvalidException(
+                        "Không tìm thấy gán chức danh - phòng ban với id: " + id));
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Các method còn lại giữ nguyên (chỉ format code sạch hơn)
-    // ────────────────────────────────────────────────────────────────
-
+    /*
+     * =====================================================
+     * FETCH IDS BY DEPARTMENT
+     * =====================================================
+     */
     public List<Long> fetchIdsByDepartment(Long departmentId) {
         return repository.findByDepartment_Id(departmentId)
                 .stream()
@@ -207,7 +295,15 @@ public class DepartmentJobTitleService {
                 .collect(Collectors.toList());
     }
 
-    public ResultPaginationDTO fetchAll(Specification<DepartmentJobTitle> spec, Pageable pageable) {
+    /*
+     * =====================================================
+     * FETCH ALL (PAGINATION)
+     * =====================================================
+     */
+    public ResultPaginationDTO fetchAll(
+            Specification<DepartmentJobTitle> spec,
+            Pageable pageable) {
+
         Page<DepartmentJobTitle> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -220,55 +316,29 @@ public class DepartmentJobTitleService {
 
         rs.setMeta(meta);
         rs.setResult(
-                page.getContent()
-                        .stream()
+                page.getContent().stream()
                         .map(this::convertToResDTO)
                         .collect(Collectors.toList()));
 
         return rs;
     }
 
+    /*
+     * =====================================================
+     * FETCH ACTIVE BY DEPARTMENT
+     * =====================================================
+     */
     public List<DepartmentJobTitle> fetchByDepartment(Long departmentId) {
         return repository.findByDepartment_IdAndActiveTrue(departmentId);
     }
 
-    public Map<String, List<ResDepartmentJobTitleDTO>> fetchCareerPathByBand(Long departmentId) {
-        List<DepartmentJobTitle> list = fetchByDepartment(departmentId);
-
-        return list.stream().collect(
-                Collectors.groupingBy(
-                        d -> d.getJobTitle().getPositionLevel().getCode().replaceAll("[0-9]", ""),
-                        Collectors.collectingAndThen(Collectors.toList(), sub -> {
-                            sub.sort(Comparator.comparingInt(
-                                    d -> d.getJobTitle().getPositionLevel().getBandOrder()));
-                            return sub.stream()
-                                    .map(this::convertToResDTO)
-                                    .collect(Collectors.toList());
-                        })));
-    }
-
-    public List<ResDepartmentJobTitleDTO> fetchGlobalCareerPath(Long departmentId) {
-        List<DepartmentJobTitle> list = fetchByDepartment(departmentId);
-
-        list.sort(Comparator
-                .comparingInt((DepartmentJobTitle d) -> d.getJobTitle().getPositionLevel().getBandOrder())
-                .thenComparingInt(d -> {
-                    try {
-                        return Integer.parseInt(d.getJobTitle()
-                                .getPositionLevel()
-                                .getCode()
-                                .replaceAll("[^0-9]", ""));
-                    } catch (Exception e) {
-                        return Integer.MAX_VALUE;
-                    }
-                }));
-
-        return list.stream()
-                .map(this::convertToResDTO)
-                .collect(Collectors.toList());
-    }
-
+    /*
+     * =====================================================
+     * CONVERT TO DTO
+     * =====================================================
+     */
     public ResDepartmentJobTitleDTO convertToResDTO(DepartmentJobTitle e) {
+
         ResDepartmentJobTitleDTO dto = new ResDepartmentJobTitleDTO();
 
         dto.setId(e.getId());
@@ -278,7 +348,6 @@ public class DepartmentJobTitleService {
         dto.setCreatedBy(e.getCreatedBy());
         dto.setUpdatedBy(e.getUpdatedBy());
 
-        // Job Title Info
         ResDepartmentJobTitleDTO.JobTitleInfo jt = new ResDepartmentJobTitleDTO.JobTitleInfo();
         jt.setId(e.getJobTitle().getId());
         jt.setNameVi(e.getJobTitle().getNameVi());
@@ -291,14 +360,30 @@ public class DepartmentJobTitleService {
             jt.setBandOrder(pl.getBandOrder());
             jt.setLevelNumber(jt.getLevel());
         }
+
         dto.setJobTitle(jt);
 
-        // Department Info
         ResDepartmentJobTitleDTO.DepartmentInfo dep = new ResDepartmentJobTitleDTO.DepartmentInfo();
         dep.setId(e.getDepartment().getId());
         dep.setName(e.getDepartment().getName());
         dto.setDepartment(dep);
 
         return dto;
+    }
+
+    /*
+     * =====================================================
+     * BUILD VIRTUAL DEPARTMENT_JOB_TITLE
+     * =====================================================
+     */
+    private DepartmentJobTitle buildVirtualDepartmentJobTitle(
+            Department department,
+            JobTitle jobTitle) {
+
+        DepartmentJobTitle fake = new DepartmentJobTitle();
+        fake.setDepartment(department);
+        fake.setJobTitle(jobTitle);
+        fake.setActive(false);
+        return fake;
     }
 }

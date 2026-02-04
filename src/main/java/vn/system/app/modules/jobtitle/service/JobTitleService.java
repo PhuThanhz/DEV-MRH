@@ -38,6 +38,10 @@ public class JobTitleService {
     @Transactional
     public ResJobTitleDTO handleCreate(ReqCreateJobTitleDTO req) {
 
+        if (req.getNameVi() == null || req.getNameVi().trim().isEmpty()) {
+            throw new IdInvalidException("Tên chức danh (tiếng Việt) không được để trống");
+        }
+
         if (jobTitleRepo.existsByNameVi(req.getNameVi())) {
             throw new IdInvalidException("Tên chức danh đã tồn tại");
         }
@@ -145,6 +149,15 @@ public class JobTitleService {
     }
 
     // =========================
+    // ★ THÊM MỚI: LẤY TẤT CẢ CHỨC DANH ĐANG ACTIVE (dùng cho
+    // CompanyJobTitleService)
+    // =========================
+    @Transactional(readOnly = true)
+    public List<JobTitle> findAllActive() {
+        return jobTitleRepo.findByActiveTrue();
+    }
+
+    // =========================
     // CONVERTER
     // =========================
     private ResJobTitleDTO convertToDTO(JobTitle jt) {
@@ -161,10 +174,12 @@ public class JobTitleService {
         res.setCreatedBy(jt.getCreatedBy());
         res.setUpdatedBy(jt.getUpdatedBy());
 
-        ResJobTitleDTO.PositionLevelInfo pl = new ResJobTitleDTO.PositionLevelInfo();
-        pl.setId(jt.getPositionLevel().getId());
-        pl.setCode(jt.getPositionLevel().getCode());
-        res.setPositionLevel(pl);
+        if (jt.getPositionLevel() != null) {
+            ResJobTitleDTO.PositionLevelInfo pl = new ResJobTitleDTO.PositionLevelInfo();
+            pl.setId(jt.getPositionLevel().getId());
+            pl.setCode(jt.getPositionLevel().getCode());
+            res.setPositionLevel(pl);
+        }
 
         return res;
     }

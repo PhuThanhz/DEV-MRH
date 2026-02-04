@@ -46,7 +46,7 @@ public class SectionJobTitleService {
 
     /*
      * =====================================================
-     * CREATE + REACTIVATE (GÁN CHỨC DANH → BỘ PHẬN)
+     * CREATE + REACTIVATE
      * =====================================================
      */
     @Transactional
@@ -58,34 +58,32 @@ public class SectionJobTitleService {
         Long deptId = section.getDepartment().getId();
         Long jobId = jobTitle.getId();
 
-        // VALIDATE 1: Không cho gán vào bộ phận nếu đã gán trực tiếp vào phòng ban
-        // (active)
+        // Không cho gán nếu đã active trực tiếp ở phòng ban
         if (departmentJobTitleService.existsActiveInDepartment(deptId, jobId)) {
             throw new IdInvalidException(
-                    "Chức danh này đã được gán trực tiếp vào phòng ban. Không thể gán vào bộ phận.");
+                    "Chức danh đã được gán trực tiếp vào phòng ban, không thể gán vào bộ phận.");
         }
 
-        // Tìm mapping hiện có trong bộ phận (bất kể active/inactive)
         SectionJobTitle existing = repository.findByJobTitle_IdAndSection_Id(jobId, dto.getSectionId());
 
         if (existing != null) {
             if (existing.isActive()) {
-                throw new IdInvalidException("Chức danh đã được gán và đang hoạt động trong bộ phận.");
+                throw new IdInvalidException(
+                        "Chức danh đã được gán và đang hoạt động trong bộ phận.");
             }
 
-            // REACTIVATE + cập nhật audit
             existing.setActive(true);
             existing.setUpdatedAt(Instant.now());
             existing.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
+
             SectionJobTitle saved = repository.save(existing);
 
-            // Sync lại với phòng ban
+            // sync lên department
             departmentJobTitleService.assignIfNotExists(deptId, jobId);
 
             return saved;
         }
 
-        // Tạo mới
         SectionJobTitle entity = new SectionJobTitle();
         entity.setJobTitle(jobTitle);
         entity.setSection(section);
@@ -93,7 +91,7 @@ public class SectionJobTitleService {
 
         SectionJobTitle saved = repository.save(entity);
 
-        // AUTO SYNC → PHÒNG BAN
+        // sync lên department
         departmentJobTitleService.assignIfNotExists(deptId, jobId);
 
         return saved;
@@ -101,11 +99,12 @@ public class SectionJobTitleService {
 
     /*
      * =====================================================
-     * RESTORE (KÍCH HOẠT LẠI SAU KHI DEACTIVATE)
+     * RESTORE
      * =====================================================
      */
     @Transactional
     public SectionJobTitle restore(Long id) {
+
         SectionJobTitle entity = fetchEntityById(id);
 
         if (entity.isActive()) {
@@ -118,7 +117,6 @@ public class SectionJobTitleService {
 
         SectionJobTitle saved = repository.save(entity);
 
-        // Sync lại phòng ban vì vừa bật active
         Long deptId = entity.getSection().getDepartment().getId();
         Long jobId = entity.getJobTitle().getId();
         departmentJobTitleService.assignIfNotExists(deptId, jobId);
@@ -128,15 +126,16 @@ public class SectionJobTitleService {
 
     /*
      * =====================================================
-     * DEACTIVATE (SOFT DELETE)
+     * SOFT DELETE
      * =====================================================
      */
     @Transactional
     public void handleSoftDelete(Long id) {
+
         SectionJobTitle entity = fetchEntityById(id);
 
         if (!entity.isActive()) {
-            return; // đã deactivate rồi thì không làm gì
+            return;
         }
 
         entity.setActive(false);
@@ -144,15 +143,13 @@ public class SectionJobTitleService {
         entity.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
         repository.save(entity);
 
-        // Kiểm tra xem chức danh còn active ở bộ phận nào khác trong phòng ban không
-        JobTitle jobTitle = entity.getJobTitle();
         Long deptId = entity.getSection().getDepartment().getId();
+        Long jobId = entity.getJobTitle().getId();
 
-        boolean stillUsed = repository.existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(
-                deptId, jobTitle.getId());
+        boolean stillUsed = repository.existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(deptId, jobId);
 
         if (!stillUsed) {
-            departmentJobTitleService.inactiveIfExists(deptId, jobTitle.getId());
+            departmentJobTitleService.inactiveIfExists(deptId, jobId);
         }
     }
 
@@ -166,11 +163,15 @@ public class SectionJobTitleService {
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy gán chức danh - bộ phận với id: " + id));
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Các method khác giữ nguyên (chỉ format sạch hơn)
-    // ────────────────────────────────────────────────────────────────
+    /*
+     * =====================================================
+     * FETCH ALL
+     * =====================================================
+     */
+    public ResultPaginationDTO fetchAll(
+            Specification<SectionJobTitle> spec,
+            Pageable pageable) {
 
-    public ResultPaginationDTO fetchAll(Specification<SectionJobTitle> spec, Pageable pageable) {
         Page<SectionJobTitle> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -182,7 +183,11 @@ public class SectionJobTitleService {
         meta.setTotal(page.getTotalElements());
 
         rs.setMeta(meta);
-        rs.setResult(page.getContent().stream().map(this::convertToResDTO).collect(Collectors.toList()));
+        rs.setResult(
+                page.getContent()
+                        .stream()
+                        .map(this::convertToResDTO)
+                        .collect(Collectors.toList()));
 
         return rs;
     }
@@ -191,7 +196,13 @@ public class SectionJobTitleService {
         return repository.findBySection_IdAndActiveTrue(sectionId);
     }
 
+    /*
+     * =====================================================
+     * CONVERT TO DTO
+     * =====================================================
+     */
     public ResSectionJobTitleDTO convertToResDTO(SectionJobTitle e) {
+
         ResSectionJobTitleDTO res = new ResSectionJobTitleDTO();
         res.setId(e.getId());
         res.setActive(e.isActive());
@@ -200,7 +211,6 @@ public class SectionJobTitleService {
         res.setCreatedBy(e.getCreatedBy());
         res.setUpdatedBy(e.getUpdatedBy());
 
-        // Job Title
         ResSectionJobTitleDTO.JobTitleInfo jt = new ResSectionJobTitleDTO.JobTitleInfo();
         jt.setId(e.getJobTitle().getId());
         jt.setNameVi(e.getJobTitle().getNameVi());
@@ -213,15 +223,14 @@ public class SectionJobTitleService {
             jt.setBandOrder(pl.getBandOrder());
             jt.setLevelNumber(jt.getLevel());
         }
+
         res.setJobTitle(jt);
 
-        // Section
         ResSectionJobTitleDTO.SectionInfo sc = new ResSectionJobTitleDTO.SectionInfo();
         sc.setId(e.getSection().getId());
         sc.setName(e.getSection().getName());
         res.setSection(sc);
 
-        // Department
         ResSectionJobTitleDTO.DepartmentInfo dp = new ResSectionJobTitleDTO.DepartmentInfo();
         dp.setId(e.getSection().getDepartment().getId());
         dp.setName(e.getSection().getDepartment().getName());

@@ -1,5 +1,6 @@
 package vn.system.app.modules.salarygrade.domain.request;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,8 +9,11 @@ import lombok.Setter;
 @Setter
 public class ReqCreateSalaryGradeDTO {
 
-    @NotNull(message = "OrgJobTitleId không được để trống")
-    private Long orgJobTitleId;
+    @NotBlank(message = "ContextType không được để trống")
+    private String contextType;
+
+    @NotNull(message = "ContextId không được để trống")
+    private Long contextId;
 
     @NotNull(message = "GradeLevel không được để trống")
     private Integer gradeLevel;

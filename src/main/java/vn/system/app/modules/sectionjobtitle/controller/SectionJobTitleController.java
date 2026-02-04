@@ -25,7 +25,7 @@ import vn.system.app.modules.sectionjobtitle.domain.response.ResSectionJobTitleD
 import vn.system.app.modules.sectionjobtitle.service.SectionJobTitleService;
 
 @RestController
-@RequestMapping("/api/v1/section-job-titles")
+@RequestMapping("/api/v1")
 public class SectionJobTitleController {
 
     private final SectionJobTitleService service;
@@ -34,7 +34,12 @@ public class SectionJobTitleController {
         this.service = service;
     }
 
-    @PostMapping
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
+    @PostMapping("/section-job-titles")
     @ApiMessage("Gán chức danh vào bộ phận (tự động khôi phục nếu đã hủy)")
     public ResponseEntity<ResSectionJobTitleDTO> create(
             @Valid @RequestBody ReqSectionJobTitleDTO req)
@@ -45,8 +50,13 @@ public class SectionJobTitleController {
                 .body(service.convertToResDTO(entity));
     }
 
-    @DeleteMapping("/{id}")
-    @ApiMessage("Hủy gán chức danh khỏi bộ phận (deactivate)")
+    /*
+     * =====================================================
+     * SOFT DELETE
+     * =====================================================
+     */
+    @DeleteMapping("/section-job-titles/{id}")
+    @ApiMessage("Hủy gán chức danh khỏi bộ phận")
     public ResponseEntity<Void> deactivate(@PathVariable Long id)
             throws IdInvalidException {
 
@@ -54,7 +64,12 @@ public class SectionJobTitleController {
         return ResponseEntity.ok().build();
     }
 
-    @PatchMapping("/{id}/restore")
+    /*
+     * =====================================================
+     * RESTORE
+     * =====================================================
+     */
+    @PatchMapping("/section-job-titles/{id}/restore")
     @ApiMessage("Khôi phục gán chức danh vào bộ phận")
     public ResponseEntity<ResSectionJobTitleDTO> restore(@PathVariable Long id)
             throws IdInvalidException {
@@ -63,7 +78,12 @@ public class SectionJobTitleController {
         return ResponseEntity.ok(service.convertToResDTO(entity));
     }
 
-    @GetMapping("/{id}")
+    /*
+     * =====================================================
+     * GET ONE
+     * =====================================================
+     */
+    @GetMapping("/section-job-titles/{id}")
     @ApiMessage("Chi tiết gán chức danh - bộ phận")
     public ResponseEntity<ResSectionJobTitleDTO> getOne(@PathVariable Long id)
             throws IdInvalidException {
@@ -72,13 +92,17 @@ public class SectionJobTitleController {
         return ResponseEntity.ok(service.convertToResDTO(entity));
     }
 
-    @GetMapping
-    @ApiMessage("Danh sách gán chức danh bộ phận (phân trang + filter)")
+    /*
+     * =====================================================
+     * GET ALL (PAGINATION + FILTER)
+     * =====================================================
+     */
+    @GetMapping("/section-job-titles")
+    @ApiMessage("Danh sách gán chức danh bộ phận")
     public ResponseEntity<ResultPaginationDTO> getAll(
             @Filter Specification<SectionJobTitle> spec,
             Pageable pageable) {
 
-        // Fix lỗi: nếu không có sort thì áp dụng sort mặc định
         if (pageable.getSort().isEmpty()) {
             pageable = PageRequest.of(
                     pageable.getPageNumber(),
@@ -89,7 +113,12 @@ public class SectionJobTitleController {
         return ResponseEntity.ok(service.fetchAll(spec, pageable));
     }
 
-    @GetMapping("/sections/{sectionId}/job-titles")
+    /*
+     * =====================================================
+     * GET ACTIVE BY SECTION
+     * =====================================================
+     */
+    @GetMapping("/sections/{sectionId}/section-job-titles")
     @ApiMessage("Danh sách chức danh đang hoạt động trong bộ phận")
     public ResponseEntity<List<ResSectionJobTitleDTO>> getActiveBySection(
             @PathVariable Long sectionId) {

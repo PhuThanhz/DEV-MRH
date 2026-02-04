@@ -2,15 +2,7 @@ package vn.system.app.modules.companyjobtitle.domain;
 
 import java.time.Instant;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
@@ -27,31 +19,51 @@ public class CompanyJobTitle {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "job_title_id", nullable = false)
-    private JobTitle jobTitle;
-
-    @ManyToOne(optional = false)
+    /*
+     * =========================
+     * RELATION
+     * =========================
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    // 1 = active, 0 = inactive
-    private Integer status;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "job_title_id", nullable = false)
+    private JobTitle jobTitle;
 
+    /*
+     * =========================
+     * ACTIVE FLAG
+     * =========================
+     */
+    @Column(nullable = false)
+    private boolean active = true;
+
+    /*
+     * =========================
+     * AUDIT
+     * =========================
+     */
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
 
     @PrePersist
-    public void handleBeforeCreate() {
-        this.status = this.status == null ? 1 : this.status;
-        this.createdAt = Instant.now();
-        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+    protected void beforeCreate() {
+        Instant now = Instant.now();
+        this.active = true;
+        this.createdAt = now;
+        this.updatedAt = now;
+
+        String user = SecurityUtil.getCurrentUserLogin().orElse("");
+        this.createdBy = user;
+        this.updatedBy = user;
     }
 
     @PreUpdate
-    public void handleBeforeUpdate() {
+    protected void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

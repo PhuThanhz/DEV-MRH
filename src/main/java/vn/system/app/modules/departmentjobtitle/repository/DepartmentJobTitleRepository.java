@@ -1,9 +1,11 @@
 package vn.system.app.modules.departmentjobtitle.repository;
 
 import java.util.List;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
+
 import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
 
 @Repository
@@ -28,4 +30,13 @@ public interface DepartmentJobTitleRepository
 
     // 🔹 Lấy danh sách ACTIVE theo phòng ban
     List<DepartmentJobTitle> findByDepartment_IdAndActiveTrue(Long departmentId);
+
+    // ⭐ NEW — COMPANY GET (FIX LỖI)
+    List<DepartmentJobTitle> findByDepartment_Company_IdAndActiveTrue(Long companyId);
+
+    // ⭐ NEW — kiểm tra JobTitle đã active ở phòng ban thuộc công ty hay chưa
+    boolean existsByDepartment_Company_IdAndJobTitle_IdAndActiveTrue(
+            Long companyId,
+            Long jobTitleId);
+
 }

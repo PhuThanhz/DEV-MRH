@@ -1,4 +1,4 @@
-package vn.system.app.modules.salarygrade.domain;
+package vn.system.app.modules.salarygrade.company.domain;
 
 import java.time.Instant;
 
@@ -8,25 +8,20 @@ import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
 
 @Entity
-@Table(name = "salary_grades", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "context_type", "context_id", "grade_level" })
-}, indexes = {
-        @Index(name = "idx_salary_grade_context", columnList = "context_type, context_id"),
-        @Index(name = "idx_salary_grade_active", columnList = "active")
-})
+@Table(name = "company_job_title_salary_grades")
 @Getter
 @Setter
-public class SalaryGrade {
+public class CompanyJobTitleSalaryGrade {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String contextType; // "COMPANY", "DEPARTMENT", "SECTION"
-
-    @Column(nullable = false)
-    private Long contextId; // ID từ company_job_titles / department_job_titles / section_job_titles
+    /**
+     * FK → company_job_titles.id
+     */
+    @Column(name = "company_job_title_id", nullable = false)
+    private Long companyJobTitleId;
 
     @Column(name = "grade_level", nullable = false)
     private Integer gradeLevel;
@@ -40,14 +35,14 @@ public class SalaryGrade {
     private String updatedBy;
 
     @PrePersist
-    public void handleBeforeCreate() {
+    public void beforeCreate() {
         this.active = true;
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }
 
     @PreUpdate
-    public void handleBeforeUpdate() {
+    public void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

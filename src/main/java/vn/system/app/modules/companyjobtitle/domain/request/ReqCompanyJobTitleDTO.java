@@ -8,9 +8,9 @@ import lombok.Setter;
 @Setter
 public class ReqCompanyJobTitleDTO {
 
-    @NotNull(message = "JobTitleId không được để trống")
-    private Long jobTitleId;
-
     @NotNull(message = "CompanyId không được để trống")
     private Long companyId;
+
+    @NotNull(message = "JobTitleId không được để trống")
+    private Long jobTitleId;
 }

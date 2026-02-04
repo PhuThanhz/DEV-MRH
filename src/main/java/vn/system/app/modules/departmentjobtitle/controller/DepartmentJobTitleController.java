@@ -104,11 +104,11 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * GET JOB TITLES BY DEPARTMENT
+     * GET DEPARTMENT JOB TITLES (CHỈ DEPARTMENT – GIỮ NGUYÊN)
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/job-titles")
-    @ApiMessage("Danh sách chức danh đang hoạt động trong phòng ban")
+    @ApiMessage("Danh sách chức danh gán trực tiếp ở phòng ban")
     public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchJobTitlesByDepartment(
             @PathVariable("departmentId") Long departmentId)
             throws IdInvalidException {
@@ -116,39 +116,23 @@ public class DepartmentJobTitleController {
         List<DepartmentJobTitle> list = this.service.fetchByDepartment(departmentId);
 
         return ResponseEntity.ok(
-                list.stream().map(this.service::convertToResDTO).collect(Collectors.toList()));
+                list.stream()
+                        .map(this.service::convertToResDTO)
+                        .collect(Collectors.toList()));
     }
 
     /*
      * =====================================================
-     * ❌ REMOVE — Endpoint này TRÙNG với CareerPathController
-     * GET CAREER PATH BY BAND
+     * ✅ NEW — VIEW TỔNG HỢP COMPANY_JOB_TITLE TẠI PHÒNG BAN
      * =====================================================
      */
+    @GetMapping("/departments/{departmentId}/company-job-titles")
+    @ApiMessage("Danh sách CompanyJobTitle có hiệu lực tại phòng ban")
+    public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchAllCompanyJobTitlesOfDepartment(
+            @PathVariable("departmentId") Long departmentId)
+            throws IdInvalidException {
 
-    // @GetMapping("/departments/{departmentId}/career-paths/by-band")
-    // @ApiMessage("Lộ trình thăng tiến theo từng cấp (band riêng)")
-    // public ResponseEntity<Map<String, List<ResDepartmentJobTitleDTO>>>
-    // fetchCareerPathByBand(
-    // @PathVariable("departmentId") Long departmentId)
-    // throws IdInvalidException {
-    //
-    // return ResponseEntity.ok(this.service.fetchCareerPathByBand(departmentId));
-    // }
-
-    /*
-     * =====================================================
-     * ❌ REMOVE — Endpoint này TRÙNG với CareerPathController
-     * GET GLOBAL CAREER PATH
-     * =====================================================
-     */
-
-    // @GetMapping("/departments/{departmentId}/career-paths/global")
-    // @ApiMessage("Lộ trình thăng tiến liên cấp")
-    // public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchGlobalCareerPath(
-    // @PathVariable("departmentId") Long departmentId)
-    // throws IdInvalidException {
-    //
-    // return ResponseEntity.ok(this.service.fetchGlobalCareerPath(departmentId));
-    // }
+        return ResponseEntity.ok(
+                this.service.fetchAllCompanyJobTitlesOfDepartment(departmentId));
+    }
 }

@@ -10,5 +10,5 @@ import vn.system.app.modules.salarygrade.domain.SalaryGrade;
 public interface SalaryGradeRepository
         extends JpaRepository<SalaryGrade, Long>, JpaSpecificationExecutor<SalaryGrade> {
 
-    boolean existsByOrgJobTitle_IdAndGradeLevel(Long orgJobTitleId, Integer gradeLevel);
+    boolean existsByContextTypeAndContextIdAndGradeLevel(String contextType, Long contextId, Integer gradeLevel);
 }

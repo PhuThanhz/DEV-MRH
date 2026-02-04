@@ -14,6 +14,10 @@ public interface JobTitleRepository
 
     boolean existsByNameVi(String nameVi);
 
+    // ★ Thêm mới: để lấy tất cả chức danh đang active (phục vụ
+    // CompanyJobTitleService)
+    List<JobTitle> findByActiveTrue();
+
     // PHỤC VỤ LỘ TRÌNH THĂNG TIẾN (CAO → THẤP)
     List<JobTitle> findAllByOrderByPositionLevel_BandOrderDesc();
 }

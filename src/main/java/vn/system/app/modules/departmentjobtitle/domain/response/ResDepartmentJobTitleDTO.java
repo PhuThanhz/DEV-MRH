@@ -16,6 +16,9 @@ public class ResDepartmentJobTitleDTO {
     private String createdBy;
     private String updatedBy;
 
+    // >>> THÊM FIELD NÀY <<<
+    private String source;
+
     private JobTitleInfo jobTitle;
     private DepartmentInfo department;
 
