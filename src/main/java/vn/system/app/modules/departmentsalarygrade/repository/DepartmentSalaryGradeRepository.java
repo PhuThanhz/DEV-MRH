@@ -10,10 +10,17 @@ import vn.system.app.modules.departmentsalarygrade.domain.DepartmentSalaryGrade;
 public interface DepartmentSalaryGradeRepository
         extends JpaRepository<DepartmentSalaryGrade, Long> {
 
+    // Kiểm tra trùng bậc lương
     boolean existsByDepartmentJobTitleIdAndGradeLevel(
             Long departmentJobTitleId,
             Integer gradeLevel);
 
-    List<DepartmentSalaryGrade> findByDepartmentJobTitleIdAndActiveTrueOrderByGradeLevelAsc(
+    // ⭐ Trả FULL danh sách bậc lương (active + inactive)
+    List<DepartmentSalaryGrade> findByDepartmentJobTitleIdOrderByGradeLevelAsc(
             Long departmentJobTitleId);
+
+    // Tìm theo gradeLevel (hỗ trợ restore)
+    DepartmentSalaryGrade findByDepartmentJobTitleIdAndGradeLevel(
+            Long departmentJobTitleId,
+            Integer gradeLevel);
 }

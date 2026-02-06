@@ -60,7 +60,7 @@ public class SecurityConfiguration {
                 "/api/v1/permission-categories/**", "/api/v1/dept-missions/**", "/api/v1/job-descriptions/**",
                 "/api/v1/jd-flows/**", "/api/v1/company-salary-grades/**",
                 "/api/v1/department-salary-grades/**",
-                "/api/v1/section-salary-grades/**",
+                "/api/v1/section-salary-grades/**", "/api/v1/job-title-performance-contents/**",
 
         };
         http

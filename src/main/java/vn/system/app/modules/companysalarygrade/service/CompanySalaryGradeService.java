@@ -8,11 +8,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.companyjobtitle.repository.CompanyJobTitleRepository;
+
 import vn.system.app.modules.companysalarygrade.domain.CompanySalaryGrade;
 import vn.system.app.modules.companysalarygrade.domain.request.*;
 import vn.system.app.modules.companysalarygrade.domain.response.*;
 import vn.system.app.modules.companysalarygrade.repository.CompanySalaryGradeRepository;
+
+import vn.system.app.modules.companyjobtitle.repository.CompanyJobTitleRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +29,11 @@ public class CompanySalaryGradeService {
         }
     }
 
+    /*
+     * ======================================================
+     * CREATE
+     * ======================================================
+     */
     @Transactional
     public ResCompanySalaryGradeDTO create(ReqCreateCompanySalaryGradeDTO req) {
 
@@ -37,7 +44,9 @@ public class CompanySalaryGradeService {
         }
 
         if (repo.existsByCompanyJobTitleIdAndGradeLevel(
-                req.getCompanyJobTitleId(), req.getGradeLevel())) {
+                req.getCompanyJobTitleId(),
+                req.getGradeLevel())) {
+
             throw new IdInvalidException("Bậc lương đã tồn tại");
         }
 
@@ -48,6 +57,11 @@ public class CompanySalaryGradeService {
         return toDTO(repo.save(entity));
     }
 
+    /*
+     * ======================================================
+     * UPDATE
+     * ======================================================
+     */
     @Transactional
     public ResCompanySalaryGradeDTO update(Long id, ReqUpdateCompanySalaryGradeDTO req) {
 
@@ -57,13 +71,15 @@ public class CompanySalaryGradeService {
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy bậc lương"));
 
         if (!entity.isActive()) {
-            throw new IdInvalidException("Bậc lương đã vô hiệu");
+            throw new IdInvalidException("Bậc lương đã vô hiệu, không thể cập nhật");
         }
 
-        boolean existed = repo.existsByCompanyJobTitleIdAndGradeLevel(
-                entity.getCompanyJobTitleId(), req.getGradeLevel());
+        boolean exists = repo.existsByCompanyJobTitleIdAndGradeLevel(
+                entity.getCompanyJobTitleId(),
+                req.getGradeLevel());
 
-        if (existed && !req.getGradeLevel().equals(entity.getGradeLevel())) {
+        // Nếu level mới đã tồn tại và khác level cũ → lỗi
+        if (exists && !req.getGradeLevel().equals(entity.getGradeLevel())) {
             throw new IdInvalidException("Bậc lương mới đã tồn tại");
         }
 
@@ -72,37 +88,68 @@ public class CompanySalaryGradeService {
         return toDTO(repo.save(entity));
     }
 
+    /*
+     * ======================================================
+     * DELETE (SOFT DELETE)
+     * ======================================================
+     */
     @Transactional
     public void delete(Long id) {
+
         CompanySalaryGrade entity = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy bậc lương"));
+
+        if (!entity.isActive()) {
+            throw new IdInvalidException("Bậc lương đã bị vô hiệu");
+        }
 
         entity.setActive(false);
         repo.save(entity);
     }
 
+    /*
+     * ======================================================
+     * RESTORE
+     * ======================================================
+     */
     @Transactional
     public ResCompanySalaryGradeDTO restore(Long id) {
+
         CompanySalaryGrade entity = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy bậc lương"));
+
+        if (entity.isActive()) {
+            throw new IdInvalidException("Bậc lương đang hoạt động");
+        }
 
         entity.setActive(true);
         return toDTO(repo.save(entity));
     }
 
+    /*
+     * ======================================================
+     * FETCH ALL (ACTIVE + INACTIVE)
+     * ======================================================
+     */
     public List<ResCompanySalaryGradeDTO> fetch(Long companyJobTitleId) {
 
         if (companyJobTitleId == null || companyJobTitleId <= 0) {
             throw new IdInvalidException("companyJobTitleId không hợp lệ");
         }
 
-        return repo.findByCompanyJobTitleIdAndActiveTrueOrderByGradeLevelAsc(companyJobTitleId)
+        return repo.findByCompanyJobTitleIdOrderByGradeLevelAsc(companyJobTitleId)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }
 
+    /*
+     * ======================================================
+     * MAPPER
+     * ======================================================
+     */
     private ResCompanySalaryGradeDTO toDTO(CompanySalaryGrade e) {
+
         ResCompanySalaryGradeDTO dto = new ResCompanySalaryGradeDTO();
 
         dto.setId(e.getId());

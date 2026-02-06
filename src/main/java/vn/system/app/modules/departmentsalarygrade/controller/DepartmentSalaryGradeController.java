@@ -62,7 +62,7 @@ public class DepartmentSalaryGradeController {
     @GetMapping
     @ApiMessage("Danh sách bậc lương theo departmentJobTitleId")
     public ResponseEntity<List<ResDepartmentSalaryGradeDTO>> fetch(
-            @RequestParam Long departmentJobTitleId) {
+            @RequestParam("departmentJobTitleId") Long departmentJobTitleId) {
 
         return ResponseEntity.ok(
                 service.fetchByDepartmentJobTitle(departmentJobTitleId));

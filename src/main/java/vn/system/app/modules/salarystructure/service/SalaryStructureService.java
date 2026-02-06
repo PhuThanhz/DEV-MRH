@@ -1,0 +1,209 @@
+package vn.system.app.modules.salarystructure.service;
+
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.RequiredArgsConstructor;
+
+import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.error.IdInvalidException;
+
+import vn.system.app.modules.companysalarygrade.repository.CompanySalaryGradeRepository;
+import vn.system.app.modules.departmentsalarygrade.repository.DepartmentSalaryGradeRepository;
+import vn.system.app.modules.sectionsalarygrade.repository.SectionSalaryGradeRepository;
+
+import vn.system.app.modules.salarystructure.domain.OwnerLevel;
+import vn.system.app.modules.salarystructure.domain.SalaryStructure;
+import vn.system.app.modules.salarystructure.domain.request.ReqUpsertSalaryStructureDTO;
+import vn.system.app.modules.salarystructure.domain.response.ResSalaryStructureDTO;
+import vn.system.app.modules.salarystructure.repository.SalaryStructureRepository;
+
+@Service
+@RequiredArgsConstructor
+public class SalaryStructureService {
+
+    private final SalaryStructureRepository repo;
+
+    private final CompanySalaryGradeRepository companyGradeRepo;
+    private final DepartmentSalaryGradeRepository departmentGradeRepo;
+    private final SectionSalaryGradeRepository sectionGradeRepo;
+
+    /*
+     * =====================================================
+     * VALIDATE
+     * =====================================================
+     */
+    private void validate(ReqUpsertSalaryStructureDTO req) {
+
+        if (req.getOwnerLevel() == null)
+            throw new IdInvalidException("ownerLevel không được bỏ trống");
+
+        if (req.getOwnerJobTitleId() == null || req.getOwnerJobTitleId() <= 0)
+            throw new IdInvalidException("ownerJobTitleId không hợp lệ");
+
+        if (req.getSalaryGradeId() == null || req.getSalaryGradeId() <= 0)
+            throw new IdInvalidException("salaryGradeId không hợp lệ");
+
+        boolean hasMonthly = req.getMonthBaseSalary() != null ||
+                req.getMonthPositionAllowance() != null ||
+                req.getMonthMealAllowance() != null ||
+                req.getMonthFuelSupport() != null ||
+                req.getMonthPhoneSupport() != null ||
+                req.getMonthOtherSupport() != null ||
+                req.getMonthKpiBonus() != null;
+
+        boolean hasHourly = req.getHourBaseSalary() != null ||
+                req.getHourPositionAllowance() != null ||
+                req.getHourMealAllowance() != null ||
+                req.getHourFuelSupport() != null ||
+                req.getHourPhoneSupport() != null ||
+                req.getHourOtherSupport() != null ||
+                req.getHourKpiBonus() != null;
+
+        if (!hasMonthly && !hasHourly)
+            throw new IdInvalidException("Phải nhập dữ liệu tháng công hoặc giờ công");
+
+        // Check salary grade is active
+        boolean isActive = switch (req.getOwnerLevel()) {
+            case COMPANY ->
+                companyGradeRepo.findById(req.getSalaryGradeId())
+                        .orElseThrow(() -> new IdInvalidException("Bậc lương không tồn tại"))
+                        .isActive();
+
+            case DEPARTMENT ->
+                departmentGradeRepo.findById(req.getSalaryGradeId())
+                        .orElseThrow(() -> new IdInvalidException("Bậc lương không tồn tại"))
+                        .isActive();
+
+            case SECTION ->
+                sectionGradeRepo.findById(req.getSalaryGradeId())
+                        .orElseThrow(() -> new IdInvalidException("Bậc lương không tồn tại"))
+                        .isActive();
+        };
+
+        if (!isActive)
+            throw new IdInvalidException("Bậc lương đang tắt, không thể tạo cấu trúc lương");
+    }
+
+    /*
+     * =====================================================
+     * UPSERT
+     * =====================================================
+     */
+    @Transactional
+    public SalaryStructure upsert(ReqUpsertSalaryStructureDTO req) {
+
+        validate(req);
+
+        SalaryStructure entity = repo
+                .findByOwnerLevelAndOwnerJobTitleIdAndSalaryGradeId(
+                        req.getOwnerLevel(),
+                        req.getOwnerJobTitleId(),
+                        req.getSalaryGradeId())
+                .orElse(new SalaryStructure());
+
+        entity.setOwnerLevel(req.getOwnerLevel());
+        entity.setOwnerJobTitleId(req.getOwnerJobTitleId());
+        entity.setSalaryGradeId(req.getSalaryGradeId());
+
+        // MONTHLY
+        entity.setMonthBaseSalary(req.getMonthBaseSalary());
+        entity.setMonthPositionAllowance(req.getMonthPositionAllowance());
+        entity.setMonthMealAllowance(req.getMonthMealAllowance());
+        entity.setMonthFuelSupport(req.getMonthFuelSupport());
+        entity.setMonthPhoneSupport(req.getMonthPhoneSupport());
+        entity.setMonthOtherSupport(req.getMonthOtherSupport());
+        entity.setMonthKpiBonus(req.getMonthKpiBonus());
+
+        // HOURLY
+        entity.setHourBaseSalary(req.getHourBaseSalary());
+        entity.setHourPositionAllowance(req.getHourPositionAllowance());
+        entity.setHourMealAllowance(req.getHourMealAllowance());
+        entity.setHourFuelSupport(req.getHourFuelSupport());
+        entity.setHourPhoneSupport(req.getHourPhoneSupport());
+        entity.setHourOtherSupport(req.getHourOtherSupport());
+        entity.setHourKpiBonus(req.getHourKpiBonus());
+
+        return repo.save(entity);
+    }
+
+    /*
+     * =====================================================
+     * FIND BY ID
+     * =====================================================
+     */
+    public ResSalaryStructureDTO findById(Long id) {
+        SalaryStructure entity = repo.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy ID"));
+
+        return toDTO(entity);
+    }
+
+    /*
+     * =====================================================
+     * PAGINATION
+     * =====================================================
+     */
+    public ResultPaginationDTO fetchAll(Specification<SalaryStructure> spec, Pageable pageable) {
+
+        Page<SalaryStructure> page = repo.findAll(spec, pageable);
+
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+        meta.setPage(pageable.getPageNumber() + 1);
+        meta.setPageSize(pageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        rs.setMeta(meta);
+
+        rs.setResult(
+                page.getContent()
+                        .stream()
+                        .map(this::toDTO)
+                        .collect(Collectors.toList()));
+
+        return rs;
+    }
+
+    /*
+     * =====================================================
+     * ENTITY → DTO
+     * =====================================================
+     */
+    private ResSalaryStructureDTO toDTO(SalaryStructure e) {
+
+        ResSalaryStructureDTO r = new ResSalaryStructureDTO();
+
+        r.setId(e.getId());
+        r.setOwnerLevel(e.getOwnerLevel());
+        r.setOwnerJobTitleId(e.getOwnerJobTitleId());
+        r.setSalaryGradeId(e.getSalaryGradeId());
+
+        r.setMonthBaseSalary(e.getMonthBaseSalary());
+        r.setMonthPositionAllowance(e.getMonthPositionAllowance());
+        r.setMonthMealAllowance(e.getMonthMealAllowance());
+        r.setMonthFuelSupport(e.getMonthFuelSupport());
+        r.setMonthPhoneSupport(e.getMonthPhoneSupport());
+        r.setMonthOtherSupport(e.getMonthOtherSupport());
+        r.setMonthKpiBonus(e.getMonthKpiBonus());
+
+        r.setHourBaseSalary(e.getHourBaseSalary());
+        r.setHourPositionAllowance(e.getHourPositionAllowance());
+        r.setHourMealAllowance(e.getHourMealAllowance());
+        r.setHourFuelSupport(e.getHourFuelSupport());
+        r.setHourPhoneSupport(e.getHourPhoneSupport());
+        r.setHourOtherSupport(e.getHourOtherSupport());
+        r.setHourKpiBonus(e.getHourKpiBonus());
+
+        r.setCreatedAt(e.getCreatedAt());
+        r.setUpdatedAt(e.getUpdatedAt());
+
+        return r;
+    }
+}
