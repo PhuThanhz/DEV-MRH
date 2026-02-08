@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import jakarta.transaction.Transactional;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.jd.domain.JobDescription;
@@ -36,6 +37,7 @@ public class JobDescriptionService {
         jd.setTitle(req.getTitle());
         jd.setContent(req.getContent());
         jd.setStatus("DRAFT");
+        jd.setActive(true);
 
         return repo.save(jd);
     }
@@ -50,6 +52,10 @@ public class JobDescriptionService {
 
         JobDescription jd = fetchById(req.getId());
 
+        if (!jd.isActive()) {
+            throw new IdInvalidException("JD đã bị ngưng sử dụng");
+        }
+
         if (!"DRAFT".equals(jd.getStatus())) {
             throw new IdInvalidException(
                     "JD đang xử lý hoặc đã ban hành, không thể chỉnh sửa");
@@ -63,11 +69,11 @@ public class JobDescriptionService {
 
     /*
      * =====================================================
-     * DELETE – CHỈ XOÁ KHI DRAFT
+     * DELETE – SOFT DELETE (CHỈ XOÁ KHI DRAFT)
      * =====================================================
      */
-    public void delete(Long id)
-            throws IdInvalidException {
+    @Transactional
+    public void delete(Long id) throws IdInvalidException {
 
         JobDescription jd = fetchById(id);
 
@@ -76,15 +82,16 @@ public class JobDescriptionService {
                     "Chỉ được xoá JD ở trạng thái DRAFT");
         }
 
-        repo.delete(jd);
+        jd.setActive(false);
+        repo.save(jd);
     }
 
     /*
      * =====================================================
-     * SUBMIT – GỬI JD ĐI DUYỆT
-     * (thực tế sẽ do JD Flow xử lý)
+     * SUBMIT – GỬI JD ĐI XỬ LÝ
      * =====================================================
      */
+    @Transactional
     public JobDescription submit(Long id)
             throws IdInvalidException {
 
@@ -92,27 +99,27 @@ public class JobDescriptionService {
 
         if (!"DRAFT".equals(jd.getStatus())) {
             throw new IdInvalidException(
-                    "Chỉ JD ở trạng thái DRAFT mới được gửi duyệt");
+                    "Chỉ JD ở trạng thái DRAFT mới được gửi xử lý");
         }
 
-        jd.setStatus("IN_REVIEW");
+        jd.setStatus("PROCESSING");
         return repo.save(jd);
     }
 
     /*
      * =====================================================
      * ISSUE – BAN HÀNH JD
-     * (thực tế do CEO duyệt ở JD Flow)
      * =====================================================
      */
+    @Transactional
     public JobDescription issue(Long id)
             throws IdInvalidException {
 
         JobDescription jd = fetchById(id);
 
-        if (!"IN_REVIEW".equals(jd.getStatus())) {
+        if (!"PROCESSING".equals(jd.getStatus())) {
             throw new IdInvalidException(
-                    "Chỉ JD đang duyệt mới được ban hành");
+                    "Chỉ JD đang xử lý mới được ban hành");
         }
 
         jd.setStatus("PUBLIC");
@@ -121,26 +128,34 @@ public class JobDescriptionService {
 
     /*
      * =====================================================
-     * FETCH BY ID
+     * FETCH BY ID (CHECK ACTIVE)
      * =====================================================
      */
     public JobDescription fetchById(Long id)
             throws IdInvalidException {
 
-        return repo.findById(id)
+        JobDescription jd = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
+
+        if (!jd.isActive()) {
+            throw new IdInvalidException("JD đã bị ngưng sử dụng");
+        }
+
+        return jd;
     }
 
     /*
      * =====================================================
-     * LIST – KHO JD
+     * LIST – KHO JD (CHỈ ACTIVE)
      * =====================================================
      */
     public ResultPaginationDTO fetchAll(
             Specification<JobDescription> spec,
             Pageable pageable) {
 
-        Page<JobDescription> page = repo.findAll(spec, pageable);
+        Specification<JobDescription> activeSpec = (root, query, cb) -> cb.isTrue(root.get("active"));
+
+        Page<JobDescription> page = repo.findAll(activeSpec.and(spec), pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();

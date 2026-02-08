@@ -1,17 +1,16 @@
 package vn.system.app.modules.permissioncategory.controller;
 
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.turkraft.springfilter.boot.Filter;
-
 import jakarta.validation.Valid;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.permissioncategory.domain.PermissionCategory;
 import vn.system.app.modules.permissioncategory.domain.request.PermissionCategoryRequest;
+import vn.system.app.modules.permissioncategory.domain.response.PermissionCategoryResponse;
 import vn.system.app.modules.permissioncategory.service.PermissionCategoryService;
 
 @RestController
@@ -24,34 +23,63 @@ public class PermissionCategoryController {
         this.service = service;
     }
 
-    // ================= CREATE =================
+    // =====================================================
+    // CREATE
+    // =====================================================
     @PostMapping
-    public ResponseEntity<PermissionCategory> create(
+    @ApiMessage("Tạo danh mục phân quyền")
+    public ResponseEntity<PermissionCategoryResponse> create(
             @Valid @RequestBody PermissionCategoryRequest req) {
 
-        PermissionCategory category = service.handleCreate(req);
+        PermissionCategory entity = service.handleCreateCategory(req);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(category);
+                .body(service.convertToResponse(entity));
     }
 
-    // ================= GET ALL =================
+    // =====================================================
+    // UPDATE
+    // =====================================================
+    @PutMapping("/{id}")
+    @ApiMessage("Cập nhật danh mục phân quyền")
+    public ResponseEntity<PermissionCategoryResponse> update(
+            @PathVariable long id,
+            @Valid @RequestBody PermissionCategoryRequest req) {
+
+        PermissionCategory entity = service.handleUpdateCategory(id, req);
+        return ResponseEntity.ok(service.convertToResponse(entity));
+    }
+
+    // =====================================================
+    // GET ALL (PAGINATION)
+    // =====================================================
     @GetMapping
-    public ResponseEntity<ResultPaginationDTO> getAll(
-            @Filter Specification<PermissionCategory> spec,
-            Pageable pageable) {
-
-        return ResponseEntity.ok(
-                service.fetchAll(spec, pageable));
+    @ApiMessage("Danh sách danh mục phân quyền (phân trang)")
+    public ResponseEntity<ResultPaginationDTO> getAll(Pageable pageable) {
+        return ResponseEntity.ok(service.fetchAllCategory(pageable));
     }
 
-    // ================= DELETE =================
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
+    // =====================================================
+    // GET BY ID
+    // =====================================================
+    @GetMapping("/{id}")
+    @ApiMessage("Chi tiết danh mục phân quyền")
+    public ResponseEntity<PermissionCategoryResponse> getDetail(
             @PathVariable long id) {
 
-        service.handleDelete(id);
+        PermissionCategory entity = service.fetchCategoryById(id);
+        return ResponseEntity.ok(service.convertToResponse(entity));
+    }
+
+    // =====================================================
+    // DELETE (SOFT)
+    // =====================================================
+    @DeleteMapping("/{id}")
+    @ApiMessage("Ngưng sử dụng danh mục phân quyền")
+    public ResponseEntity<Void> delete(@PathVariable long id) {
+
+        service.handleDeleteCategory(id);
         return ResponseEntity.ok().build();
     }
 }

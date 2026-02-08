@@ -1,18 +1,18 @@
 package vn.system.app.modules.permissioncontent.controller;
 
-import java.util.List;
-
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
+import vn.system.app.modules.permissioncontent.domain.PermissionContent;
 import vn.system.app.modules.permissioncontent.domain.request.ReqCreatePermissionContentDTO;
 import vn.system.app.modules.permissioncontent.domain.request.ReqUpdatePermissionContentDTO;
-import vn.system.app.modules.permissioncontent.domain.response.ResPermissionContentDTO;
-import vn.system.app.modules.permissioncontent.domain.response.ResPermissionContentWithScopeDTO;
+import vn.system.app.modules.permissioncontent.domain.response.ResPermissionContentDetailDTO;
 import vn.system.app.modules.permissioncontent.service.PermissionContentService;
 
 @RestController
@@ -25,65 +25,91 @@ public class PermissionContentController {
         this.service = service;
     }
 
-    // ==================================================
-    // CREATE
-    // ==================================================
+    /*
+     * =====================================================
+     * CREATE
+     * =====================================================
+     */
     @PostMapping
     @ApiMessage("Tạo nội dung quyền")
-    public ResponseEntity<ResPermissionContentWithScopeDTO> create(
+    public ResponseEntity<ResPermissionContentDetailDTO> create(
             @Valid @RequestBody ReqCreatePermissionContentDTO req) {
 
+        PermissionContent entity = service.handleCreatePermissionContent(req);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(service.create(req));
+                .body(service.convertToResPermissionContentDetailDTO(entity));
     }
 
-    // ==================================================
-    // GET LIST BY CATEGORY
-    // ==================================================
+    /*
+     * =====================================================
+     * GET ALL BY CATEGORY (BẮT BUỘC categoryId)
+     * =====================================================
+     */
     @GetMapping
     @ApiMessage("Danh sách nội dung quyền theo danh mục")
-    public ResponseEntity<List<ResPermissionContentDTO>> fetchByCategory(
-            @RequestParam("categoryId") Long categoryId) {
+    public ResponseEntity<ResultPaginationDTO> getAll(
+            @RequestParam Long categoryId,
+            Pageable pageable) {
 
         return ResponseEntity.ok(
-                service.fetchByCategory(categoryId));
+                service.fetchAllPermissionContent(categoryId, pageable));
     }
 
-    // ==================================================
-    // GET DETAIL
-    // ==================================================
+    /*
+     * =====================================================
+     * GET DETAIL
+     * =====================================================
+     */
     @GetMapping("/{id}")
     @ApiMessage("Chi tiết nội dung quyền")
-    public ResponseEntity<ResPermissionContentWithScopeDTO> fetchDetail(
-            @PathVariable("id") Long id) {
+    public ResponseEntity<ResPermissionContentDetailDTO> detail(
+            @PathVariable Long id) {
 
+        PermissionContent entity = service.fetchPermissionContentById(id);
         return ResponseEntity.ok(
-                service.fetchDetail(id));
+                service.convertToResPermissionContentDetailDTO(entity));
     }
 
-    // ==================================================
-    // UPDATE
-    // ==================================================
+    /*
+     * =====================================================
+     * UPDATE
+     * =====================================================
+     */
     @PutMapping("/{id}")
     @ApiMessage("Cập nhật nội dung quyền")
-    public ResponseEntity<ResPermissionContentWithScopeDTO> update(
-            @PathVariable("id") Long id,
+    public ResponseEntity<ResPermissionContentDetailDTO> update(
+            @PathVariable Long id,
             @Valid @RequestBody ReqUpdatePermissionContentDTO req) {
 
+        PermissionContent entity = service.handleUpdatePermissionContent(id, req);
         return ResponseEntity.ok(
-                service.update(id, req));
+                service.convertToResPermissionContentDetailDTO(entity));
     }
 
-    // ==================================================
-    // DELETE
-    // ==================================================
+    /*
+     * =====================================================
+     * DELETE (SOFT)
+     * =====================================================
+     */
     @DeleteMapping("/{id}")
-    @ApiMessage("Xoá nội dung quyền")
-    public ResponseEntity<Void> delete(
-            @PathVariable("id") Long id) {
+    @ApiMessage("Xoá (soft) nội dung quyền")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
 
-        service.delete(id);
-        return ResponseEntity.noContent().build();
+        service.handleDeletePermissionContent(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /*
+     * =====================================================
+     * TOGGLE ACTIVE
+     * =====================================================
+     */
+    @PatchMapping("/{id}/toggle")
+    @ApiMessage("Bật / tắt nội dung quyền")
+    public ResponseEntity<Void> toggle(@PathVariable Long id) {
+
+        service.handleTogglePermissionContent(id);
+        return ResponseEntity.ok().build();
     }
 }

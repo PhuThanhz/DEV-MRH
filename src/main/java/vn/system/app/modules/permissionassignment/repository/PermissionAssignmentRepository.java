@@ -8,18 +8,9 @@ import org.springframework.stereotype.Repository;
 import vn.system.app.modules.permissionassignment.domain.PermissionAssignment;
 
 @Repository
-public interface PermissionAssignmentRepository
-        extends JpaRepository<PermissionAssignment, Long> {
+public interface PermissionAssignmentRepository extends JpaRepository<PermissionAssignment, Long> {
 
-    // =================================
-    // CHECK TRÙNG GÁN QUYỀN
-    // =================================
-    boolean existsByPermissionContent_IdAndDepartmentJobTitle_Id(
-            Long permissionContentId,
-            Long departmentJobTitleId);
+        List<PermissionAssignment> findByPermissionContent_Id(Long contentId);
 
-    // =================================
-    // LOAD THEO NỘI DUNG QUYỀN
-    // =================================
-    List<PermissionAssignment> findByPermissionContent_Id(Long permissionContentId);
+        void deleteByPermissionContent_IdAndDepartmentJobTitle_Id(Long contentId, Long djtId);
 }

@@ -19,15 +19,25 @@ import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
 import vn.system.app.modules.departmentjobtitle.domain.request.ReqDepartmentJobTitleDTO;
 import vn.system.app.modules.departmentjobtitle.domain.response.ResDepartmentJobTitleDTO;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
+import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleQueryService;
+import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleScopeService;
 
 @RestController
 @RequestMapping("/api/v1")
 public class DepartmentJobTitleController {
 
     private final DepartmentJobTitleService service;
+    private final DepartmentJobTitleQueryService queryService;
+    private final DepartmentJobTitleScopeService scopeService;
 
-    public DepartmentJobTitleController(DepartmentJobTitleService service) {
+    public DepartmentJobTitleController(
+            DepartmentJobTitleService service,
+            DepartmentJobTitleQueryService queryService,
+            DepartmentJobTitleScopeService scopeService) {
+
         this.service = service;
+        this.queryService = queryService;
+        this.scopeService = scopeService;
     }
 
     /*
@@ -104,7 +114,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * GET DEPARTMENT JOB TITLES (CHỈ DEPARTMENT – GIỮ NGUYÊN)
+     * GET DEPARTMENT JOB TITLES (DIRECT)
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/job-titles")
@@ -123,7 +133,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * ✅ NEW — VIEW TỔNG HỢP COMPANY_JOB_TITLE TẠI PHÒNG BAN
+     * 🔰 API CŨ — COMPANY + DEPARTMENT + SECTION
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/company-job-titles")
@@ -134,5 +144,33 @@ public class DepartmentJobTitleController {
 
         return ResponseEntity.ok(
                 this.service.fetchAllCompanyJobTitlesOfDepartment(departmentId));
+    }
+
+    /*
+     * =====================================================
+     * 🔰 API MỚI — DEPARTMENT + SECTION ONLY
+     * =====================================================
+     */
+    @GetMapping("/departments/{departmentId}/job-titles/mixed")
+    @ApiMessage("Danh sách chức danh từ phòng ban + bộ phận (không lấy công ty)")
+    public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchDeptAndSection(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(
+                queryService.fetchDeptAndSectionJobTitles(departmentId));
+    }
+
+    /*
+     * =====================================================
+     * 🔰 API MỚI NHẤT — THEO PHẠM VI QUYỀN USER (COMPANY / DEPT / SECTION)
+     * =====================================================
+     */
+    @GetMapping("/departments/{departmentId}/job-titles/scope")
+    @ApiMessage("Danh sách chức danh theo phạm vi quyền user")
+    public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchByScope(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(
+                scopeService.fetchByScope(departmentId));
     }
 }

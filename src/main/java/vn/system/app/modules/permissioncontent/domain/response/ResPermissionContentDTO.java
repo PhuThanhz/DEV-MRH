@@ -9,4 +9,5 @@ public class ResPermissionContentDTO {
 
     private Long id;
     private String name;
+    private boolean active;
 }

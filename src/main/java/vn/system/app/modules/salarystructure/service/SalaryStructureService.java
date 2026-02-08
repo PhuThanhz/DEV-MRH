@@ -35,7 +35,7 @@ public class SalaryStructureService {
 
     /*
      * =====================================================
-     * VALIDATE
+     * VALIDATE INPUT
      * =====================================================
      */
     private void validate(ReqUpsertSalaryStructureDTO req) {
@@ -55,7 +55,10 @@ public class SalaryStructureService {
                 req.getMonthFuelSupport() != null ||
                 req.getMonthPhoneSupport() != null ||
                 req.getMonthOtherSupport() != null ||
-                req.getMonthKpiBonus() != null;
+                req.getMonthKpiBonusA() != null ||
+                req.getMonthKpiBonusB() != null ||
+                req.getMonthKpiBonusC() != null ||
+                req.getMonthKpiBonusD() != null;
 
         boolean hasHourly = req.getHourBaseSalary() != null ||
                 req.getHourPositionAllowance() != null ||
@@ -63,12 +66,18 @@ public class SalaryStructureService {
                 req.getHourFuelSupport() != null ||
                 req.getHourPhoneSupport() != null ||
                 req.getHourOtherSupport() != null ||
-                req.getHourKpiBonus() != null;
+                req.getHourKpiBonusA() != null ||
+                req.getHourKpiBonusB() != null ||
+                req.getHourKpiBonusC() != null ||
+                req.getHourKpiBonusD() != null;
 
         if (!hasMonthly && !hasHourly)
-            throw new IdInvalidException("Phải nhập dữ liệu tháng công hoặc giờ công");
+            throw new IdInvalidException("Phải nhập dữ liệu tháng hoặc dữ liệu giờ");
 
-        // Check salary grade is active
+        // === VALIDATE SỐ ÂM ===
+        validateNonNegative(req);
+
+        // Check salary grade active
         boolean isActive = switch (req.getOwnerLevel()) {
             case COMPANY ->
                 companyGradeRepo.findById(req.getSalaryGradeId())
@@ -92,7 +101,44 @@ public class SalaryStructureService {
 
     /*
      * =====================================================
-     * UPSERT
+     * KHÔNG CHO PHÉP SỐ ÂM
+     * =====================================================
+     */
+    private void validateNonNegative(ReqUpsertSalaryStructureDTO req) {
+
+        Double[] values = {
+                req.getMonthBaseSalary(),
+                req.getMonthPositionAllowance(),
+                req.getMonthMealAllowance(),
+                req.getMonthFuelSupport(),
+                req.getMonthPhoneSupport(),
+                req.getMonthOtherSupport(),
+                req.getMonthKpiBonusA(),
+                req.getMonthKpiBonusB(),
+                req.getMonthKpiBonusC(),
+                req.getMonthKpiBonusD(),
+
+                req.getHourBaseSalary(),
+                req.getHourPositionAllowance(),
+                req.getHourMealAllowance(),
+                req.getHourFuelSupport(),
+                req.getHourPhoneSupport(),
+                req.getHourOtherSupport(),
+                req.getHourKpiBonusA(),
+                req.getHourKpiBonusB(),
+                req.getHourKpiBonusC(),
+                req.getHourKpiBonusD(),
+        };
+
+        for (Double v : values) {
+            if (v != null && v < 0)
+                throw new IdInvalidException("Giá trị không được âm");
+        }
+    }
+
+    /*
+     * =====================================================
+     * UPSERT — MERGE MODE (KHÔNG XÓA FIELD KHÁC)
      * =====================================================
      */
     @Transactional
@@ -105,29 +151,59 @@ public class SalaryStructureService {
                         req.getOwnerLevel(),
                         req.getOwnerJobTitleId(),
                         req.getSalaryGradeId())
-                .orElse(new SalaryStructure());
+                .orElseGet(() -> {
+                    SalaryStructure s = new SalaryStructure();
+                    s.setOwnerLevel(req.getOwnerLevel());
+                    s.setOwnerJobTitleId(req.getOwnerJobTitleId());
+                    s.setSalaryGradeId(req.getSalaryGradeId());
+                    return s;
+                });
 
-        entity.setOwnerLevel(req.getOwnerLevel());
-        entity.setOwnerJobTitleId(req.getOwnerJobTitleId());
-        entity.setSalaryGradeId(req.getSalaryGradeId());
+        /* ======== MONTH (MERGE) ======== */
+        if (req.getMonthBaseSalary() != null)
+            entity.setMonthBaseSalary(req.getMonthBaseSalary());
+        if (req.getMonthPositionAllowance() != null)
+            entity.setMonthPositionAllowance(req.getMonthPositionAllowance());
+        if (req.getMonthMealAllowance() != null)
+            entity.setMonthMealAllowance(req.getMonthMealAllowance());
+        if (req.getMonthFuelSupport() != null)
+            entity.setMonthFuelSupport(req.getMonthFuelSupport());
+        if (req.getMonthPhoneSupport() != null)
+            entity.setMonthPhoneSupport(req.getMonthPhoneSupport());
+        if (req.getMonthOtherSupport() != null)
+            entity.setMonthOtherSupport(req.getMonthOtherSupport());
 
-        // MONTHLY
-        entity.setMonthBaseSalary(req.getMonthBaseSalary());
-        entity.setMonthPositionAllowance(req.getMonthPositionAllowance());
-        entity.setMonthMealAllowance(req.getMonthMealAllowance());
-        entity.setMonthFuelSupport(req.getMonthFuelSupport());
-        entity.setMonthPhoneSupport(req.getMonthPhoneSupport());
-        entity.setMonthOtherSupport(req.getMonthOtherSupport());
-        entity.setMonthKpiBonus(req.getMonthKpiBonus());
+        if (req.getMonthKpiBonusA() != null)
+            entity.setMonthKpiBonusA(req.getMonthKpiBonusA());
+        if (req.getMonthKpiBonusB() != null)
+            entity.setMonthKpiBonusB(req.getMonthKpiBonusB());
+        if (req.getMonthKpiBonusC() != null)
+            entity.setMonthKpiBonusC(req.getMonthKpiBonusC());
+        if (req.getMonthKpiBonusD() != null)
+            entity.setMonthKpiBonusD(req.getMonthKpiBonusD());
 
-        // HOURLY
-        entity.setHourBaseSalary(req.getHourBaseSalary());
-        entity.setHourPositionAllowance(req.getHourPositionAllowance());
-        entity.setHourMealAllowance(req.getHourMealAllowance());
-        entity.setHourFuelSupport(req.getHourFuelSupport());
-        entity.setHourPhoneSupport(req.getHourPhoneSupport());
-        entity.setHourOtherSupport(req.getHourOtherSupport());
-        entity.setHourKpiBonus(req.getHourKpiBonus());
+        /* ======== HOUR (MERGE) ======== */
+        if (req.getHourBaseSalary() != null)
+            entity.setHourBaseSalary(req.getHourBaseSalary());
+        if (req.getHourPositionAllowance() != null)
+            entity.setHourPositionAllowance(req.getHourPositionAllowance());
+        if (req.getHourMealAllowance() != null)
+            entity.setHourMealAllowance(req.getHourMealAllowance());
+        if (req.getHourFuelSupport() != null)
+            entity.setHourFuelSupport(req.getHourFuelSupport());
+        if (req.getHourPhoneSupport() != null)
+            entity.setHourPhoneSupport(req.getHourPhoneSupport());
+        if (req.getHourOtherSupport() != null)
+            entity.setHourOtherSupport(req.getHourOtherSupport());
+
+        if (req.getHourKpiBonusA() != null)
+            entity.setHourKpiBonusA(req.getHourKpiBonusA());
+        if (req.getHourKpiBonusB() != null)
+            entity.setHourKpiBonusB(req.getHourKpiBonusB());
+        if (req.getHourKpiBonusC() != null)
+            entity.setHourKpiBonusC(req.getHourKpiBonusC());
+        if (req.getHourKpiBonusD() != null)
+            entity.setHourKpiBonusD(req.getHourKpiBonusD());
 
         return repo.save(entity);
     }
@@ -140,7 +216,6 @@ public class SalaryStructureService {
     public ResSalaryStructureDTO findById(Long id) {
         SalaryStructure entity = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy ID"));
-
         return toDTO(entity);
     }
 
@@ -176,7 +251,7 @@ public class SalaryStructureService {
      * ENTITY → DTO
      * =====================================================
      */
-    private ResSalaryStructureDTO toDTO(SalaryStructure e) {
+    public ResSalaryStructureDTO toDTO(SalaryStructure e) {
 
         ResSalaryStructureDTO r = new ResSalaryStructureDTO();
 
@@ -185,21 +260,31 @@ public class SalaryStructureService {
         r.setOwnerJobTitleId(e.getOwnerJobTitleId());
         r.setSalaryGradeId(e.getSalaryGradeId());
 
+        // ===== MONTH =====
         r.setMonthBaseSalary(e.getMonthBaseSalary());
         r.setMonthPositionAllowance(e.getMonthPositionAllowance());
         r.setMonthMealAllowance(e.getMonthMealAllowance());
         r.setMonthFuelSupport(e.getMonthFuelSupport());
         r.setMonthPhoneSupport(e.getMonthPhoneSupport());
         r.setMonthOtherSupport(e.getMonthOtherSupport());
-        r.setMonthKpiBonus(e.getMonthKpiBonus());
 
+        r.setMonthKpiBonusA(e.getMonthKpiBonusA());
+        r.setMonthKpiBonusB(e.getMonthKpiBonusB());
+        r.setMonthKpiBonusC(e.getMonthKpiBonusC());
+        r.setMonthKpiBonusD(e.getMonthKpiBonusD());
+
+        // ===== HOUR =====
         r.setHourBaseSalary(e.getHourBaseSalary());
         r.setHourPositionAllowance(e.getHourPositionAllowance());
         r.setHourMealAllowance(e.getHourMealAllowance());
         r.setHourFuelSupport(e.getHourFuelSupport());
         r.setHourPhoneSupport(e.getHourPhoneSupport());
         r.setHourOtherSupport(e.getHourOtherSupport());
-        r.setHourKpiBonus(e.getHourKpiBonus());
+
+        r.setHourKpiBonusA(e.getHourKpiBonusA());
+        r.setHourKpiBonusB(e.getHourKpiBonusB());
+        r.setHourKpiBonusC(e.getHourKpiBonusC());
+        r.setHourKpiBonusD(e.getHourKpiBonusD());
 
         r.setCreatedAt(e.getCreatedAt());
         r.setUpdatedAt(e.getUpdatedAt());

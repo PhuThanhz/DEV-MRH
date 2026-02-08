@@ -20,14 +20,14 @@ public class PermissionContent {
     private Long id;
 
     @NotBlank(message = "Tên nội dung không được để trống")
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String name;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     private PermissionCategory category;
 
-    private Integer status; // 1 = active, 0 = inactive
+    private boolean active = true;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -35,14 +35,14 @@ public class PermissionContent {
     private String updatedBy;
 
     @PrePersist
-    public void preCreate() {
-        this.status = this.status == null ? 1 : this.status;
+    public void beforeCreate() {
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+        this.active = true;
     }
 
     @PreUpdate
-    public void preUpdate() {
+    public void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

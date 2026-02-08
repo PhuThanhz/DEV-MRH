@@ -1,17 +1,16 @@
 package vn.system.app.modules.permissionassignment.controller;
 
-import org.springframework.http.HttpStatus;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.validation.Valid;
 import vn.system.app.common.util.annotation.ApiMessage;
-import vn.system.app.modules.permissionassignment.domain.request.ReqPermissionAssignmentDTO;
-import vn.system.app.modules.permissionassignment.domain.response.ResPermissionAssignmentDTO;
+import vn.system.app.modules.permissionassignment.domain.request.ReqAssignPermissionDTO;
+import vn.system.app.modules.permissionassignment.domain.response.ResPermissionMatrixDTO;
 import vn.system.app.modules.permissionassignment.service.PermissionAssignmentService;
 
 @RestController
-@RequestMapping("/api/v1/permission-assignments")
+@RequestMapping("/api/v1/permission-contents")
 public class PermissionAssignmentController {
 
     private final PermissionAssignmentService service;
@@ -20,55 +19,29 @@ public class PermissionAssignmentController {
         this.service = service;
     }
 
-    // ================= CREATE =================
-    @PostMapping
+    /*
+     * =====================================================
+     * GET MATRIX BY CONTENT ID
+     * =====================================================
+     */
+    @GetMapping("/{contentId}/matrix")
+    @ApiMessage("Chi tiết phân quyền theo nội dung")
+    public ResponseEntity<ResPermissionMatrixDTO> getMatrix(@PathVariable Long contentId) {
+        return ResponseEntity.ok(service.buildMatrix(contentId));
+    }
+
+    /*
+     * =====================================================
+     * ASSIGN PERMISSION
+     * =====================================================
+     */
+    @PostMapping("/{contentId}/assign")
     @ApiMessage("Gán quyền cho chức danh")
-    public ResponseEntity<ResPermissionAssignmentDTO> create(
-            @Valid @RequestBody ReqPermissionAssignmentDTO req) {
+    public ResponseEntity<Void> assign(
+            @PathVariable Long contentId,
+            @Valid @RequestBody ReqAssignPermissionDTO req) {
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(service.create(req));
-    }
-
-    // ================= UPDATE =================
-    @PutMapping("/{id}")
-    @ApiMessage("Cập nhật quyền cho chức danh")
-    public ResponseEntity<ResPermissionAssignmentDTO> update(
-            @PathVariable Long id,
-            @Valid @RequestBody ReqPermissionAssignmentDTO req) {
-
-        return ResponseEntity.ok(
-                service.update(id, req));
-    }
-
-    // ================= GET ONE =================
-    @GetMapping("/{id}")
-    @ApiMessage("Chi tiết gán quyền")
-    public ResponseEntity<ResPermissionAssignmentDTO> getOne(
-            @PathVariable Long id) {
-
-        return ResponseEntity.ok(
-                service.fetchDetail(id));
-    }
-
-    // ================= GET BY CONTENT =================
-    @GetMapping
-    @ApiMessage("Danh sách quyền theo nội dung")
-    public ResponseEntity<?> getByContent(
-            @RequestParam Long permissionContentId) {
-
-        return ResponseEntity.ok(
-                service.fetchByPermissionContent(permissionContentId));
-    }
-
-    // ================= DELETE =================
-    @DeleteMapping("/{id}")
-    @ApiMessage("Xoá gán quyền")
-    public ResponseEntity<Void> delete(
-            @PathVariable Long id) {
-
-        service.delete(id);
-        return ResponseEntity.noContent().build();
+        service.assign(contentId, req);
+        return ResponseEntity.ok().build();
     }
 }

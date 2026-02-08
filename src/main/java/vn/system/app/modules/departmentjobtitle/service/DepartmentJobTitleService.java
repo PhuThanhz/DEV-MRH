@@ -325,11 +325,46 @@ public class DepartmentJobTitleService {
 
     /*
      * =====================================================
+     * FETCH ALL DEPARTMENT_JOB_TITLE (ACTIVE)
+     * =====================================================
+     */
+    public List<DepartmentJobTitle> fetchAllDepartmentJobTitles() {
+        return repository.findAll()
+                .stream()
+                .filter(DepartmentJobTitle::isActive)
+                .collect(Collectors.toList());
+    }
+
+    /*
+     * =====================================================
+     * FETCH DEPARTMENT_JOB_TITLE BY ID (STANDARD)
+     * =====================================================
+     */
+    public DepartmentJobTitle fetchDepartmentJobTitleById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException(
+                        "Không tìm thấy DepartmentJobTitle với id = " + id));
+    }
+
+    /*
+     * =====================================================
      * FETCH ACTIVE BY DEPARTMENT
      * =====================================================
      */
     public List<DepartmentJobTitle> fetchByDepartment(Long departmentId) {
         return repository.findByDepartment_IdAndActiveTrue(departmentId);
+    }
+
+    /*
+     * =====================================================
+     * FETCH ALL ACTIVE (FOR PERMISSION MATRIX)
+     * =====================================================
+     */
+    public List<DepartmentJobTitle> fetchAll() {
+        return repository.findAll()
+                .stream()
+                .filter(DepartmentJobTitle::isActive)
+                .collect(Collectors.toList());
     }
 
     /*

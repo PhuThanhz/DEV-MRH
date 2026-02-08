@@ -13,8 +13,7 @@ import vn.system.app.common.util.SecurityUtil;
 @Table(name = "job_description")
 @Getter
 @Setter
-@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" }) // ⭐ FIX PROXY
-
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 public class JobDescription {
 
     @Id
@@ -26,22 +25,35 @@ public class JobDescription {
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
-    // DRAFT | PROCESSING | PUBLIC
+
+    /**
+     * Trạng thái nghiệp vụ
+     * DRAFT | PROCESSING | PUBLIC
+     */
     @Column(nullable = false)
     private String status;
+
+    /**
+     * Trạng thái tồn tại (soft delete / disable)
+     */
+    private boolean active = true;
 
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
 
+    /* ================= AUDIT ================= */
     @PrePersist
     public void prePersist() {
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+
         if (this.status == null) {
             this.status = "DRAFT";
         }
+
+        this.active = true;
     }
 
     @PreUpdate

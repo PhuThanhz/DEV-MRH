@@ -28,7 +28,9 @@ public class SalaryStructure {
     private Long salaryGradeId;
 
     /*
+     * ============================
      * MONTH COMPONENT
+     * ============================
      */
     private Double monthBaseSalary;
     private Double monthPositionAllowance;
@@ -36,10 +38,17 @@ public class SalaryStructure {
     private Double monthFuelSupport;
     private Double monthPhoneSupport;
     private Double monthOtherSupport;
-    private Double monthKpiBonus;
+
+    /* Thưởng hiệu quả công việc (4 mức A–B–C–D) */
+    private Double monthKpiBonusA;
+    private Double monthKpiBonusB;
+    private Double monthKpiBonusC;
+    private Double monthKpiBonusD;
 
     /*
+     * ============================
      * HOUR COMPONENT
+     * ============================
      */
     private Double hourBaseSalary;
     private Double hourPositionAllowance;
@@ -47,7 +56,12 @@ public class SalaryStructure {
     private Double hourFuelSupport;
     private Double hourPhoneSupport;
     private Double hourOtherSupport;
-    private Double hourKpiBonus;
+
+    /* Thưởng hiệu quả công việc theo giờ (A–B–C–D) */
+    private Double hourKpiBonusA;
+    private Double hourKpiBonusB;
+    private Double hourKpiBonusC;
+    private Double hourKpiBonusD;
 
     private Boolean active = true;
 

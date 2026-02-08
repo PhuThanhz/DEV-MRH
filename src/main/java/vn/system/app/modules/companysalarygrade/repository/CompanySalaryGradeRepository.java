@@ -18,4 +18,7 @@ public interface CompanySalaryGradeRepository
 
         // Tìm 1 bản ghi theo jobTitle + gradeLevel (phục vụ restore)
         CompanySalaryGrade findByCompanyJobTitleIdAndGradeLevel(Long companyJobTitleId, Integer gradeLevel);
+
+        List<CompanySalaryGrade> findByCompanyJobTitleIdIn(List<Long> ids);
+
 }

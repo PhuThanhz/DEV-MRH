@@ -37,4 +37,7 @@ public interface CompanyJobTitleRepository
     Optional<CompanyJobTitle> findByCompany_IdAndJobTitle_IdAndActiveTrue(
             Long companyId,
             Long jobTitleId);
+
+    List<CompanyJobTitle> findByJobTitle_IdAndActiveTrue(Long jobTitleId);
+
 }

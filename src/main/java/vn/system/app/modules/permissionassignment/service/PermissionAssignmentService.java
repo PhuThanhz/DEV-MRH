@@ -1,182 +1,139 @@
 package vn.system.app.modules.permissionassignment.service;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
 import vn.system.app.modules.permissionassignment.domain.PermissionAssignment;
-import vn.system.app.modules.permissionassignment.domain.request.ReqPermissionAssignmentDTO;
-import vn.system.app.modules.permissionassignment.domain.response.ResPermissionAssignmentDTO;
+import vn.system.app.modules.permissionassignment.domain.request.ReqAssignPermissionDTO;
+import vn.system.app.modules.permissionassignment.domain.response.ResPermissionMatrixDTO;
 import vn.system.app.modules.permissionassignment.repository.PermissionAssignmentRepository;
-import vn.system.app.modules.permissioncategoryscope.repository.PermissionCategoryScopeRepository;
 import vn.system.app.modules.permissioncontent.domain.PermissionContent;
-import vn.system.app.modules.permissioncontent.repository.PermissionContentRepository;
+import vn.system.app.modules.permissioncontent.service.PermissionContentService;
 import vn.system.app.modules.processaction.domain.ProcessAction;
 import vn.system.app.modules.processaction.service.ProcessActionService;
 
 @Service
 public class PermissionAssignmentService {
 
-    private final PermissionAssignmentRepository repository;
-    private final PermissionContentRepository permissionContentRepository;
-    private final PermissionCategoryScopeRepository categoryScopeRepository;
-    private final DepartmentJobTitleService departmentJobTitleService;
-    private final ProcessActionService processActionService;
+        private final PermissionAssignmentRepository repository;
+        private final PermissionContentService contentService;
+        private final DepartmentJobTitleService djtService;
+        private final ProcessActionService processActionService;
 
-    public PermissionAssignmentService(
-            PermissionAssignmentRepository repository,
-            PermissionContentRepository permissionContentRepository,
-            PermissionCategoryScopeRepository categoryScopeRepository,
-            DepartmentJobTitleService departmentJobTitleService,
-            ProcessActionService processActionService) {
+        public PermissionAssignmentService(
+                        PermissionAssignmentRepository repository,
+                        PermissionContentService contentService,
+                        DepartmentJobTitleService djtService,
+                        ProcessActionService processActionService) {
 
-        this.repository = repository;
-        this.permissionContentRepository = permissionContentRepository;
-        this.categoryScopeRepository = categoryScopeRepository;
-        this.departmentJobTitleService = departmentJobTitleService;
-        this.processActionService = processActionService;
-    }
-
-    // ==================================================
-    // CREATE
-    // ==================================================
-    @Transactional
-    public ResPermissionAssignmentDTO create(ReqPermissionAssignmentDTO req) {
-
-        PermissionContent content = permissionContentRepository
-                .findById(req.getPermissionContentId())
-                .orElseThrow(() -> new IdInvalidException(
-                        "PermissionContent không tồn tại"));
-
-        DepartmentJobTitle djt = departmentJobTitleService
-                .fetchEntityById(req.getDepartmentJobTitleId());
-
-        // ===== VALIDATE: DJT thuộc category scope =====
-        boolean isAllowed = categoryScopeRepository
-                .existsByCategory_IdAndDepartmentJobTitleId(
-                        content.getCategory().getId(),
-                        djt.getId());
-
-        if (!isAllowed) {
-            throw new IdInvalidException(
-                    "Chức danh không thuộc phạm vi áp dụng của danh mục quyền");
+                this.repository = repository;
+                this.contentService = contentService;
+                this.djtService = djtService;
+                this.processActionService = processActionService;
         }
 
-        ProcessAction action = processActionService
-                .fetchById(req.getProcessActionId());
+        /*
+         * =====================================================
+         * BUILD PERMISSION MATRIX — GET
+         * =====================================================
+         */
+        @Transactional(readOnly = true)
+        public ResPermissionMatrixDTO buildMatrix(Long contentId) {
 
-        if (action == null) {
-            throw new IdInvalidException("ProcessAction không tồn tại");
+                // 1️⃣ LOAD CONTENT
+                PermissionContent content = contentService.fetchPermissionContentById(contentId);
+
+                // 2️⃣ LẤY PHÒNG BAN TỪ CATEGORY
+                Department department = content.getCategory().getDepartment();
+                if (department == null) {
+                        throw new IdInvalidException("Category chưa được gán phòng ban");
+                }
+
+                // 3️⃣ LOAD JOB TITLE CỦA PHÒNG BAN
+                List<DepartmentJobTitle> departmentJobTitles = djtService.fetchByDepartment(department.getId());
+
+                // 4️⃣ LOAD ASSIGNMENTS
+                List<PermissionAssignment> assignments = repository.findByPermissionContent_Id(contentId);
+
+                // MAP: DepartmentJobTitleId → PermissionAssignment
+                Map<Long, PermissionAssignment> assignmentMap = assignments.stream()
+                                .collect(Collectors.toMap(
+                                                a -> a.getDepartmentJobTitle().getId(),
+                                                a -> a));
+
+                // 5️⃣ BUILD RESPONSE ROOT
+                ResPermissionMatrixDTO res = new ResPermissionMatrixDTO();
+                res.setContentId(content.getId());
+                res.setContentName(content.getName());
+
+                // CATEGORY INFO
+                ResPermissionMatrixDTO.Category cat = new ResPermissionMatrixDTO.Category();
+                cat.setId(content.getCategory().getId());
+                cat.setCode(content.getCategory().getCode());
+                cat.setName(content.getCategory().getName());
+                res.setCategory(cat);
+
+                // 6️⃣ BUILD DUY NHẤT 1 DEPARTMENT
+                ResPermissionMatrixDTO.DepartmentMatrix dep = new ResPermissionMatrixDTO.DepartmentMatrix();
+
+                dep.setDepartmentId(department.getId());
+                dep.setDepartmentName(department.getName());
+                dep.setJobTitles(new ArrayList<>());
+
+                for (DepartmentJobTitle djt : departmentJobTitles) {
+
+                        ResPermissionMatrixDTO.JobTitleMatrix jt = new ResPermissionMatrixDTO.JobTitleMatrix();
+
+                        jt.setDepartmentJobTitleId(djt.getId());
+                        jt.setJobTitleId(djt.getJobTitle().getId());
+                        jt.setJobTitleName(djt.getJobTitle().getNameVi());
+
+                        // SET ACTION IF EXISTS
+                        PermissionAssignment pa = assignmentMap.get(djt.getId());
+                        if (pa != null && pa.getProcessAction() != null) {
+                                jt.setProcessActionId(pa.getProcessAction().getId());
+                                jt.setActionCode(pa.getProcessAction().getCode());
+                        }
+
+                        dep.getJobTitles().add(jt);
+                }
+
+                res.setDepartments(List.of(dep));
+                return res;
         }
 
-        if (repository.existsByPermissionContent_IdAndDepartmentJobTitle_Id(
-                content.getId(), djt.getId())) {
-            throw new IdInvalidException(
-                    "Chức danh đã được gán quyền cho nội dung này");
+        /*
+         * =====================================================
+         * ASSIGN — UPDATE PERMISSION
+         * =====================================================
+         */
+        @Transactional
+        public void assign(Long contentId, ReqAssignPermissionDTO req) {
+
+                PermissionContent content = contentService.fetchPermissionContentById(contentId);
+
+                DepartmentJobTitle djt = djtService.fetchDepartmentJobTitleById(req.getDepartmentJobTitleId());
+
+                ProcessAction action = processActionService.fetchEntityById(req.getProcessActionId());
+
+                // DELETE OLD
+                repository.deleteByPermissionContent_IdAndDepartmentJobTitle_Id(
+                                contentId,
+                                djt.getId());
+
+                // CREATE NEW
+                PermissionAssignment pa = new PermissionAssignment();
+                pa.setPermissionContent(content);
+                pa.setDepartmentJobTitle(djt);
+                pa.setProcessAction(action);
+
+                repository.save(pa);
         }
-
-        PermissionAssignment entity = new PermissionAssignment();
-        entity.setPermissionContent(content);
-        entity.setDepartmentJobTitle(djt);
-        entity.setProcessAction(action);
-
-        entity = repository.save(entity);
-        return convertToDTO(entity);
-    }
-
-    // ==================================================
-    // UPDATE
-    // ==================================================
-    @Transactional
-    public ResPermissionAssignmentDTO update(
-            Long id,
-            ReqPermissionAssignmentDTO req) {
-
-        PermissionAssignment entity = fetchEntityById(id);
-
-        ProcessAction action = processActionService
-                .fetchById(req.getProcessActionId());
-
-        if (action == null) {
-            throw new IdInvalidException("ProcessAction không tồn tại");
-        }
-
-        entity.setProcessAction(action);
-        entity = repository.save(entity);
-
-        return convertToDTO(entity);
-    }
-
-    // ==================================================
-    // DELETE
-    // ==================================================
-    @Transactional
-    public void delete(Long id) {
-        repository.delete(fetchEntityById(id));
-    }
-
-    // ==================================================
-    // FETCH ONE
-    // ==================================================
-    public ResPermissionAssignmentDTO fetchDetail(Long id) {
-        return convertToDTO(fetchEntityById(id));
-    }
-
-    private PermissionAssignment fetchEntityById(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new IdInvalidException(
-                        "PermissionAssignment không tồn tại"));
-    }
-
-    // ==================================================
-    // FETCH BY PERMISSION CONTENT
-    // ==================================================
-    public List<ResPermissionAssignmentDTO> fetchByPermissionContent(
-            Long permissionContentId) {
-
-        return repository
-                .findByPermissionContent_Id(permissionContentId)
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    // ==================================================
-    // CONVERT RESPONSE
-    // ==================================================
-    private ResPermissionAssignmentDTO convertToDTO(
-            PermissionAssignment entity) {
-
-        ResPermissionAssignmentDTO res = new ResPermissionAssignmentDTO();
-
-        res.setId(entity.getId());
-        res.setPermissionContentId(
-                entity.getPermissionContent().getId());
-
-        res.setDepartmentJobTitleId(
-                entity.getDepartmentJobTitle().getId());
-        res.setJobTitleId(
-                entity.getDepartmentJobTitle().getJobTitle().getId());
-        res.setJobTitleName(
-                entity.getDepartmentJobTitle().getJobTitle().getNameVi());
-
-        res.setDepartmentId(
-                entity.getDepartmentJobTitle().getDepartment().getId());
-        res.setDepartmentName(
-                entity.getDepartmentJobTitle().getDepartment().getName());
-
-        res.setProcessActionId(
-                entity.getProcessAction().getId());
-        res.setProcessActionCode(
-                entity.getProcessAction().getCode());
-        res.setProcessActionName(
-                entity.getProcessAction().getName());
-
-        return res;
-    }
 }

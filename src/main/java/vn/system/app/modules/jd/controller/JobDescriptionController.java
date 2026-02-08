@@ -28,17 +28,15 @@ public class JobDescriptionController {
     public JobDescriptionController(JobDescriptionService service) {
         this.service = service;
     }
-    /* ================= CREATE ================= */
 
+    /* ================= CREATE ================= */
     @PostMapping
     @ApiMessage("Create Job Description")
     public ResponseEntity<ResJobDescriptionDTO> create(
             @Valid @RequestBody ReqCreateJobDescription req) {
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(
-                        service.toRes(
-                                service.create(req)));
+                .body(service.toRes(service.create(req)));
     }
 
     /* ================= UPDATE ================= */
@@ -49,11 +47,21 @@ public class JobDescriptionController {
             throws IdInvalidException {
 
         return ResponseEntity.ok(
-                service.toRes(
-                        service.update(req)));
+                service.toRes(service.update(req)));
     }
-    /* ================= ISSUE ================= */
 
+    /* ================= SUBMIT ================= */
+    @PostMapping("/{id}/submit")
+    @ApiMessage("Submit Job Description")
+    public ResponseEntity<ResJobDescriptionDTO> submit(
+            @PathVariable Long id)
+            throws IdInvalidException {
+
+        return ResponseEntity.ok(
+                service.toRes(service.submit(id)));
+    }
+
+    /* ================= ISSUE ================= */
     @PostMapping("/{id}/issue")
     @ApiMessage("Issue Job Description")
     public ResponseEntity<ResJobDescriptionDTO> issue(
@@ -61,8 +69,18 @@ public class JobDescriptionController {
             throws IdInvalidException {
 
         return ResponseEntity.ok(
-                service.toRes(
-                        service.issue(id)));
+                service.toRes(service.issue(id)));
+    }
+
+    /* ================= DELETE (SOFT) ================= */
+    @DeleteMapping("/{id}")
+    @ApiMessage("Delete Job Description")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id)
+            throws IdInvalidException {
+
+        service.delete(id);
+        return ResponseEntity.ok().build();
     }
 
     /* ================= GET BY ID ================= */
@@ -73,11 +91,10 @@ public class JobDescriptionController {
             throws IdInvalidException {
 
         return ResponseEntity.ok(
-                service.toRes(
-                        service.fetchById(id)));
+                service.toRes(service.fetchById(id)));
     }
-    /* ================= LIST ================= */
 
+    /* ================= LIST ================= */
     @GetMapping
     @ApiMessage("Fetch all Job Descriptions")
     public ResponseEntity<ResultPaginationDTO> getAll(

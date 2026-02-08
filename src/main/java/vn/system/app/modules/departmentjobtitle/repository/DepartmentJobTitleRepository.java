@@ -39,4 +39,6 @@ public interface DepartmentJobTitleRepository
             Long companyId,
             Long jobTitleId);
 
+    List<DepartmentJobTitle> findByJobTitle_IdAndActiveTrue(Long jobTitleId);
+
 }

@@ -23,4 +23,7 @@ public interface DepartmentSalaryGradeRepository
     DepartmentSalaryGrade findByDepartmentJobTitleIdAndGradeLevel(
             Long departmentJobTitleId,
             Integer gradeLevel);
+
+    List<DepartmentSalaryGrade> findByDepartmentJobTitleIdIn(List<Long> ids);
+
 }

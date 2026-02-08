@@ -20,4 +20,7 @@ public interface SectionSalaryGradeRepository
 
     // 🔥 Thêm method để tìm grade bất kể active (phục vụ restore)
     SectionSalaryGrade findBySectionJobTitleIdAndGradeLevel(Long sectionJobTitleId, Integer gradeLevel);
+
+    List<SectionSalaryGrade> findBySectionJobTitleIdIn(List<Long> ids);
+
 }
