@@ -386,6 +386,7 @@ public class DepartmentJobTitleService {
         ResDepartmentJobTitleDTO.JobTitleInfo jt = new ResDepartmentJobTitleDTO.JobTitleInfo();
         jt.setId(e.getJobTitle().getId());
         jt.setNameVi(e.getJobTitle().getNameVi());
+        jt.setNameEn(e.getJobTitle().getNameEn()); // ⭐ THÊM DÒNG NÀY ⭐
 
         if (e.getJobTitle().getPositionLevel() != null) {
             var pl = e.getJobTitle().getPositionLevel();

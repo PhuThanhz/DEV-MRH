@@ -27,6 +27,7 @@ public class ResDepartmentJobTitleDTO {
     public static class JobTitleInfo {
         private Long id;
         private String nameVi;
+        private String nameEn; // ⭐ THÊM DÒNG NÀY
 
         private String positionCode;
         private String band;
