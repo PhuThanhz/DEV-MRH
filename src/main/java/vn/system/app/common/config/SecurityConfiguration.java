@@ -61,6 +61,7 @@ public class SecurityConfiguration {
                 "/api/v1/jd-flows/**", "/api/v1/company-salary-grades/**",
                 "/api/v1/department-salary-grades/**",
                 "/api/v1/section-salary-grades/**", "/api/v1/job-title-performance-contents/**",
+                "/api/v1/organizations/**", "/api/v1/positions/**",
 
         };
         http

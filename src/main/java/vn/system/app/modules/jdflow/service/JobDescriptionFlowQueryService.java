@@ -17,14 +17,10 @@ public class JobDescriptionFlowQueryService {
         this.flowRepo = flowRepo;
     }
 
-    /*
-     * =====================================================
-     * LẤY FLOW THEO ID – PRIVATE DÙNG CHUNG
-     * =====================================================
-     */
-    private JobDescriptionFlow getFlowOrThrow(Long flowId)
-            throws IdInvalidException {
-
+    // =====================================================
+    // LẤY FLOW THEO ID – PRIVATE
+    // =====================================================
+    private JobDescriptionFlow getFlowOrThrow(Long flowId) {
         if (flowId == null) {
             throw new IdInvalidException("flowId không được để trống");
         }
@@ -33,14 +29,10 @@ public class JobDescriptionFlowQueryService {
                 .orElseThrow(() -> new IdInvalidException("Flow không tồn tại"));
     }
 
-    /*
-     * =====================================================
-     * LẤY FLOW Ở TRẠNG THÁI PENDING
-     * =====================================================
-     */
-    public JobDescriptionFlow getPendingFlow(Long flowId)
-            throws IdInvalidException {
-
+    // =====================================================
+    // LẤY FLOW Ở TRẠNG THÁI PENDING
+    // =====================================================
+    public JobDescriptionFlow getPendingFlow(Long flowId) {
         JobDescriptionFlow flow = getFlowOrThrow(flowId);
 
         if (flow.getStatus() != FlowStatus.PENDING) {
@@ -50,14 +42,10 @@ public class JobDescriptionFlowQueryService {
         return flow;
     }
 
-    /*
-     * =====================================================
-     * LẤY FLOW Ở TRẠNG THÁI WAITING_ISSUE
-     * =====================================================
-     */
-    public JobDescriptionFlow getWaitingIssueFlow(Long flowId)
-            throws IdInvalidException {
-
+    // =====================================================
+    // LẤY FLOW Ở TRẠNG THÁI WAITING_ISSUE
+    // =====================================================
+    public JobDescriptionFlow getWaitingIssueFlow(Long flowId) {
         JobDescriptionFlow flow = getFlowOrThrow(flowId);
 
         if (flow.getStatus() != FlowStatus.WAITING_ISSUE) {
@@ -67,13 +55,10 @@ public class JobDescriptionFlowQueryService {
         return flow;
     }
 
-    /*
-     * =====================================================
-     * LẤY FLOW MỚI NHẤT THEO JD
-     * =====================================================
-     */
-    public ResJobDescriptionFlowDTO getByJobDescriptionId(Long jdId)
-            throws IdInvalidException {
+    // =====================================================
+    // LẤY FLOW MỚI NHẤT THEO JD
+    // =====================================================
+    public ResJobDescriptionFlowDTO getByJobDescriptionId(Long jdId) {
 
         if (jdId == null) {
             throw new IdInvalidException("jobDescriptionId không được để trống");
@@ -86,11 +71,9 @@ public class JobDescriptionFlowQueryService {
         return toRes(flow);
     }
 
-    /*
-     * =====================================================
-     * ENTITY → DTO
-     * =====================================================
-     */
+    // =====================================================
+    // ENTITY → DTO
+    // =====================================================
     private ResJobDescriptionFlowDTO toRes(JobDescriptionFlow flow) {
 
         ResJobDescriptionFlowDTO dto = new ResJobDescriptionFlowDTO();
@@ -101,7 +84,6 @@ public class JobDescriptionFlowQueryService {
         dto.setToUserId(flow.getToUserId());
         dto.setStatus(flow.getStatus().name());
         dto.setCreatedAt(flow.getCreatedAt());
-        dto.setUpdatedAt(flow.getUpdatedAt());
 
         return dto;
     }

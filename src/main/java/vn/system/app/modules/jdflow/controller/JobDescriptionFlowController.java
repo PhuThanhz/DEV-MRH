@@ -20,109 +20,91 @@ import vn.system.app.modules.jdflow.service.JobDescriptionFlowService;
 @RequestMapping("/api/v1/jd-flows")
 public class JobDescriptionFlowController {
 
-    private final JobDescriptionFlowService flowService;
-    private final JobDescriptionFlowQueryService queryService;
+        private final JobDescriptionFlowService flowService;
+        private final JobDescriptionFlowQueryService queryService;
 
-    public JobDescriptionFlowController(
-            JobDescriptionFlowService flowService,
-            JobDescriptionFlowQueryService queryService) {
+        public JobDescriptionFlowController(
+                        JobDescriptionFlowService flowService,
+                        JobDescriptionFlowQueryService queryService) {
+                this.flowService = flowService;
+                this.queryService = queryService;
+        }
 
-        this.flowService = flowService;
-        this.queryService = queryService;
-    }
+        // =====================================================
+        // 1. GỬI JD ĐI DUYỆT LẦN ĐẦU
+        // Quyền: JD_SUBMIT (check trong service)
+        // =====================================================
+        @PostMapping
+        @ApiMessage("Gửi JD đi duyệt")
+        public ResponseEntity<ResJobDescriptionFlowDTO> createFlow(
+                        @RequestBody ReqCreateFlow req) throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 1. GỬI JD ĐI DUYỆT LẦN ĐẦU
-     * Quyền: JD_SUBMIT (check trong service)
-     * =====================================================
-     */
-    @PostMapping
-    @ApiMessage("Gửi JD đi duyệt")
-    public ResponseEntity<ResJobDescriptionFlowDTO> createFlow(
-            @RequestBody ReqCreateFlow req)
-            throws IdInvalidException {
+                ResJobDescriptionFlowDTO result = flowService.createFlow(req);
+                return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        }
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(flowService.createFlow(req));
-    }
+        // =====================================================
+        // 2. DUYỆT & CHUYỂN CẤP
+        // Quyền: JD_APPROVE
+        // =====================================================
+        @PostMapping("/{flowId}/approve")
+        @ApiMessage("Duyệt JD và chuyển cấp")
+        public ResponseEntity<ResJobDescriptionFlowDTO> approve(
+                        @PathVariable Long flowId,
+                        @RequestBody ReqApproveFlow req) throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 2. DUYỆT & CHUYỂN CẤP
-     * Quyền: JD_APPROVE (check trong service)
-     * =====================================================
-     */
-    @PostMapping("/{flowId}/approve")
-    @ApiMessage("Duyệt JD và chuyển cấp")
-    public ResponseEntity<ResJobDescriptionFlowDTO> approve(
-            @PathVariable Long flowId,
-            @RequestBody ReqApproveFlow req)
-            throws IdInvalidException {
+                ResJobDescriptionFlowDTO result = flowService.approve(flowId, req.getNextUserId());
+                return ResponseEntity.ok(result);
+        }
 
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(flowService.approve(flowId, req.getNextUserId()));
-    }
+        // =====================================================
+        // 3. TỪ CHỐI DUYỆT
+        // Quyền: JD_APPROVE
+        // =====================================================
+        @PostMapping("/{flowId}/reject")
+        @ApiMessage("Từ chối JD")
+        public ResponseEntity<ResJobDescriptionFlowDTO> reject(
+                        @PathVariable Long flowId,
+                        @RequestBody ReqRejectFlow req) throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 3. TỪ CHỐI
-     * Quyền: JD_APPROVE (check trong service)
-     * =====================================================
-     */
-    @PostMapping("/{flowId}/reject")
-    @ApiMessage("Từ chối JD")
-    public ResponseEntity<ResJobDescriptionFlowDTO> reject(
-            @PathVariable Long flowId,
-            @RequestBody ReqRejectFlow req)
-            throws IdInvalidException {
+                ResJobDescriptionFlowDTO result = flowService.reject(flowId, req);
+                return ResponseEntity.ok(result);
+        }
 
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(flowService.reject(flowId, req));
-    }
+        // =====================================================
+        // 4. BAN HÀNH JD
+        // Quyền: JD_ISSUE
+        // =====================================================
+        @PostMapping("/{flowId}/issue")
+        @ApiMessage("Ban hành JD")
+        public ResponseEntity<ResJobDescriptionFlowDTO> issue(
+                        @PathVariable Long flowId) throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 4. BAN HÀNH JD
-     * Quyền: JD_ISSUE (check trong service)
-     * =====================================================
-     */
-    @PostMapping("/{flowId}/issue")
-    @ApiMessage("Ban hành JD")
-    public ResponseEntity<ResJobDescriptionFlowDTO> issue(
-            @PathVariable Long flowId)
-            throws IdInvalidException {
+                ResJobDescriptionFlowDTO result = flowService.issue(flowId);
+                return ResponseEntity.ok(result);
+        }
 
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(flowService.issue(flowId));
-    }
+        // =====================================================
+        // 5. GET FLOW MỚI NHẤT CỦA MỘT JD
+        // =====================================================
+        @GetMapping("/by-jd/{jdId}")
+        @ApiMessage("Xem luồng duyệt hiện tại của JD")
+        public ResponseEntity<ResJobDescriptionFlowDTO> getByJobDescription(
+                        @PathVariable Long jdId) throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 5. XEM FLOW MỚI NHẤT CỦA MỘT JD
-     * =====================================================
-     */
-    @GetMapping("/by-jd/{jdId}")
-    @ApiMessage("Xem luồng duyệt theo JD")
-    public ResponseEntity<ResJobDescriptionFlowDTO> getByJobDescription(
-            @PathVariable Long jdId)
-            throws IdInvalidException {
+                ResJobDescriptionFlowDTO result = queryService.getByJobDescriptionId(jdId);
+                return ResponseEntity.ok(result);
+        }
 
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(queryService.getByJobDescriptionId(jdId));
-    }
+        // =====================================================
+        // 6. LẤY DANH SÁCH NGƯỜI DUYỆT CAO CẤP HƠN USER HIỆN TẠI
+        // =====================================================
+        @GetMapping("/approvers/current")
+        @ApiMessage("Danh sách người có thể duyệt (cấp cao hơn bạn)")
+        public ResponseEntity<List<ResApproverDTO>> getApproversHigher()
+                        throws IdInvalidException {
 
-    /*
-     * =====================================================
-     * 6. LẤY DANH SÁCH NGƯỜI DUYỆT CAO CẤP HƠN USER HIỆN TẠI
-     * =====================================================
-     */
-    @GetMapping("/approvers/current")
-    @ApiMessage("Danh sách người có thể duyệt (cao cấp hơn bạn)")
-    public ResponseEntity<List<ResApproverDTO>> getApproversHigher()
-            throws IdInvalidException {
-
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(flowService.getApproversHigherThanCurrentUser());
-    }
+                List<ResApproverDTO> list = flowService.getApproversHigherThanCurrentUser();
+                return ResponseEntity.ok(list);
+        }
 }

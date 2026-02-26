@@ -117,6 +117,7 @@ public class DepartmentJobTitleController {
      * GET DEPARTMENT JOB TITLES (DIRECT)
      * =====================================================
      */
+
     @GetMapping("/departments/{departmentId}/job-titles")
     @ApiMessage("Danh sách chức danh gán trực tiếp ở phòng ban")
     public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchJobTitlesByDepartment(

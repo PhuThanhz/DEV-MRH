@@ -18,59 +18,45 @@ public class JobDescriptionFlowPermissionService {
         this.userRepo = userRepo;
     }
 
+    // ==============================
+    // HÀM CHUNG KIỂM TRA PERMISSION
+    // ==============================
+    private void ensurePermission(User user, String permissionName) {
+        if (user == null || user.getRole() == null || user.getRole().getPermissions() == null) {
+            throw new IdInvalidException("User không hợp lệ hoặc chưa được gán quyền");
+        }
+
+        boolean hasPermission = user.getRole().getPermissions().stream()
+                .anyMatch(p -> permissionName.equals(p.getName()));
+
+        if (!hasPermission) {
+            throw new IdInvalidException("User không có permission: " + permissionName);
+        }
+    }
+
     // =====================================================
     // CHECK QUYỀN GỬI JD (SUBMIT)
     // =====================================================
     public void checkSubmitPermission(User actor) {
-
-        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
-            throw new IdInvalidException("User không có quyền gửi JD");
-        }
-
-        boolean hasPermission = actor.getRole().getPermissions().stream()
-                .anyMatch(p -> "JD_SUBMIT".equals(p.getName()));
-
-        if (!hasPermission) {
-            throw new IdInvalidException("User không có permission JD_SUBMIT");
-        }
+        ensurePermission(actor, "JD_SUBMIT");
     }
 
     // =====================================================
     // CHECK QUYỀN DUYỆT JD (APPROVE)
     // =====================================================
     public void checkApprovePermission(User actor) {
-
-        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
-            throw new IdInvalidException("User không có quyền duyệt JD");
-        }
-
-        boolean hasPermission = actor.getRole().getPermissions().stream()
-                .anyMatch(p -> "JD_APPROVE".equals(p.getName()));
-
-        if (!hasPermission) {
-            throw new IdInvalidException("User không có permission duyệt JD");
-        }
+        ensurePermission(actor, "JD_APPROVE");
     }
 
     // =====================================================
     // CHECK QUYỀN BAN HÀNH JD (ISSUE)
     // =====================================================
     public void checkIssuePermission(User actor) {
-
-        if (actor == null || actor.getRole() == null || actor.getRole().getPermissions() == null) {
-            throw new IdInvalidException("User không có quyền ban hành JD");
-        }
-
-        boolean hasPermission = actor.getRole().getPermissions().stream()
-                .anyMatch(p -> "JD_ISSUE".equals(p.getName()));
-
-        if (!hasPermission) {
-            throw new IdInvalidException("User không có permission ban hành JD");
-        }
+        ensurePermission(actor, "JD_ISSUE");
     }
 
     // =====================================================
-    // VALIDATE GỬI JD LẦN ĐẦU (SUBMIT)
+    // VALIDATE SUBMIT LẦN ĐẦU
     // =====================================================
     public void validateSubmit(User actor, User nextUser) {
 
@@ -92,14 +78,14 @@ public class JobDescriptionFlowPermissionService {
             throw new IdInvalidException("User chưa được gán chức danh / cấp bậc");
         }
 
-        // rank nhỏ hơn = cấp cao hơn
+        // rank nhỏ = cấp cao
         if (nextRank >= actorRank) {
             throw new IdInvalidException("Người nhận phải có cấp bậc cao hơn người gửi");
         }
     }
 
     // =====================================================
-    // VALIDATE DUYỆT & CHUYỂN CẤP (APPROVE)
+    // VALIDATE DUYỆT & CHUYỂN CẤP
     // =====================================================
     public void validateApproveAndNext(User actor, User nextUser) {
 
@@ -127,7 +113,7 @@ public class JobDescriptionFlowPermissionService {
     }
 
     // =====================================================
-    // LẤY DANH SÁCH NGƯỜI DUYỆT CAO HƠN (CHO UI)
+    // LẤY DANH SÁCH NGƯỜI CÓ THỂ DUYỆT (CAO HƠN USER HIỆN TẠI)
     // =====================================================
     public List<User> getApproversHigherThan(User actor) {
 

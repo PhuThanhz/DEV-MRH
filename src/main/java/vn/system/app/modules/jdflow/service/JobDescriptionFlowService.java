@@ -7,8 +7,9 @@ import org.springframework.stereotype.Service;
 
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.jd.domain.JobDescription;
-import vn.system.app.modules.jd.repository.JobDescriptionRepository;
+import vn.system.app.modules.jd.jobdescription.domain.JDStatus;
+import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
+import vn.system.app.modules.jd.jobdescription.repository.JobDescriptionRepository;
 import vn.system.app.modules.jdflow.domain.JobDescriptionFlow;
 import vn.system.app.modules.jdflow.domain.JobDescriptionFlow.FlowStatus;
 import vn.system.app.modules.jdflow.domain.request.ReqCreateFlow;
@@ -45,11 +46,9 @@ public class JobDescriptionFlowService {
         this.permissionService = permissionService;
     }
 
-    /*
-     * =====================================================
-     * CREATE FLOW – SUBMIT JD (GỬI DUYỆT LẦN ĐẦU)
-     * =====================================================
-     */
+    // =====================================================
+    // CREATE FLOW – GỬI JD ĐI DUYỆT
+    // =====================================================
     public ResJobDescriptionFlowDTO createFlow(ReqCreateFlow req)
             throws IdInvalidException {
 
@@ -60,7 +59,7 @@ public class JobDescriptionFlowService {
         JobDescription jd = jdRepo.findById(req.getJobDescriptionId())
                 .orElseThrow(() -> new IdInvalidException("JD không tồn tại"));
 
-        if (!"DRAFT".equals(jd.getStatus())) {
+        if (jd.getStatus() != JDStatus.DRAFT) {
             throw new IdInvalidException("Chỉ JD ở trạng thái DRAFT mới được gửi duyệt");
         }
 
@@ -73,7 +72,7 @@ public class JobDescriptionFlowService {
         User approver = userRepo.findById(req.getToUserId())
                 .orElseThrow(() -> new IdInvalidException("Người duyệt không tồn tại"));
 
-        // === CHECK ĐÚNG NGHIỆP VỤ SUBMIT ===
+        // Validate nghiệp vụ
         permissionService.validateSubmit(actor, approver);
 
         JobDescriptionFlow flow = new JobDescriptionFlow();
@@ -84,17 +83,16 @@ public class JobDescriptionFlowService {
 
         JobDescriptionFlow saved = flowRepo.save(flow);
 
-        jd.setStatus("PROCESSING");
+        // JD chuyển sang trạng thái chờ duyệt
+        jd.setStatus(JDStatus.PENDING);
         jdRepo.save(jd);
 
         return toRes(saved);
     }
 
-    /*
-     * =====================================================
-     * APPROVE – DUYỆT & CHUYỂN CẤP
-     * =====================================================
-     */
+    // =====================================================
+    // APPROVE – DUYỆT & CHUYỂN CẤP
+    // =====================================================
     public ResJobDescriptionFlowDTO approve(Long flowId, Long nextUserId)
             throws IdInvalidException {
 
@@ -104,29 +102,25 @@ public class JobDescriptionFlowService {
         return toRes(actionService.approve(flow, actor, nextUserId));
     }
 
-    /*
-     * =====================================================
-     * REJECT – TỪ CHỐI JD
-     * =====================================================
-     */
+    // =====================================================
+    // REJECT – TỪ CHỐI
+    // =====================================================
     public ResJobDescriptionFlowDTO reject(Long flowId, ReqRejectFlow req)
             throws IdInvalidException {
 
-        if (req == null || req.getComment() == null || req.getComment().isBlank()) {
+        if (req == null || req.getReason() == null || req.getReason().isBlank()) {
             throw new IdInvalidException("Thiếu lý do từ chối");
         }
 
         JobDescriptionFlow flow = queryService.getPendingFlow(flowId);
         User actor = getCurrentUser();
 
-        return toRes(actionService.reject(flow, actor, req.getComment()));
+        return toRes(actionService.reject(flow, actor, req.getReason()));
     }
 
-    /*
-     * =====================================================
-     * ISSUE – BAN HÀNH JD
-     * =====================================================
-     */
+    // =====================================================
+    // ISSUE – BAN HÀNH JD
+    // =====================================================
     public ResJobDescriptionFlowDTO issue(Long flowId)
             throws IdInvalidException {
 
@@ -136,11 +130,9 @@ public class JobDescriptionFlowService {
         return toRes(actionService.issue(flow, actor));
     }
 
-    /*
-     * =====================================================
-     * LẤY DANH SÁCH NGƯỜI DUYỆT CAO CẤP HƠN USER HIỆN TẠI
-     * =====================================================
-     */
+    // =====================================================
+    // LẤY DANH SÁCH NGƯỜI DUYỆT CAO CẤP HƠN USER HIỆN TẠI
+    // =====================================================
     public List<ResApproverDTO> getApproversHigherThanCurrentUser()
             throws IdInvalidException {
 
@@ -155,11 +147,9 @@ public class JobDescriptionFlowService {
                 .collect(Collectors.toList());
     }
 
-    /*
-     * =====================================================
-     * GET CURRENT USER
-     * =====================================================
-     */
+    // =====================================================
+    // GET CURRENT USER
+    // =====================================================
     private User getCurrentUser() throws IdInvalidException {
 
         String email = SecurityUtil.getCurrentUserLogin()
@@ -174,11 +164,9 @@ public class JobDescriptionFlowService {
         return user;
     }
 
-    /*
-     * =====================================================
-     * ENTITY → DTO
-     * =====================================================
-     */
+    // =====================================================
+    // ENTITY → DTO
+    // =====================================================
     private ResJobDescriptionFlowDTO toRes(JobDescriptionFlow flow) {
 
         ResJobDescriptionFlowDTO dto = new ResJobDescriptionFlowDTO();
@@ -187,9 +175,10 @@ public class JobDescriptionFlowService {
         dto.setJobDescriptionId(flow.getJobDescriptionId());
         dto.setFromUserId(flow.getFromUserId());
         dto.setToUserId(flow.getToUserId());
-        dto.setStatus(flow.getStatus() != null ? flow.getStatus().name() : null);
+        dto.setStatus(flow.getStatus().name());
         dto.setCreatedAt(flow.getCreatedAt());
-        dto.setUpdatedAt(flow.getUpdatedAt());
+
+        // ❌ Không còn updatedAt → xóa
 
         return dto;
     }

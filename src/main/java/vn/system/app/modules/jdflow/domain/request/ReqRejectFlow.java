@@ -1,5 +1,6 @@
 package vn.system.app.modules.jdflow.domain.request;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,5 +8,6 @@ import lombok.Setter;
 @Setter
 public class ReqRejectFlow {
 
-    private String comment;
+    @NotBlank(message = "Lý do từ chối không được để trống")
+    private String reason;
 }

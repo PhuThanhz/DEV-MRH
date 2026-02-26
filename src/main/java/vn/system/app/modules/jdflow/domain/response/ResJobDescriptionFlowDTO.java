@@ -13,15 +13,14 @@ public class ResJobDescriptionFlowDTO {
     // JD đang được duyệt
     private Long jobDescriptionId;
 
-    // Người gửi duyệt (người tạo JD)
+    // Người gửi duyệt (actor)
     private Long fromUserId;
 
-    // Người đang được giao duyệt (hoặc null nếu chờ ban hành)
+    // Người đang được giao duyệt
     private Long toUserId;
 
     // Trạng thái flow
     private String status;
 
     private Instant createdAt;
-    private Instant updatedAt;
 }
