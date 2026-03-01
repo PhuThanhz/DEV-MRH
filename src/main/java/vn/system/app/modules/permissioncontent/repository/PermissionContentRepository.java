@@ -30,4 +30,6 @@ public interface PermissionContentRepository
         boolean existsByNameAndCategory_IdAndActiveTrue(
                         String name,
                         Long categoryId);
+
+        List<PermissionContent> findByCategory_IdAndActiveTrue(Long categoryId);
 }

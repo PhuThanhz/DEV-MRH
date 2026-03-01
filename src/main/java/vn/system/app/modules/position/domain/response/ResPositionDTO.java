@@ -24,6 +24,9 @@ public class ResPositionDTO {
 
     private ReportsToInfo reportsTo;
 
+    // ⭐ USER ĐANG NGỒI GHẾ
+    private EmployeeInfo employee;
+
     @Getter
     @Setter
     public static class CompanyInfo {
@@ -60,5 +63,14 @@ public class ResPositionDTO {
     public static class ReportsToInfo {
         private Long id;
         private String jobTitleName;
+    }
+
+    // ⭐ THÔNG TIN USER
+    @Getter
+    @Setter
+    public static class EmployeeInfo {
+        private Long id;
+        private String name;
+        private String email;
     }
 }

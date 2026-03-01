@@ -50,6 +50,11 @@ public class DepartmentJobTitleService {
         this.departmentService = departmentService;
     }
 
+    // ⭐ Thêm method mới để PermissionMatrixService hoạt động
+    public List<DepartmentJobTitle> fetchEntitiesByIds(List<Long> ids) {
+        return repository.findAllById(ids);
+    }
+
     /*
      * =====================================================
      * CREATE + REACTIVATE

@@ -19,4 +19,7 @@ public class ReqPositionDTO {
     private Long jobTitleId;
 
     private Long reportsToId;
+
+    // ⭐ USER SẼ NGỒI VÀO GHẾ NÀY
+    private Long employeeId;
 }
