@@ -1,5 +1,6 @@
 package vn.system.app.modules.section.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,8 +15,11 @@ public interface SectionRepository
 
     boolean existsByCode(String code);
 
-    // ⭐ ĐÚNG CHUẨN thay cho UniqueConstraint
+    // kiểm tra code trùng trong cùng phòng ban
     boolean existsByCodeAndDepartmentId(String code, Long departmentId);
 
     Optional<Section> findByCode(String code);
+
+    // ⭐ lấy danh sách bộ phận theo phòng ban
+    List<Section> findByDepartmentId(Long departmentId);
 }

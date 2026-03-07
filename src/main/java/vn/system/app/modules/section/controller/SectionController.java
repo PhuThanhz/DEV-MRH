@@ -1,5 +1,7 @@
 package vn.system.app.modules.section.controller;
 
+import java.util.List;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -41,7 +43,7 @@ public class SectionController {
         return ResponseEntity.ok(sectionService.updateSection(req));
     }
 
-    /* ================= INACTIVE (TẮT BỘ PHẬN) ================= */
+    /* ================= INACTIVE ================= */
 
     @PutMapping("/{id}/inactive")
     @ApiMessage("Vô hiệu hoá bộ phận")
@@ -50,7 +52,7 @@ public class SectionController {
         return ResponseEntity.ok("Đã vô hiệu hoá bộ phận ID = " + id);
     }
 
-    /* ================= ACTIVE (BẬT LẠI BỘ PHẬN) ================= */
+    /* ================= ACTIVE ================= */
 
     @PutMapping("/{id}/active")
     @ApiMessage("Kích hoạt lại bộ phận")
@@ -65,6 +67,17 @@ public class SectionController {
     @ApiMessage("Chi tiết bộ phận")
     public ResponseEntity<ResSectionDTO> fetchOne(@PathVariable Long id) {
         return ResponseEntity.ok(sectionService.fetchOne(id));
+    }
+
+    /* ================= FETCH BY DEPARTMENT ================= */
+
+    @GetMapping("/by-department/{departmentId}")
+    @ApiMessage("Danh sách bộ phận theo phòng ban")
+    public ResponseEntity<List<ResSectionDTO>> fetchByDepartment(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(
+                sectionService.fetchByDepartment(departmentId));
     }
 
     /* ================= FETCH ALL ================= */

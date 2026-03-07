@@ -47,7 +47,7 @@ public class DepartmentService {
         d.setName(req.getName());
         d.setEnglishName(req.getEnglishName());
         d.setCompany(company);
-        d.setStatus(1); // Mặc định khi tạo là đang hoạt động
+        d.setStatus(1);
 
         d = departmentRepository.save(d);
         return convertToResponseDTO(d);
@@ -75,9 +75,11 @@ public class DepartmentService {
     @Transactional
     public void handleDeleteDepartment(Long id) {
         Department d = fetchEntityById(id);
+
         if (d.getStatus() == 0) {
             throw new IdInvalidException("Phòng ban đã bị vô hiệu hóa trước đó");
         }
+
         d.setStatus(0);
         departmentRepository.save(d);
     }
@@ -87,15 +89,18 @@ public class DepartmentService {
     @Transactional
     public DepartmentResponse handleActiveDepartment(Long id) {
         Department d = fetchEntityById(id);
+
         if (d.getStatus() == 1) {
             throw new IdInvalidException("Phòng ban này đang hoạt động");
         }
+
         d.setStatus(1);
         d = departmentRepository.save(d);
+
         return convertToResponseDTO(d);
     }
 
-    /* ================= FETCH ENTITY (FOR SERVICE) ================= */
+    /* ================= FETCH ENTITY ================= */
 
     public Department fetchEntityById(Long id) {
         return departmentRepository.findById(id)
@@ -123,6 +128,7 @@ public class DepartmentService {
         meta.setPageSize(pageable.getPageSize());
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
+
         rs.setMeta(meta);
 
         List<DepartmentResponse> list = page.getContent()
@@ -131,13 +137,28 @@ public class DepartmentService {
                 .collect(Collectors.toList());
 
         rs.setResult(list);
+
         return rs;
+    }
+
+    /* ================= FETCH BY COMPANY ================= */
+
+    public List<DepartmentResponse> fetchDepartmentsByCompany(Long companyId) {
+
+        List<Department> departments = departmentRepository.findByCompanyId(companyId);
+
+        return departments
+                .stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
     }
 
     /* ================= CONVERT ================= */
 
     public DepartmentResponse convertToResponseDTO(Department d) {
+
         DepartmentResponse res = new DepartmentResponse();
+
         res.setId(d.getId());
         res.setCode(d.getCode());
         res.setName(d.getName());
@@ -151,8 +172,10 @@ public class DepartmentService {
         DepartmentResponse.CompanyInfo ci = new DepartmentResponse.CompanyInfo();
         ci.setId(d.getCompany().getId());
         ci.setName(d.getCompany().getName());
+
         res.setCompany(ci);
 
         return res;
     }
+
 }

@@ -1,17 +1,21 @@
 package vn.system.app.modules.permissioncategory.controller;
 
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
+
 import vn.system.app.modules.permissioncategory.domain.PermissionCategory;
 import vn.system.app.modules.permissioncategory.domain.request.PermissionCategoryRequest;
 import vn.system.app.modules.permissioncategory.domain.response.PermissionCategoryResponse;
 import vn.system.app.modules.permissioncategory.service.PermissionCategoryService;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/permission-categories")
@@ -52,7 +56,7 @@ public class PermissionCategoryController {
     }
 
     // =====================================================
-    // GET ALL (PAGINATION)
+    // PAGINATION
     // =====================================================
     @GetMapping
     @ApiMessage("Danh sách danh mục phân quyền (phân trang)")
@@ -61,19 +65,18 @@ public class PermissionCategoryController {
     }
 
     // =====================================================
-    // GET BY ID
+    // DETAIL
     // =====================================================
     @GetMapping("/{id}")
     @ApiMessage("Chi tiết danh mục phân quyền")
-    public ResponseEntity<PermissionCategoryResponse> getDetail(
-            @PathVariable long id) {
+    public ResponseEntity<PermissionCategoryResponse> getDetail(@PathVariable long id) {
 
         PermissionCategory entity = service.fetchCategoryById(id);
         return ResponseEntity.ok(service.convertToResponse(entity));
     }
 
     // =====================================================
-    // DELETE (SOFT)
+    // DELETE (SOFT DELETE)
     // =====================================================
     @DeleteMapping("/{id}")
     @ApiMessage("Ngưng sử dụng danh mục phân quyền")
@@ -81,5 +84,17 @@ public class PermissionCategoryController {
 
         service.handleDeleteCategory(id);
         return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
+    // ⭐ LẤY DANH MỤC THEO PHÒNG BAN
+    // =====================================================
+    @GetMapping("/by-department/{departmentId}")
+    @ApiMessage("Danh mục phân quyền theo phòng ban")
+    public ResponseEntity<List<PermissionCategoryResponse>> getByDepartment(
+            @PathVariable Long departmentId) {
+
+        return ResponseEntity.ok(
+                service.fetchCategoriesByDepartment(departmentId));
     }
 }

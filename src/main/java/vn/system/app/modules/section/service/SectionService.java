@@ -1,5 +1,6 @@
 package vn.system.app.modules.section.service;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -40,7 +41,6 @@ public class SectionService {
     @Transactional
     public ResSectionDTO createSection(ReqCreateSectionDTO req) {
 
-        // Validate duplicate: code + department
         if (sectionRepo.existsByCodeAndDepartmentId(req.getCode(), req.getDepartmentId())) {
             throw new IdInvalidException("Mã bộ phận đã tồn tại trong phòng ban này");
         }
@@ -82,7 +82,7 @@ public class SectionService {
 
     /*
      * ============================================================
-     * INACTIVATE (TẮT BỘ PHẬN)
+     * INACTIVE
      * ============================================================
      */
     @Transactional
@@ -94,7 +94,7 @@ public class SectionService {
 
     /*
      * ============================================================
-     * ACTIVATE (BẬT LẠI BỘ PHẬN)
+     * ACTIVE
      * ============================================================
      */
     @Transactional
@@ -116,7 +116,7 @@ public class SectionService {
 
     /*
      * ============================================================
-     * FETCH ONE DTO
+     * FETCH ONE
      * ============================================================
      */
     public ResSectionDTO fetchOne(Long id) {
@@ -125,7 +125,21 @@ public class SectionService {
 
     /*
      * ============================================================
-     * FETCH ALL (PAGINATION + FILTER)
+     * FETCH BY DEPARTMENT
+     * ============================================================
+     */
+    public List<ResSectionDTO> fetchByDepartment(Long departmentId) {
+
+        List<Section> sections = sectionRepo.findByDepartmentId(departmentId);
+
+        return sections.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /*
+     * ============================================================
+     * FETCH ALL
      * ============================================================
      */
     public ResultPaginationDTO fetchAll(
@@ -143,6 +157,7 @@ public class SectionService {
         meta.setTotal(page.getTotalElements());
 
         rs.setMeta(meta);
+
         rs.setResult(
                 page.getContent()
                         .stream()
@@ -176,7 +191,9 @@ public class SectionService {
         ResSectionDTO.DepartmentInfo d = new ResSectionDTO.DepartmentInfo();
         d.setId(s.getDepartment().getId());
         d.setName(s.getDepartment().getName());
+
         res.setDepartment(d);
+
         return res;
     }
 }

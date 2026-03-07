@@ -91,4 +91,12 @@ public class DepartmentController {
         return ResponseEntity.ok(res);
     }
 
+    /* ================= GET BY COMPANY ================= */
+    @GetMapping("/departments/by-company/{companyId}")
+    @ApiMessage("Danh sách phòng ban theo công ty")
+    public ResponseEntity<?> getDepartmentsByCompany(@PathVariable Long companyId) {
+
+        return ResponseEntity.ok(
+                departmentService.fetchDepartmentsByCompany(companyId));
+    }
 }

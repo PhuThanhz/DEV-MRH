@@ -9,8 +9,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import jakarta.transaction.Transactional;
+
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
+
 import vn.system.app.modules.department.service.DepartmentService;
 import vn.system.app.modules.permissioncategory.domain.PermissionCategory;
 import vn.system.app.modules.permissioncategory.domain.request.PermissionCategoryRequest;
@@ -26,13 +28,14 @@ public class PermissionCategoryService {
     public PermissionCategoryService(
             PermissionCategoryRepository repository,
             DepartmentService departmentService) {
+
         this.repository = repository;
         this.departmentService = departmentService;
     }
 
-    // ==========================================================
+    // =====================================================
     // CREATE CATEGORY
-    // ==========================================================
+    // =====================================================
     @Transactional
     public PermissionCategory handleCreateCategory(PermissionCategoryRequest req) {
 
@@ -51,9 +54,9 @@ public class PermissionCategoryService {
         return repository.save(entity);
     }
 
-    // ==========================================================
+    // =====================================================
     // UPDATE CATEGORY
-    // ==========================================================
+    // =====================================================
     @Transactional
     public PermissionCategory handleUpdateCategory(long id, PermissionCategoryRequest req) {
 
@@ -79,9 +82,9 @@ public class PermissionCategoryService {
         return repository.save(entity);
     }
 
-    // ==========================================================
-    // DELETE CATEGORY (SOFT DELETE)
-    // ==========================================================
+    // =====================================================
+    // SOFT DELETE CATEGORY
+    // =====================================================
     @Transactional
     public void handleDeleteCategory(long id) {
         PermissionCategory entity = this.fetchCategoryById(id);
@@ -89,21 +92,20 @@ public class PermissionCategoryService {
         repository.save(entity);
     }
 
-    // ==========================================================
+    // =====================================================
     // FETCH CATEGORY BY ID
-    // ==========================================================
+    // =====================================================
     public PermissionCategory fetchCategoryById(long id) {
         Optional<PermissionCategory> optional = repository.findById(id);
         if (optional.isEmpty()) {
-            throw new IdInvalidException(
-                    "Danh mục phân quyền với id = " + id + " không tồn tại");
+            throw new IdInvalidException("Danh mục phân quyền với id = " + id + " không tồn tại");
         }
         return optional.get();
     }
 
-    // ==========================================================
-    // FETCH ALL CATEGORY (PAGINATION ONLY – NO FILTER)
-    // ==========================================================
+    // =====================================================
+    // PAGINATION
+    // =====================================================
     public ResultPaginationDTO fetchAllCategory(Pageable pageable) {
 
         Page<PermissionCategory> page = repository.findAll(pageable);
@@ -127,9 +129,21 @@ public class PermissionCategoryService {
         return rs;
     }
 
-    // ==========================================================
-    // CONVERT ENTITY → RESPONSE DTO
-    // ==========================================================
+    // =====================================================
+    // ⭐ LẤY CATEGORY THEO PHÒNG BAN
+    // =====================================================
+    public List<PermissionCategoryResponse> fetchCategoriesByDepartment(Long departmentId) {
+
+        var list = repository.findByDepartmentId(departmentId);
+
+        return list.stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // =====================================================
+    // CONVERT ENTITY → DTO
+    // =====================================================
     public PermissionCategoryResponse convertToResponse(PermissionCategory entity) {
 
         PermissionCategoryResponse res = new PermissionCategoryResponse();
