@@ -6,15 +6,17 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class StaticResourcesWebConfiguration
-        implements WebMvcConfigurer {
+public class StaticResourcesWebConfiguration implements WebMvcConfigurer {
 
-    @Value("${hoidanit.upload-file.base-uri}")
-    private String baseURI;
+    @Value("${lotusgroup.upload-file.dir}")
+    private String uploadDir;
+
+    @Value("${lotusgroup.upload-file.public-url}")
+    private String publicUrl;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/storage/**")
-                .addResourceLocations(baseURI);
+        registry.addResourceHandler(publicUrl + "/**")
+                .addResourceLocations("file:" + uploadDir + "/");
     }
 }

@@ -29,7 +29,7 @@ import vn.system.app.common.util.SecurityUtil;
 @EnableMethodSecurity(securedEnabled = true)
 public class SecurityConfiguration {
 
-    @Value("${hoidanit.jwt.base64-secret}")
+    @Value("${lotusgroup.jwt.base64-secret}")
     private String jwtKey;
 
     @Bean
@@ -62,7 +62,6 @@ public class SecurityConfiguration {
                 "/api/v1/department-salary-grades/**",
                 "/api/v1/section-salary-grades/**", "/api/v1/job-title-performance-contents/**",
                 "/api/v1/organizations/**", "/api/v1/positions/**", "/api/v1/permission-matrix/**",
-                "/api/v1/department-objectives/**", "/api/v1/department-procedures/**"
 
         };
         http
