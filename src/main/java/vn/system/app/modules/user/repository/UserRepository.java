@@ -22,4 +22,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     // ⭐ Override findAll để JOIN FETCH userInfo + role trong 1 query duy nhất
     @EntityGraph(attributePaths = { "userInfo", "role" })
     Page<User> findAll(Specification<User> spec, Pageable pageable);
+
+    @EntityGraph(attributePaths = { "userInfo", "role" })
+    User findWithUserInfoById(Long id);
 }

@@ -209,7 +209,29 @@ public class UserService {
             currentUser.setRole(r);
         }
 
-        return this.userRepository.save(currentUser);
+        User saved = this.userRepository.save(currentUser);
+        // ================= USER INFO =================
+        UserInfo userInfo = userInfoRepository.findByUser_Id(currentUser.getId())
+                .orElse(null);
+
+        if (userInfo == null) {
+            userInfo = new UserInfo();
+            userInfo.setUser(currentUser);
+        }
+        // update field
+        userInfo.setEmployeeCode(req.getEmployeeCode());
+        userInfo.setPhone(req.getPhone());
+        userInfo.setDateOfBirth(req.getDateOfBirth());
+        userInfo.setGender(req.getGender());
+        userInfo.setStartDate(req.getStartDate());
+        userInfo.setContractSignDate(req.getContractSignDate());
+        userInfo.setContractExpireDate(req.getContractExpireDate());
+
+        userInfoRepository.save(userInfo);
+        // load lại để lấy userInfo
+        User fullUser = this.userRepository.findWithUserInfoById(saved.getId());
+
+        return fullUser;
     }
 
     // ======================================================
