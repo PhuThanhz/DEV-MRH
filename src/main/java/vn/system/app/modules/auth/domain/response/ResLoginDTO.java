@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import vn.system.app.modules.role.domain.Role;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -23,8 +24,24 @@ public class ResLoginDTO {
         private long id;
         private String email;
         private String name;
-        private String avatar; // 🔥 THÊM DÒNG NÀY
+        private String avatar;
         private Role role;
+        private UserInfo userInfo; // ← THÊM
+    }
+
+    // ← THÊM inner class UserInfo
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class UserInfo {
+        private String employeeCode;
+        private String phone;
+        private Instant dateOfBirth;
+        private String gender;
+        private Instant startDate;
+        private Instant contractSignDate;
+        private Instant contractExpireDate;
     }
 
     @Getter
@@ -44,5 +61,4 @@ public class ResLoginDTO {
         private String email;
         private String name;
     }
-
 }

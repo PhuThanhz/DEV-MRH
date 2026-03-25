@@ -52,6 +52,34 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
     }
 
+    // ── HELPER: map UserInfo entity → DTO ──────────────────────────────────────
+    private ResLoginDTO.UserInfo mapUserInfo(User user) {
+        if (user.getUserInfo() == null)
+            return null;
+        var info = user.getUserInfo();
+        ResLoginDTO.UserInfo dto = new ResLoginDTO.UserInfo();
+        dto.setEmployeeCode(info.getEmployeeCode());
+        dto.setPhone(info.getPhone());
+        dto.setDateOfBirth(info.getDateOfBirth());
+        dto.setGender(info.getGender() != null ? info.getGender().name() : null);
+        dto.setStartDate(info.getStartDate());
+        dto.setContractSignDate(info.getContractSignDate());
+        dto.setContractExpireDate(info.getContractExpireDate());
+        return dto;
+    }
+
+    // ── HELPER: build UserLogin từ User entity ──────────────────────────────────
+    private ResLoginDTO.UserLogin buildUserLogin(User user) {
+        ResLoginDTO.UserLogin userLogin = new ResLoginDTO.UserLogin();
+        userLogin.setId(user.getId());
+        userLogin.setEmail(user.getEmail());
+        userLogin.setName(user.getName());
+        userLogin.setAvatar(user.getAvatar());
+        userLogin.setRole(user.getRole());
+        userLogin.setUserInfo(mapUserInfo(user)); // ← THÊM userInfo
+        return userLogin;
+    }
+
     @PostMapping("/auth/login")
     public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDto) {
         // Nạp input gồm username/password vào Security
@@ -68,13 +96,7 @@ public class AuthController {
         ResLoginDTO res = new ResLoginDTO();
         User currentUserDB = this.userService.handleGetUserByUsername(loginDto.getUsername());
         if (currentUserDB != null) {
-            ResLoginDTO.UserLogin userLogin = new ResLoginDTO.UserLogin(
-                    currentUserDB.getId(),
-                    currentUserDB.getEmail(),
-                    currentUserDB.getName(),
-                    currentUserDB.getAvatar(), // 🔥 THÊM DÒNG NÀY
-                    currentUserDB.getRole());
-            res.setUser(userLogin);
+            res.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
         }
 
         // create access token
@@ -109,17 +131,10 @@ public class AuthController {
                 : "";
 
         User currentUserDB = this.userService.handleGetUserByUsername(email);
-        ResLoginDTO.UserLogin userLogin = new ResLoginDTO.UserLogin();
         ResLoginDTO.UserGetAccount userGetAccount = new ResLoginDTO.UserGetAccount();
 
         if (currentUserDB != null) {
-            userLogin.setId(currentUserDB.getId());
-            userLogin.setEmail(currentUserDB.getEmail());
-            userLogin.setName(currentUserDB.getName());
-            userLogin.setAvatar(currentUserDB.getAvatar()); // 🔥 THÊM DÒNG NÀY
-            userLogin.setRole(currentUserDB.getRole());
-
-            userGetAccount.setUser(userLogin);
+            userGetAccount.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
         }
 
         return ResponseEntity.ok().body(userGetAccount);
@@ -128,10 +143,12 @@ public class AuthController {
     @GetMapping("/auth/refresh")
     @ApiMessage("Get User by refresh token")
     public ResponseEntity<ResLoginDTO> getRefreshToken(
-            @CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token) throws IdInvalidException {
+            @CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token)
+            throws IdInvalidException {
         if (refresh_token.equals("abc")) {
             throw new IdInvalidException("Bạn không có refresh token ở cookie");
         }
+
         // check valid
         Jwt decodedToken = this.securityUtil.checkValidRefreshToken(refresh_token);
         String email = decodedToken.getSubject();
@@ -146,14 +163,7 @@ public class AuthController {
         ResLoginDTO res = new ResLoginDTO();
         User currentUserDB = this.userService.handleGetUserByUsername(email);
         if (currentUserDB != null) {
-            ResLoginDTO.UserLogin userLogin = new ResLoginDTO.UserLogin(
-                    currentUserDB.getId(),
-                    currentUserDB.getEmail(),
-                    currentUserDB.getName(),
-                    currentUserDB.getAvatar(), // 🔥 THÊM DÒNG NÀY
-
-                    currentUserDB.getRole());
-            res.setUser(userLogin);
+            res.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
         }
 
         // create access token
@@ -183,7 +193,9 @@ public class AuthController {
     @PostMapping("/auth/logout")
     @ApiMessage("Logout User")
     public ResponseEntity<Void> logout() throws IdInvalidException {
-        String email = SecurityUtil.getCurrentUserLogin().isPresent() ? SecurityUtil.getCurrentUserLogin().get() : "";
+        String email = SecurityUtil.getCurrentUserLogin().isPresent()
+                ? SecurityUtil.getCurrentUserLogin().get()
+                : "";
 
         if (email.equals("")) {
             throw new IdInvalidException("Access Token không hợp lệ");
@@ -208,7 +220,8 @@ public class AuthController {
 
     @PostMapping("/auth/register")
     @ApiMessage("Register a new user")
-    public ResponseEntity<ResCreateUserDTO> register(@Valid @RequestBody User postManUser) throws IdInvalidException {
+    public ResponseEntity<ResCreateUserDTO> register(@Valid @RequestBody User postManUser)
+            throws IdInvalidException {
         boolean isEmailExist = this.userService.isEmailExist(postManUser.getEmail());
         if (isEmailExist) {
             throw new IdInvalidException(
@@ -218,10 +231,10 @@ public class AuthController {
         String hashPassword = this.passwordEncoder.encode(postManUser.getPassword());
         postManUser.setPassword(hashPassword);
         User ericUser = this.userService.handleCreateUser(postManUser);
-        return ResponseEntity.status(HttpStatus.CREATED).body(this.userService.convertToResCreateUserDTO(ericUser));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(this.userService.convertToResCreateUserDTO(ericUser));
     }
 
-    // Thêm vào AuthController.java
     @PostMapping("/auth/change-password")
     @ApiMessage("Change password")
     public ResponseEntity<Void> changePassword(
