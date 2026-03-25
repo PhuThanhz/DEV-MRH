@@ -1,72 +1,81 @@
-// package vn.system.app.modules.email.service;
+package vn.system.app.modules.email.service;
 
-// import java.nio.charset.StandardCharsets;
-// import org.springframework.mail.MailException;
-// import org.springframework.mail.MailSender;
-// import org.springframework.mail.SimpleMailMessage;
-// import org.springframework.mail.javamail.JavaMailSender;
-// import org.springframework.mail.javamail.MimeMessageHelper;
-// import org.springframework.scheduling.annotation.Async;
-// import org.springframework.stereotype.Service;
-// import org.thymeleaf.context.Context;
-// import org.thymeleaf.spring6.SpringTemplateEngine;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
-// import jakarta.mail.MessagingException;
-// import jakarta.mail.internet.MimeMessage;
+import org.springframework.mail.MailException;
+import org.springframework.mail.MailSender;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.thymeleaf.context.Context;
+import org.thymeleaf.spring6.SpringTemplateEngine;
 
-// @Service
-// public class EmailService {
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
-// private final MailSender mailSender;
-// private final JavaMailSender javaMailSender;
-// private final SpringTemplateEngine templateEngine;
+@Service
+public class EmailService {
 
-// public EmailService(MailSender mailSender,
-// JavaMailSender javaMailSender,
-// SpringTemplateEngine templateEngine) {
-// this.mailSender = mailSender;
-// this.javaMailSender = javaMailSender;
-// this.templateEngine = templateEngine;
-// }
+    private final MailSender mailSender;
+    private final JavaMailSender javaMailSender;
+    private final SpringTemplateEngine templateEngine;
 
-// public void sendSimpleEmail() {
-// SimpleMailMessage msg = new SimpleMailMessage();
-// msg.setTo("ads.hoidanit@gmail.com");
-// msg.setSubject("Testing from Spring Boot");
-// msg.setText("Hello World from Spring Boot Email");
-// this.mailSender.send(msg);
-// }
+    public EmailService(MailSender mailSender,
+            JavaMailSender javaMailSender,
+            SpringTemplateEngine templateEngine) {
+        this.mailSender = mailSender;
+        this.javaMailSender = javaMailSender;
+        this.templateEngine = templateEngine;
+    }
 
-// public void sendEmailSync(String to, String subject, String content, boolean
-// isMultipart, boolean isHtml) {
-// // Prepare message using a Spring helper
-// MimeMessage mimeMessage = this.javaMailSender.createMimeMessage();
-// try {
-// MimeMessageHelper message = new MimeMessageHelper(mimeMessage, isMultipart,
-// StandardCharsets.UTF_8.name());
-// message.setTo(to);
-// message.setSubject(subject);
-// message.setText(content, isHtml);
-// this.javaMailSender.send(mimeMessage);
-// } catch (MailException | MessagingException e) {
-// System.out.println("ERROR SEND EMAIL: " + e);
-// }
-// }
+    public void sendSimpleEmail() {
+        SimpleMailMessage msg = new SimpleMailMessage();
+        msg.setTo("ads.hoidanit@gmail.com");
+        msg.setSubject("Testing from Spring Boot");
+        msg.setText("Hello World from Spring Boot Email");
+        this.mailSender.send(msg);
+    }
 
-// @Async
-// public void sendEmailFromTemplateSync(
-// String to,
-// String subject,
-// String templateName,
-// String username,
-// Object value) {
+    public void sendEmailSync(String to, String subject, String content,
+            boolean isMultipart, boolean isHtml) {
+        MimeMessage mimeMessage = this.javaMailSender.createMimeMessage();
+        try {
+            MimeMessageHelper message = new MimeMessageHelper(mimeMessage,
+                    isMultipart, StandardCharsets.UTF_8.name());
+            message.setTo(to);
+            message.setSubject(subject);
+            message.setText(content, isHtml);
+            this.javaMailSender.send(mimeMessage);
+        } catch (MailException | MessagingException e) {
+            System.out.println("ERROR SEND EMAIL: " + e);
+        }
+    }
 
-// Context context = new Context();
-// context.setVariable("name", username);
-// context.setVariable("jobs", value);
+    @Async
+    public void sendEmailFromTemplateSync(
+            String to,
+            String subject,
+            String templateName,
+            String username,
+            Object value) {
 
-// String content = templateEngine.process(templateName, context);
-// this.sendEmailSync(to, subject, content, false, true);
-// }
+        Context context = new Context();
+        context.setVariable("name", username);
+        context.setVariable("jobs", value);
 
-// }
+        String content = templateEngine.process(templateName, context);
+        this.sendEmailSync(to, subject, content, false, true);
+    }
+
+    // ⭐ THÊM METHOD NÀY
+    @Async
+    public void sendTemplateEmail(String to, String subject, Map<String, Object> variables) {
+        Context context = new Context();
+        variables.forEach(context::setVariable);
+        String content = templateEngine.process("otp", context);
+        this.sendEmailSync(to, subject, content, false, true);
+    }
+}

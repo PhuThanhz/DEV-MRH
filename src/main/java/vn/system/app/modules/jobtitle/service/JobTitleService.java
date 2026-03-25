@@ -32,9 +32,11 @@ public class JobTitleService {
         this.positionLevelRepo = positionLevelRepo;
     }
 
-    // =========================
-    // CREATE
-    // =========================
+    /*
+     * ==========================================
+     * CREATE
+     * ==========================================
+     */
     @Transactional
     public ResJobTitleDTO handleCreate(ReqCreateJobTitleDTO req) {
 
@@ -53,17 +55,17 @@ public class JobTitleService {
         jt.setNameVi(req.getNameVi());
         jt.setNameEn(req.getNameEn());
         jt.setPositionLevel(pl);
-
-        // ⭐ Đổi từ status → active
         jt.setActive(req.getActive() != null ? req.getActive() : true);
 
         jt = jobTitleRepo.save(jt);
         return convertToDTO(jt);
     }
 
-    // =========================
-    // UPDATE
-    // =========================
+    /*
+     * ==========================================
+     * UPDATE
+     * ==========================================
+     */
     @Transactional
     public ResJobTitleDTO handleUpdate(ReqUpdateJobTitleDTO req) {
 
@@ -77,7 +79,6 @@ public class JobTitleService {
             jt.setNameEn(req.getNameEn());
         }
 
-        // ⭐ status → active
         if (req.getActive() != null) {
             jt.setActive(req.getActive());
         }
@@ -92,38 +93,42 @@ public class JobTitleService {
         return convertToDTO(jt);
     }
 
-    // =========================
-    // DELETE (SOFT DELETE)
-    // =========================
+    /*
+     * ==========================================
+     * DELETE (SOFT DELETE)
+     * ==========================================
+     */
     @Transactional
     public void handleDelete(Long id) {
         JobTitle jt = fetchEntityById(id);
-
-        // ⭐ soft delete dùng active = false
         jt.setActive(false);
-
         jobTitleRepo.save(jt);
     }
 
-    // =========================
-    // GET ONE
-    // =========================
+    /*
+     * ==========================================
+     * GET ONE
+     * ==========================================
+     */
     public ResJobTitleDTO getJobTitle(Long id) {
-        JobTitle jt = fetchEntityById(id);
-        return convertToDTO(jt);
+        return convertToDTO(fetchEntityById(id));
     }
 
-    // =========================
-    // GET ENTITY
-    // =========================
+    /*
+     * ==========================================
+     * GET ENTITY
+     * ==========================================
+     */
     public JobTitle fetchEntityById(Long id) {
         return jobTitleRepo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy chức danh"));
     }
 
-    // =========================
-    // GET ALL
-    // =========================
+    /*
+     * ==========================================
+     * GET ALL
+     * ==========================================
+     */
     public ResultPaginationDTO fetchAll(
             Specification<JobTitle> spec,
             Pageable pageable) {
@@ -139,27 +144,30 @@ public class JobTitleService {
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
 
-        List<ResJobTitleDTO> list = page.getContent()
-                .stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        rs.setResult(
+                page.getContent()
+                        .stream()
+                        .map(this::convertToDTO)
+                        .collect(Collectors.toList()));
 
-        rs.setResult(list);
         return rs;
     }
 
-    // =========================
-    // ★ THÊM MỚI: LẤY TẤT CẢ CHỨC DANH ĐANG ACTIVE (dùng cho
-    // CompanyJobTitleService)
-    // =========================
+    /*
+     * ==========================================
+     * FIND ALL ACTIVE
+     * ==========================================
+     */
     @Transactional(readOnly = true)
     public List<JobTitle> findAllActive() {
         return jobTitleRepo.findByActiveTrue();
     }
 
-    // =========================
-    // CONVERTER
-    // =========================
+    /*
+     * ==========================================
+     * CONVERTER
+     * ==========================================
+     */
     private ResJobTitleDTO convertToDTO(JobTitle jt) {
 
         ResJobTitleDTO res = new ResJobTitleDTO();
@@ -168,16 +176,24 @@ public class JobTitleService {
         res.setNameVi(jt.getNameVi());
         res.setNameEn(jt.getNameEn());
         res.setActive(jt.isActive());
-
         res.setCreatedAt(jt.getCreatedAt());
         res.setUpdatedAt(jt.getUpdatedAt());
         res.setCreatedBy(jt.getCreatedBy());
         res.setUpdatedBy(jt.getUpdatedBy());
 
         if (jt.getPositionLevel() != null) {
+
             ResJobTitleDTO.PositionLevelInfo pl = new ResJobTitleDTO.PositionLevelInfo();
+
             pl.setId(jt.getPositionLevel().getId());
             pl.setCode(jt.getPositionLevel().getCode());
+
+            // THÊM — map company từ positionLevel
+            if (jt.getPositionLevel().getCompany() != null) {
+                pl.setCompanyId(jt.getPositionLevel().getCompany().getId());
+                pl.setCompanyName(jt.getPositionLevel().getCompany().getName());
+            }
+
             res.setPositionLevel(pl);
         }
 

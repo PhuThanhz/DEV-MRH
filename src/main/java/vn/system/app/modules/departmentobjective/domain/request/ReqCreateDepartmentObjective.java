@@ -24,8 +24,14 @@ public class ReqCreateDepartmentObjective {
 
     /*
      * NHIỆM VỤ THEO BỘ PHẬN
+     * sectionId có thể null nếu phòng ban không có bộ phận
      */
     private List<SectionTask> tasks;
+
+    /*
+     * QUYỀN HẠN
+     */
+    private List<AuthorityItem> authorities;
 
     @Getter
     @Setter
@@ -40,6 +46,7 @@ public class ReqCreateDepartmentObjective {
     @Setter
     public static class SectionTask {
 
+        // null = phòng ban không có bộ phận, nhập list thẳng
         private Long sectionId;
 
         private List<TaskItem> items;
@@ -48,6 +55,15 @@ public class ReqCreateDepartmentObjective {
     @Getter
     @Setter
     public static class TaskItem {
+
+        private String content;
+
+        private Integer orderNo;
+    }
+
+    @Getter
+    @Setter
+    public static class AuthorityItem {
 
         private String content;
 

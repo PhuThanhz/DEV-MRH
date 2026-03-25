@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">Mã xác minh - Lotus HRM</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #efefef;
+            padding: 32px 12px;
+        }
+
+        /* ── Toàn bộ email nằm trong wrapper này ── */
+        .wrapper {
+            max-width: 540px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        /* ── HEADER ── */
+        .header {
+            padding: 22px 28px;
+            background: #ffffff;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            /* tăng từ 14 → 20 */
+        }
+
+        .header img {
+            height: 32px;
+            width: auto;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .header-sep {
+            width: 1.5px;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            margin: 0 4px;
+            /* thêm khoảng cách 2 bên */
+
+        }
+
+        .brand-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1a1a1a;
+            letter-spacing: 3px;
+        }
+
+        /* dải hồng mỏng dưới header */
+        .pink-band {
+            height: 3px;
+            background: linear-gradient(90deg, #e91e63, #f48fb1, #e91e63);
+        }
+
+        /* ── CONTENT ── */
+        .content {
+            padding: 30px 28px 26px;
+        }
+
+        .type-label {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: #c2185b;
+            border-left: 3px solid #f06292;
+            padding-left: 8px;
+            margin-bottom: 16px;
+        }
+
+        .greeting {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .greeting strong {
+            color: #111;
+            font-weight: 600;
+        }
+
+        .message {
+            font-size: 13.5px;
+            color: #555;
+            line-height: 1.85;
+            margin-bottom: 22px;
+        }
+
+        /* ── OTP BLOCK ── */
+        .otp-block {
+            background: #fff5f8;
+            border: 1.5px solid #fbd0de;
+            border-radius: 12px;
+            padding: 22px 20px 18px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .otp-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: #c2185b;
+            margin-bottom: 14px;
+        }
+
+        .otp-digits {
+            font-family: 'Space Mono', monospace;
+            font-size: 36px;
+            font-weight: 700;
+            color: #1a1a1a;
+            letter-spacing: 4px;
+            line-height: 1;
+            margin-bottom: 16px;
+        }
+
+        .otp-timer {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 11.5px;
+            font-weight: 500;
+            color: #e06080;
+            background: #ffffff;
+            border: 1px solid #fbd0de;
+            border-radius: 20px;
+            padding: 5px 14px;
+        }
+
+        .otp-timer svg {
+            width: 12px;
+            height: 12px;
+            flex-shrink: 0;
+        }
+
+        /* ── NOTE ── */
+        .note {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            background: #fafafa;
+            border: 1px solid #ebebeb;
+            border-radius: 8px;
+            padding: 13px 15px;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.75;
+            margin-bottom: 26px;
+        }
+
+        .note svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            color: #c2185b;
+        }
+
+        .note strong {
+            color: #333;
+        }
+
+        /* ── SIGN OFF ── */
+        .sign-off {
+            font-size: 13px;
+            color: #888;
+            padding-top: 20px;
+            border-top: 1px solid #f0f0f0;
+            line-height: 1.8;
+        }
+
+        .sign-off .team {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #111;
+            display: block;
+            margin-top: 2px;
+        }
+
+        /* ── FOOTER ── */
+        .footer {
+            background: #fafafa;
+            border-top: 1px solid #efefef;
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .footer img {
+            height: 16px;
+            opacity: 0.2;
+            object-fit: contain;
+        }
+
+        .footer-text {
+            font-size: 10.5px;
+            color: #bbb;
+            text-align: right;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wrapper">
+
+        <!-- HEADER -->
+        <div class="header">
+            <img src="https://lotusgroup.com.vn/wp-content/uploads/2020/09/logo.png" alt="Lotus">
+            <div class="header-sep"></div>
+            <span class="brand-name">LOTUS HRM</span>
+        </div>
+        <div class="pink-band"></div>
+
+        <!-- CONTENT -->
+        <div class="content">
+
+            <!-- ACTIVATE -->
+            <div th:if="${type == 'activate'}">
+                <span class="type-label">Kích hoạt tài khoản</span>
+                <p class="greeting">Kính gửi <strong th:text="${name}">Người dùng</strong>,</p>
+                <p class="message">
+                    Tài khoản <strong>Lotus HRM</strong> của bạn đã được tạo.
+                    Vui lòng sử dụng mã xác minh bên dưới để kích hoạt tài khoản và thiết lập mật khẩu.
+                </p>
+                <div class="otp-block">
+                    <span class="otp-label">Mã xác minh</span>
+                    <div class="otp-digits" th:text="${code}">123456</div>
+                    <div class="otp-timer">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        Hiệu lực trong 10 phút
+                    </div>
+                </div>
+
+                <div class="note">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span>Sau khi xác minh, bạn có thể thiết lập mật khẩu và đăng nhập vào hệ thống.
+                        Vui lòng <strong>không chia sẻ mã này</strong> với bất kỳ ai.</span>
+                </div>
+            </div>
+
+            <!-- RESET -->
+            <div th:if="${type == 'reset'}">
+                <span class="type-label">Đặt lại mật khẩu</span>
+                <p class="greeting">Kính gửi <strong th:text="${name}">Người dùng</strong>,</p>
+                <p class="message">
+                    Chúng tôi nhận được yêu cầu <strong>đặt lại mật khẩu</strong> cho tài khoản
+                    Lotus HRM của bạn. Vui lòng sử dụng mã xác minh bên dưới để tiếp tục.
+                </p>
+
+                <div class="otp-block">
+                    <span class="otp-label">Mã xác minh</span>
+                    <div class="otp-digits" th:text="${code}">12345678</div>
+                    <div class="otp-timer">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        Hiệu lực trong 10 phút
+                    </div>
+                </div>
+
+                <div class="note">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span>Nếu bạn <strong>không thực hiện</strong> yêu cầu này, hãy bỏ qua email —
+                        tài khoản của bạn vẫn an toàn. Tuyệt đối không chia sẻ mã cho người khác.</span>
+                </div>
+            </div>
+
+            <div class="sign-off">
+                Trân trọng,
+                <span class="team">TEC — Lotus HRM Support</span>
+            </div>
+
+        </div><!-- end .content -->
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <img src="https://lotusgroup.com.vn/wp-content/uploads/2020/09/logo.png" alt="Lotus">
+            <div class="footer-text">
+                Email tự động từ hệ thống Lotus HRM.<br>
+                Vui lòng không phản hồi lại email này.
+            </div>
+        </div>
+
+    </div><!-- end .wrapper -->
+
+</body>
+
+</html>

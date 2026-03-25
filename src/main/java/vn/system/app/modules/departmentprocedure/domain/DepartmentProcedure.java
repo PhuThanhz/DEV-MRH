@@ -9,7 +9,6 @@ import lombok.Setter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.section.domain.Section;
 
@@ -25,53 +24,33 @@ public class DepartmentProcedure {
     private Long id;
 
     private String procedureName;
-
     private String status;
-
     private Integer planYear;
 
     @Column(columnDefinition = "MEDIUMTEXT")
-    private String fileUrl;
+    private String fileUrls; // ← đổi từ fileUrl
 
     private String note;
 
-    private boolean active;
+    @Column(nullable = false)
+    private boolean active = true;
 
-    /*
-     * ==========================
-     * RELATIONSHIP
-     * ==========================
-     */
+    @Column(nullable = false)
+    private Integer version = 1;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    @JsonIgnoreProperties({ "departmentProcedures" })
-    private Company company;
-
-    @Column(name = "company_id", insertable = false, updatable = false)
-    private Long companyId;
+    // ===== RELATIONSHIP =====
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "department_id")
+    @JoinColumn(name = "department_id", nullable = false)
     @JsonIgnoreProperties({ "departmentProcedures" })
     private Department department;
-
-    @Column(name = "department_id", insertable = false, updatable = false)
-    private Long departmentId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id")
     @JsonIgnoreProperties({ "departmentProcedures" })
     private Section section;
 
-    @Column(name = "section_id", insertable = false, updatable = false)
-    private Long sectionId;
-
-    /*
-     * ==========================
-     * AUDIT
-     * ==========================
-     */
+    // ===== AUDIT =====
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -82,6 +61,10 @@ public class DepartmentProcedure {
     public void beforeCreate() {
         this.createdAt = Instant.now();
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+        if (!this.active)
+            this.active = true;
+        if (this.version == null)
+            this.version = 1;
     }
 
     @PreUpdate

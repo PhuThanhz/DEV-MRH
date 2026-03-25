@@ -16,7 +16,11 @@ public class ResPositionLevelDTO {
     private Integer levelNumber;
 
     private Integer status;
-    private boolean active; // ⭐ MATCH FE
+    private boolean active;
+
+    // ⭐ THÊM MỚI — thông tin công ty
+    private Long companyId;
+    private String companyName;
 
     private Instant createdAt;
     private Instant updatedAt;

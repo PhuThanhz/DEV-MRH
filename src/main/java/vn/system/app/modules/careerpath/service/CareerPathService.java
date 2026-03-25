@@ -1,13 +1,11 @@
 package vn.system.app.modules.careerpath.service;
 
-import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.careerpath.domain.CareerPath;
 import vn.system.app.modules.careerpath.domain.request.CareerPathRequest;
@@ -97,6 +95,8 @@ public class CareerPathService {
      * =====================================================
      * DEACTIVATE
      * =====================================================
+     * 
+     * @PreUpdate trong entity tự xử lý updatedAt & updatedBy
      */
     @Transactional
     public void handleDeactivate(Long id) {
@@ -106,9 +106,6 @@ public class CareerPathService {
             return;
 
         e.setActive(false);
-        e.setUpdatedAt(Instant.now());
-        e.setUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse("system"));
-
         repo.save(e);
     }
 
@@ -131,6 +128,14 @@ public class CareerPathService {
 
     public List<CareerPathResponse> fetchAllActive() {
         return repo.findByActiveTrue()
+                .stream()
+                .map(this::convertToResponse)
+                .toList();
+    }
+
+    // Lấy active theo phòng ban (dùng cho EmployeeCareerPath)
+    public List<CareerPathResponse> fetchActiveByDepartment(Long departmentId) {
+        return repo.findByDepartment_IdAndActiveTrue(departmentId)
                 .stream()
                 .map(this::convertToResponse)
                 .toList();
@@ -174,14 +179,15 @@ public class CareerPathService {
      * =====================================================
      * GLOBAL SORT
      * =====================================================
+     * Dùng query repo sort sẵn bandOrder DESC + code ASC,
+     * không cần sort lại trong Java
      */
     public List<CareerPathResponse> fetchGlobalCareerPath(Long departmentId) {
-        return repo.findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDesc(departmentId)
+        return repo
+                .findByDepartment_IdOrderByJobTitle_PositionLevel_BandOrderDescJobTitle_PositionLevel_CodeAsc(
+                        departmentId)
                 .stream()
                 .map(this::convertToResponse)
-                .sorted(Comparator
-                        .comparingInt((CareerPathResponse r) -> -r.getBandOrder())
-                        .thenComparingInt(CareerPathResponse::getLevelNumber))
                 .toList();
     }
 

@@ -7,40 +7,112 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import jakarta.transaction.Transactional;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.jobtitle.domain.JobTitle;
-import vn.system.app.modules.jobtitle.repository.JobTitleRepository;
+import vn.system.app.modules.email.service.EmailService;
 import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.role.service.RoleService;
 import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.user.domain.request.ReqCreateUserDTO;
+import vn.system.app.modules.user.domain.request.ReqUpdateUserDTO;
 import vn.system.app.modules.user.domain.response.ResCreateUserDTO;
 import vn.system.app.modules.user.domain.response.ResUpdateUserDTO;
 import vn.system.app.modules.user.domain.response.ResUserDTO;
 import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userinfo.domain.UserInfo;
+import vn.system.app.modules.userinfo.repository.UserInfoRepository;
 
 @Service
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserInfoRepository userInfoRepository;
     private final RoleService roleService;
-    private final JobTitleRepository jobTitleRepository;
+    private final EmailService emailService;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository,
+    public UserService(
+            UserRepository userRepository,
+            UserInfoRepository userInfoRepository,
             RoleService roleService,
-            JobTitleRepository jobTitleRepository) {
-
+            EmailService emailService,
+            PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.userInfoRepository = userInfoRepository;
         this.roleService = roleService;
-        this.jobTitleRepository = jobTitleRepository;
+        this.emailService = emailService;
+        this.passwordEncoder = passwordEncoder;
     }
 
-    // ==========================================
-    // CREATE USER
-    // ==========================================
+    // ======================================================
+    // CREATE USER + USERINFO (Admin - UserController)
+    // ======================================================
+    public ResCreateUserDTO handleCreateUser(ReqCreateUserDTO req) {
+
+        if (this.isEmailExist(req.getEmail())) {
+            throw new IdInvalidException("Email " + req.getEmail() + " đã tồn tại");
+        }
+
+        if (req.getEmployeeCode() != null
+                && userInfoRepository.existsByEmployeeCode(req.getEmployeeCode())) {
+            throw new IdInvalidException("Mã nhân viên " + req.getEmployeeCode() + " đã tồn tại");
+        }
+
+        User user = new User();
+        user.setName(req.getName());
+        user.setEmail(req.getEmail());
+
+        if (req.getPassword() != null && !req.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(req.getPassword()));
+            user.setActive(true);
+        } else {
+            user.setActive(false);
+        }
+
+        if (req.getActive() != null) {
+            user.setActive(req.getActive());
+        }
+
+        if (req.getRoleId() != null) {
+            Role r = roleService.fetchById(req.getRoleId());
+            user.setRole(r);
+        }
+
+        User savedUser = userRepository.save(user);
+
+        boolean hasUserInfo = req.getEmployeeCode() != null
+                || req.getPhone() != null
+                || req.getDateOfBirth() != null
+                || req.getGender() != null
+                || req.getStartDate() != null
+                || req.getContractSignDate() != null
+                || req.getContractExpireDate() != null;
+
+        UserInfo savedUserInfo = null;
+
+        if (hasUserInfo) {
+            UserInfo userInfo = new UserInfo();
+            userInfo.setUser(savedUser);
+            userInfo.setEmployeeCode(req.getEmployeeCode());
+            userInfo.setPhone(req.getPhone());
+            userInfo.setDateOfBirth(req.getDateOfBirth());
+            userInfo.setGender(req.getGender());
+            userInfo.setStartDate(req.getStartDate());
+            userInfo.setContractSignDate(req.getContractSignDate());
+            userInfo.setContractExpireDate(req.getContractExpireDate());
+            savedUserInfo = userInfoRepository.save(userInfo);
+        }
+
+        return convertToResCreateUserDTO(savedUser, savedUserInfo);
+    }
+
+    // ======================================================
+    // CREATE USER đơn giản (AuthController - /auth/register)
+    // ======================================================
     public User handleCreateUser(User user) {
 
         if (user.getRole() != null) {
@@ -48,28 +120,47 @@ public class UserService {
             user.setRole(r != null ? r : null);
         }
 
+        if (user.getPassword() == null || user.getPassword().isEmpty()) {
+            user.setActive(false);
+        } else {
+            user.setActive(true);
+        }
+
         return this.userRepository.save(user);
     }
 
-    // ==========================================
+    // ======================================================
+    // SAVE USER
+    // ======================================================
+    public User save(User user) {
+        return this.userRepository.save(user);
+    }
+
+    // ======================================================
     // DELETE USER
-    // ==========================================
+    // ======================================================
     public void handleDeleteUser(long id) {
+
+        if (!userRepository.existsById(id)) {
+            throw new IdInvalidException("User với id = " + id + " không tồn tại");
+        }
+
         this.userRepository.deleteById(id);
     }
 
-    // ==========================================
+    // ======================================================
     // FIND USER
-    // ==========================================
+    // ======================================================
     public User fetchUserById(long id) {
         Optional<User> userOptional = this.userRepository.findById(id);
         return userOptional.orElse(null);
     }
 
-    // ==========================================
+    // ======================================================
     // FETCH ALL WITH PAGINATION
-    // ==========================================
+    // ======================================================
     public ResultPaginationDTO fetchAllUser(Specification<User> spec, Pageable pageable) {
+
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -91,30 +182,67 @@ public class UserService {
         return rs;
     }
 
-    // ==========================================
-    // UPDATE USER
-    // ==========================================
-    public User handleUpdateUser(User reqUser) {
-        User currentUser = this.fetchUserById(reqUser.getId());
-        if (currentUser != null) {
+    // ======================================================
+    // UPDATE USER (ADMIN)
+    // ======================================================
+    public User handleUpdateUser(ReqUpdateUserDTO req) {
 
-            currentUser.setAddress(reqUser.getAddress());
-            currentUser.setAge(reqUser.getAge());
-            currentUser.setName(reqUser.getName());
+        User currentUser = this.fetchUserById(req.getId());
 
-            if (reqUser.getRole() != null) {
-                Role r = this.roleService.fetchById(reqUser.getRole().getId());
-                currentUser.setRole(r != null ? r : null);
-            }
-
-            currentUser = this.userRepository.save(currentUser);
+        if (currentUser == null) {
+            throw new IdInvalidException("User với id = " + req.getId() + " không tồn tại");
         }
-        return currentUser;
+
+        // update name
+        if (req.getName() != null) {
+            currentUser.setName(req.getName());
+        }
+
+        // update active
+        if (req.getActive() != null) {
+            currentUser.setActive(req.getActive());
+        }
+
+        // ⭐ QUAN TRỌNG NHẤT — update role
+        if (req.getRoleId() != null) {
+            Role r = this.roleService.fetchById(req.getRoleId());
+            currentUser.setRole(r);
+        }
+
+        return this.userRepository.save(currentUser);
     }
 
-    // ==========================================
+    // ======================================================
+    // UPDATE PROFILE (USER TỰ CẬP NHẬT)
+    // ======================================================
+    public User getCurrentUser() {
+
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+
+        if (email == null) {
+            return null;
+        }
+
+        return this.userRepository.findByEmail(email);
+    }
+
+    public User updateProfile(String name, String avatar) {
+
+        User currentUser = getCurrentUser();
+
+        if (currentUser == null) {
+            throw new IdInvalidException("Không tìm thấy người dùng hiện tại");
+        }
+
+        currentUser.setName(name);
+        currentUser.setAvatar(avatar);
+
+        return this.userRepository.save(currentUser);
+    }
+
+    // ======================================================
     // LOGIN SUPPORT
-    // ==========================================
+    // ======================================================
     public User handleGetUserByUsername(String username) {
         return this.userRepository.findByEmail(username);
     }
@@ -123,54 +251,73 @@ public class UserService {
         return this.userRepository.existsByEmail(email);
     }
 
-    // ==========================================
+    // ======================================================
     // TOKEN UPDATE
-    // ==========================================
+    // ======================================================
     public void updateUserToken(String token, String email) {
+
         User currentUser = this.handleGetUserByUsername(email);
-        if (currentUser != null) {
-            currentUser.setRefreshToken(token);
-            this.userRepository.save(currentUser);
+
+        if (currentUser == null) {
+            throw new IdInvalidException("User không tồn tại");
         }
+
+        currentUser.setRefreshToken(token);
+        this.userRepository.save(currentUser);
     }
 
     public User getUserByRefreshTokenAndEmail(String token, String email) {
         return this.userRepository.findByRefreshTokenAndEmail(token, email);
     }
 
-    // ==========================================
+    // ======================================================
     // CONVERT DTO
-    // ==========================================
-    public ResCreateUserDTO convertToResCreateUserDTO(User user) {
-        ResCreateUserDTO res = new ResCreateUserDTO();
+    // ======================================================
+    public ResCreateUserDTO convertToResCreateUserDTO(User user, UserInfo userInfo) {
 
+        ResCreateUserDTO res = new ResCreateUserDTO();
         res.setId(user.getId());
         res.setEmail(user.getEmail());
         res.setName(user.getName());
-        res.setAge(user.getAge());
+        res.setActive(user.isActive());
         res.setCreatedAt(user.getCreatedAt());
-        res.setAddress(user.getAddress());
+
+        if (userInfo != null) {
+            ResCreateUserDTO.UserInfoBasic info = new ResCreateUserDTO.UserInfoBasic();
+            info.setEmployeeCode(userInfo.getEmployeeCode());
+            info.setPhone(userInfo.getPhone());
+            info.setDateOfBirth(userInfo.getDateOfBirth());
+            info.setGender(userInfo.getGender());
+            info.setStartDate(userInfo.getStartDate());
+            info.setContractSignDate(userInfo.getContractSignDate());
+            info.setContractExpireDate(userInfo.getContractExpireDate());
+            res.setUserInfo(info);
+        }
 
         return res;
     }
 
-    public ResUpdateUserDTO convertToResUpdateUserDTO(User user) {
-        ResUpdateUserDTO res = new ResUpdateUserDTO();
+    public ResCreateUserDTO convertToResCreateUserDTO(User user) {
+        return convertToResCreateUserDTO(user, null);
+    }
 
+    public ResUpdateUserDTO convertToResUpdateUserDTO(User user) {
+
+        ResUpdateUserDTO res = new ResUpdateUserDTO();
         res.setId(user.getId());
         res.setName(user.getName());
-        res.setAge(user.getAge());
+        res.setActive(user.isActive());
         res.setUpdatedAt(user.getUpdatedAt());
-        res.setAddress(user.getAddress());
 
         return res;
     }
 
     public ResUserDTO convertToResUserDTO(User user) {
+
         ResUserDTO res = new ResUserDTO();
-        ResUserDTO.RoleUser roleUser = new ResUserDTO.RoleUser();
 
         if (user.getRole() != null) {
+            ResUserDTO.RoleUser roleUser = new ResUserDTO.RoleUser();
             roleUser.setId(user.getRole().getId());
             roleUser.setName(user.getRole().getName());
             res.setRole(roleUser);
@@ -179,31 +326,45 @@ public class UserService {
         res.setId(user.getId());
         res.setEmail(user.getEmail());
         res.setName(user.getName());
-        res.setAge(user.getAge());
+        res.setActive(user.isActive());
+        res.setAvatar(user.getAvatar());
         res.setUpdatedAt(user.getUpdatedAt());
         res.setCreatedAt(user.getCreatedAt());
-        res.setAddress(user.getAddress());
+
+        // ⭐ Dùng thẳng từ entity đã JOIN FETCH — không query thêm
+        UserInfo info = user.getUserInfo();
+        if (info != null) {
+            ResUserDTO.UserInfoBasic userInfoBasic = new ResUserDTO.UserInfoBasic();
+            userInfoBasic.setEmployeeCode(info.getEmployeeCode());
+            userInfoBasic.setPhone(info.getPhone());
+            userInfoBasic.setDateOfBirth(info.getDateOfBirth());
+            userInfoBasic.setGender(info.getGender());
+            userInfoBasic.setStartDate(info.getStartDate());
+            userInfoBasic.setContractSignDate(info.getContractSignDate());
+            userInfoBasic.setContractExpireDate(info.getContractExpireDate());
+            res.setUserInfo(userInfoBasic);
+        }
 
         return res;
     }
 
-    // ==========================================
-    // ⭐ NEW — ASSIGN JOB TITLES TO USER
-    // ==========================================
-    @Transactional
-    public void assignJobTitles(Long userId, List<Long> jobTitleIds) {
+    // ======================================================
+    // CHANGE PASSWORD
+    // ======================================================
+    // ⭐ Giữ lại PasswordEncoder trong tham số — AuthController đang truyền vào
+    public void changePassword(String oldPassword, String newPassword, PasswordEncoder passwordEncoder) {
 
-        User user = this.userRepository.findById(userId)
-                .orElseThrow(() -> new IdInvalidException("Không tìm thấy user ID = " + userId));
+        User currentUser = getCurrentUser();
 
-        List<JobTitle> titles = jobTitleRepository.findAllById(jobTitleIds);
-
-        if (titles.isEmpty()) {
-            throw new IdInvalidException("Danh sách jobTitleIds không hợp lệ.");
+        if (currentUser == null) {
+            throw new IdInvalidException("Không tìm thấy người dùng");
         }
 
-        user.setJobTitles(titles);
+        if (!passwordEncoder.matches(oldPassword, currentUser.getPassword())) {
+            throw new IdInvalidException("Mật khẩu cũ không chính xác");
+        }
 
-        this.userRepository.save(user);
+        currentUser.setPassword(passwordEncoder.encode(newPassword));
+        this.userRepository.save(currentUser);
     }
 }

@@ -13,6 +13,7 @@ public class ReqUpdatePositionLevelDTO {
 
     private String code;
     private Integer bandOrder;
-    private Integer status; // ⭐ MUST HAVE
+    private Integer status;
 
+    // ⭐ KHÔNG thêm companyId — không cho phép đổi công ty sau khi tạo
 }

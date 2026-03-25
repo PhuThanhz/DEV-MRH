@@ -1,7 +1,12 @@
 package vn.system.app.modules.companyprocedure.service;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,81 +15,149 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
-import vn.system.app.modules.companyprocedure.domain.request.CompanyProcedureRequest;
-import vn.system.app.modules.companyprocedure.domain.response.CompanyProcedureResponse;
-import vn.system.app.modules.companyprocedure.repository.CompanyProcedureRepository;
+
+import vn.system.app.modules.department.domain.Department;
+import vn.system.app.modules.department.repository.DepartmentRepository;
+
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
+
+import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
+import vn.system.app.modules.companyprocedure.domain.CompanyProcedureHistory;
+import vn.system.app.modules.companyprocedure.domain.request.CompanyProcedureRequest;
+import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureDTO;
+import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureHistoryDTO;
+import vn.system.app.modules.companyprocedure.repository.CompanyProcedureRepository;
+import vn.system.app.modules.companyprocedure.repository.CompanyProcedureHistoryRepository;
 
 @Service
 public class CompanyProcedureService {
 
     private final CompanyProcedureRepository repository;
+    private final CompanyProcedureHistoryRepository historyRepository;
+    private final DepartmentRepository departmentRepository;
     private final SectionRepository sectionRepository;
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     public CompanyProcedureService(
             CompanyProcedureRepository repository,
+            CompanyProcedureHistoryRepository historyRepository,
+            DepartmentRepository departmentRepository,
             SectionRepository sectionRepository) {
         this.repository = repository;
+        this.historyRepository = historyRepository;
+        this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
     }
 
-    /*
-     * =====================================================
-     * CREATE
-     * =====================================================
-     */
+    // =====================================================
+    // CREATE
+    // =====================================================
     @Transactional
-    public CompanyProcedureResponse handleCreate(CompanyProcedureRequest request) {
+    public ResCompanyProcedureDTO handleCreate(CompanyProcedureRequest req) {
 
-        if (repository.existsBySection_IdAndProcedureName(
-                request.getSectionId(),
-                request.getProcedureName())) {
-            throw new IdInvalidException("Quy trình đã tồn tại trong bộ phận này");
+        if (req.getDepartmentId() != null &&
+                repository.existsByDepartment_IdAndProcedureName(
+                        req.getDepartmentId(), req.getProcedureName())) {
+            throw new IdInvalidException("Quy trình đã tồn tại trong phòng ban này");
         }
 
-        Section section = sectionRepository.findById(request.getSectionId())
-                .orElseThrow(() -> new IdInvalidException("Không tìm thấy bộ phận"));
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
+
+        Section section = null;
+        if (req.getSectionId() != null) {
+            section = sectionRepository.findById(req.getSectionId())
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+        }
 
         CompanyProcedure entity = new CompanyProcedure();
+        entity.setProcedureName(req.getProcedureName());
+        entity.setStatus(req.getStatus());
+        entity.setPlanYear(req.getPlanYear());
+        entity.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        entity.setNote(req.getNote());
+        entity.setActive(true);
+        entity.setVersion(1);
+        entity.setDepartment(department);
         entity.setSection(section);
-        entity.setProcedureName(request.getProcedureName());
-        entity.setFileUrl(request.getFileUrl());
-        entity.setStatus(request.getStatus());
-        entity.setPlanYear(request.getPlanYear());
-        entity.setNote(request.getNote());
-        entity.setActive(true); // mặc định bật khi tạo mới
 
-        entity = repository.save(entity);
-        return convertToResponse(entity);
+        return convertToDTO(repository.save(entity));
     }
 
-    /*
-     * =====================================================
-     * UPDATE
-     * =====================================================
-     */
+    // =====================================================
+    // UPDATE
+    // =====================================================
     @Transactional
-    public CompanyProcedureResponse handleUpdate(Long id, CompanyProcedureRequest request) {
+    public ResCompanyProcedureDTO handleUpdate(Long id, CompanyProcedureRequest req) {
 
         CompanyProcedure current = fetchById(id);
+        saveHistory(current, "EDIT");
 
-        current.setFileUrl(request.getFileUrl());
-        current.setStatus(request.getStatus());
-        current.setPlanYear(request.getPlanYear());
-        current.setNote(request.getNote());
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
 
-        current = repository.save(current);
-        return convertToResponse(current);
+        Section section = null;
+        if (req.getSectionId() != null) {
+            section = sectionRepository.findById(req.getSectionId())
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+        }
+
+        current.setProcedureName(req.getProcedureName());
+        current.setStatus(req.getStatus());
+        current.setPlanYear(req.getPlanYear());
+        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        current.setNote(req.getNote());
+        current.setDepartment(department);
+        current.setSection(section);
+
+        return convertToDTO(repository.save(current));
     }
 
-    /*
-     * =====================================================
-     * TOGGLE ACTIVE (BẬT / TẮT)
-     * =====================================================
-     */
+    // =====================================================
+    // REVISE
+    // =====================================================
+    @Transactional
+    public ResCompanyProcedureDTO handleRevise(Long id, CompanyProcedureRequest req) {
+
+        CompanyProcedure current = fetchById(id);
+        saveHistory(current, "REVISE");
+
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
+
+        Section section = null;
+        if (req.getSectionId() != null) {
+            section = sectionRepository.findById(req.getSectionId())
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+        }
+
+        current.setProcedureName(req.getProcedureName());
+        current.setStatus(req.getStatus());
+        current.setPlanYear(req.getPlanYear());
+        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        current.setNote(req.getNote());
+        current.setDepartment(department);
+        current.setSection(section);
+        current.setVersion(current.getVersion() + 1);
+
+        return convertToDTO(repository.save(current));
+    }
+
+    // =====================================================
+    // TOGGLE ACTIVE
+    // =====================================================
     @Transactional
     public void handleToggleActive(Long id) {
         CompanyProcedure current = fetchById(id);
@@ -92,22 +165,29 @@ public class CompanyProcedureService {
         repository.save(current);
     }
 
-    /*
-     * =====================================================
-     * FETCH ONE
-     * =====================================================
-     */
-    public CompanyProcedure fetchById(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
+    // =====================================================
+    // DELETE
+    // =====================================================
+    @Transactional
+    public void handleDelete(Long id) {
+        fetchById(id);
+        repository.deleteById(id);
     }
 
-    /*
-     * =====================================================
-     * FETCH ALL (PAGINATION + FILTER)
-     * =====================================================
-     */
-    public ResultPaginationDTO fetchAll(Specification<CompanyProcedure> spec, Pageable pageable) {
+    // =====================================================
+    // FETCH ONE
+    // =====================================================
+    public CompanyProcedure fetchById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Quy trình không tồn tại"));
+    }
+
+    // =====================================================
+    // FETCH ALL
+    // =====================================================
+    public ResultPaginationDTO fetchAll(
+            Specification<CompanyProcedure> spec, Pageable pageable) {
+
         Page<CompanyProcedure> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -119,75 +199,154 @@ public class CompanyProcedureService {
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
 
-        List<CompanyProcedureResponse> list = page.getContent()
-                .stream()
-                .map(this::convertToResponse)
-                .collect(Collectors.toList());
-        rs.setResult(list);
+        rs.setResult(page.getContent().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList()));
 
         return rs;
     }
 
-    /*
-     * =====================================================
-     * FETCH BY DEPARTMENT
-     * =====================================================
-     */
-    public List<CompanyProcedureResponse> fetchByDepartment(Long departmentId) {
-        return repository.findBySection_Department_Id(departmentId)
+    // =====================================================
+    // FETCH BY DEPARTMENT
+    // =====================================================
+    public List<ResCompanyProcedureDTO> fetchByDepartment(Long departmentId) {
+        return repository.findByDepartment_Id(departmentId)
                 .stream()
-                .map(this::convertToResponse)
+                .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
-    /*
-     * =====================================================
-     * FETCH BY SECTION
-     * =====================================================
-     */
-    public List<CompanyProcedureResponse> fetchBySection(Long sectionId) {
+    // =====================================================
+    // FETCH BY SECTION
+    // =====================================================
+    public List<ResCompanyProcedureDTO> fetchBySection(Long sectionId) {
         return repository.findBySection_Id(sectionId)
                 .stream()
-                .map(this::convertToResponse)
+                .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
-    /*
-     * =====================================================
-     * CONVERT TO RESPONSE
-     * =====================================================
-     */
-    public CompanyProcedureResponse convertToResponse(CompanyProcedure e) {
-        CompanyProcedureResponse r = new CompanyProcedureResponse();
+    // =====================================================
+    // FETCH HISTORY
+    // =====================================================
+    public List<ResCompanyProcedureHistoryDTO> fetchHistory(Long procedureId) {
+        fetchById(procedureId);
+        return historyRepository.findByProcedure_IdOrderByVersionDesc(procedureId)
+                .stream()
+                .map(this::convertHistoryToDTO)
+                .collect(Collectors.toList());
+    }
 
-        r.setId(e.getId());
+    // =====================================================
+    // FETCH BY COMPANY
+    // =====================================================
+    public List<ResCompanyProcedureDTO> fetchByCompany(Long companyId) {
+        return repository.findByDepartment_Company_Id(companyId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
 
-        // ===== Company =====
-        r.setCompanyCode(e.getSection().getDepartment().getCompany().getCode());
-        r.setCompanyName(e.getSection().getDepartment().getCompany().getName());
+    // =====================================================
+    // SAVE HISTORY (private)
+    // =====================================================
+    private void saveHistory(CompanyProcedure e, String action) {
+        CompanyProcedureHistory history = new CompanyProcedureHistory();
+        history.setProcedure(e);
+        history.setVersion(e.getVersion());
+        history.setProcedureName(e.getProcedureName());
+        history.setStatus(e.getStatus());
+        history.setPlanYear(e.getPlanYear());
+        history.setFileUrls(e.getFileUrls()); // ← đổi
+        history.setNote(e.getNote());
+        history.setDepartmentName(e.getDepartment() != null ? e.getDepartment().getName() : null);
+        history.setSectionName(e.getSection() != null ? e.getSection().getName() : null);
+        history.setAction(action);
+        history.setChangedAt(Instant.now());
+        history.setChangedBy(SecurityUtil.getCurrentUserLogin().orElse(""));
+        historyRepository.save(history);
+    }
 
-        // ===== Department =====
-        r.setDepartmentId(e.getSection().getDepartment().getId());
-        r.setDepartmentName(e.getSection().getDepartment().getName());
+    // =====================================================
+    // HELPER — JSON array
+    // =====================================================
+    private String toJsonArray(List<String> urls) {
+        try {
+            return mapper.writeValueAsString(urls != null ? urls : new ArrayList<>());
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
 
-        // ===== Section =====
-        r.setSectionId(e.getSection().getId());
-        r.setSectionName(e.getSection().getName());
+    private List<String> fromJsonArray(String json) {
+        if (json == null || json.isBlank())
+            return new ArrayList<>();
+        try {
+            if (!json.trim().startsWith("["))
+                return List.of(json); // backward compatible
+            return mapper.readValue(json, new TypeReference<List<String>>() {
+            });
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
 
-        // ===== Procedure =====
-        r.setProcedureName(e.getProcedureName());
-        r.setFileUrl(e.getFileUrl());
-        r.setStatus(e.getStatus());
-        r.setPlanYear(e.getPlanYear());
-        r.setNote(e.getNote());
-        r.setActive(e.isActive());
+    // =====================================================
+    // CONVERT TO DTO
+    // =====================================================
+    public ResCompanyProcedureDTO convertToDTO(CompanyProcedure e) {
 
-        // ===== Audit =====
-        r.setCreatedAt(e.getCreatedAt());
-        r.setUpdatedAt(e.getUpdatedAt());
-        r.setCreatedBy(e.getCreatedBy());
-        r.setUpdatedBy(e.getUpdatedBy());
+        ResCompanyProcedureDTO dto = new ResCompanyProcedureDTO();
 
-        return r;
+        dto.setId(e.getId());
+
+        if (e.getDepartment() != null) {
+            dto.setDepartmentId(e.getDepartment().getId());
+            dto.setDepartmentName(e.getDepartment().getName());
+            if (e.getDepartment().getCompany() != null) {
+                dto.setCompanyCode(e.getDepartment().getCompany().getCode());
+                dto.setCompanyName(e.getDepartment().getCompany().getName());
+            }
+        }
+
+        if (e.getSection() != null) {
+            dto.setSectionId(e.getSection().getId());
+            dto.setSectionName(e.getSection().getName());
+        }
+
+        dto.setProcedureName(e.getProcedureName());
+        dto.setStatus(e.getStatus());
+        dto.setPlanYear(e.getPlanYear());
+        dto.setFileUrls(fromJsonArray(e.getFileUrls())); // ← đổi
+        dto.setNote(e.getNote());
+        dto.setActive(e.isActive());
+        dto.setVersion(e.getVersion());
+        dto.setCreatedAt(e.getCreatedAt());
+        dto.setUpdatedAt(e.getUpdatedAt());
+        dto.setCreatedBy(e.getCreatedBy());
+        dto.setUpdatedBy(e.getUpdatedBy());
+
+        return dto;
+    }
+
+    // =====================================================
+    // CONVERT HISTORY TO DTO
+    // =====================================================
+    public ResCompanyProcedureHistoryDTO convertHistoryToDTO(CompanyProcedureHistory h) {
+        ResCompanyProcedureHistoryDTO dto = new ResCompanyProcedureHistoryDTO();
+        dto.setId(h.getId());
+        dto.setProcedureId(h.getProcedure().getId());
+        dto.setVersion(h.getVersion());
+        dto.setProcedureName(h.getProcedureName());
+        dto.setStatus(h.getStatus());
+        dto.setPlanYear(h.getPlanYear());
+        dto.setFileUrls(fromJsonArray(h.getFileUrls())); // ← đổi
+        dto.setNote(h.getNote());
+        dto.setDepartmentName(h.getDepartmentName());
+        dto.setSectionName(h.getSectionName());
+        dto.setAction(h.getAction());
+        dto.setChangedAt(h.getChangedAt());
+        dto.setChangedBy(h.getChangedBy());
+        return dto;
     }
 }

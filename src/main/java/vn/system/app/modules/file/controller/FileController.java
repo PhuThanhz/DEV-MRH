@@ -51,17 +51,25 @@ public class FileController {
                         throw new StorageException("Invalid file name.");
                 }
 
-                List<String> allowedExtensions = Arrays.asList("pdf", "jpg", "jpeg", "png", "doc", "docx");
+                // ===== CHO PHÉP CẢ FILE + IMAGE =====
+                List<String> allowedExtensions = Arrays.asList(
+                                "pdf", "doc", "docx", "xls", "xlsx",
+                                "jpg", "jpeg", "png", "webp");
 
-                boolean isValid = allowedExtensions.stream()
-                                .anyMatch(ext -> originalName.toLowerCase().endsWith("." + ext));
+                // ===== LẤY EXTENSION CHUẨN =====
+                String ext = "";
+                int lastDot = originalName.lastIndexOf(".");
+                if (lastDot >= 0) {
+                        ext = originalName.substring(lastDot + 1).toLowerCase().trim();
+                }
 
-                if (!isValid) {
+                // ===== VALIDATE =====
+                if (!allowedExtensions.contains(ext)) {
                         throw new StorageException(
                                         "Invalid file extension. Only allows: " + allowedExtensions);
                 }
 
-                // tạo folder + lưu file
+                // Tạo folder + lưu file
                 fileService.createDirectory(folder);
                 String storedFileName = fileService.store(file, folder);
 
@@ -97,4 +105,5 @@ public class FileController {
                                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                                 .body(resource);
         }
+
 }

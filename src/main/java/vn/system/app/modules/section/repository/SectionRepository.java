@@ -15,11 +15,12 @@ public interface SectionRepository
 
     boolean existsByCode(String code);
 
-    // kiểm tra code trùng trong cùng phòng ban
     boolean existsByCodeAndDepartmentId(String code, Long departmentId);
 
     Optional<Section> findByCode(String code);
 
-    // ⭐ lấy danh sách bộ phận theo phòng ban
     List<Section> findByDepartmentId(Long departmentId);
+
+    // THÊM MỚI — check phòng ban có bộ phận không
+    boolean existsByDepartmentId(Long departmentId);
 }

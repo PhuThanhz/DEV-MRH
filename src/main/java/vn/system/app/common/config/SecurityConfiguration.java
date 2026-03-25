@@ -46,9 +46,10 @@ public class SecurityConfiguration {
                 "/",
                 "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/register",
                 "/storage/**",
-                "/api/v1/email/**",
+                "/api/v1/email/**", "/uploads/**",
                 "/v3/api-docs/**",
-                "/swagger-ui/**",
+                "/swagger-ui/**", "/api/v1/users/request-password-code", // ⭐ THÊM
+                "/api/v1/users/confirm-reset-password", // ⭐ THÊM
                 "/swagger-ui.html",
                 "/api/v1/companies/**", "/api/v1/position-levels/**", "/api/v1/departments/**", "/api/v1/job-titles/**",
                 "/api/v1/sections/**", "/api/v1/salary-grades/**", "/api/v1/org-job-titles/**",
@@ -58,10 +59,16 @@ public class SecurityConfiguration {
                 "/api/v1/department-job-titles/**",
                 "/api/v1/section-job-titles/**", "/api/v1/permission-contents/**", "/api/v1/permission-assignments/**",
                 "/api/v1/permission-categories/**", "/api/v1/dept-missions/**", "/api/v1/job-descriptions/**",
-                "/api/v1/jd-flows/**", "/api/v1/company-salary-grades/**",
+                "/api/v1/company-salary-grades/**",
                 "/api/v1/department-salary-grades/**",
                 "/api/v1/section-salary-grades/**", "/api/v1/job-title-performance-contents/**",
                 "/api/v1/organizations/**", "/api/v1/positions/**", "/api/v1/permission-matrix/**",
+                "/api/v1/users/profile", "/api/v1/files/**", "/api/v1/job-position-charts/**",
+                "/api/v1/job-position-nodes/**", "/api/v1/users/*/positions",
+                "/api/v1/users/positions/*", "/api/v1/users/request-password-code", // ← có chưa?
+                "/api/v1/users/confirm-reset-password", "/api/v1/procedures/**",
+                "/api/v1/department-procedures/**", "/api/v1/employee-career-paths/**",
+                "/api/v1/career-path-templates/**", // ← thêm vào whiteList
 
         };
         http

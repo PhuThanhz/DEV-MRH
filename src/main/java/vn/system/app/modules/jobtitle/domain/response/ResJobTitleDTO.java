@@ -25,5 +25,9 @@ public class ResJobTitleDTO {
     public static class PositionLevelInfo {
         private Long id;
         private String code;
+
+        // THÊM — FE cần để prefill dropdown công ty khi edit
+        private Long companyId;
+        private String companyName;
     }
 }

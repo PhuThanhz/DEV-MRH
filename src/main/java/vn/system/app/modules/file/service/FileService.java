@@ -26,7 +26,14 @@ public class FileService {
     }
 
     public String store(MultipartFile file, String folder) throws IOException {
-        String finalName = System.currentTimeMillis() + "-" + file.getOriginalFilename();
+        String originalName = file.getOriginalFilename();
+
+        // Sanitize tên file — xóa dấu cách và ký tự đặc biệt
+        String safeName = originalName
+                .replaceAll("\\s+", "_")
+                .replaceAll("[^a-zA-Z0-9._\\-]", "_");
+
+        String finalName = System.currentTimeMillis() + "-" + safeName;
 
         Path folderPath = Paths.get(rootDir, folder);
         Files.createDirectories(folderPath);

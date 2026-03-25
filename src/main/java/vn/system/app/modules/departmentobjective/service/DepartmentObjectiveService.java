@@ -79,18 +79,24 @@ public class DepartmentObjectiveService {
 
         /*
          * CREATE TASKS
+         * sectionId có thể null nếu phòng ban không có bộ phận
          */
         if (req.getTasks() != null) {
 
             for (ReqCreateDepartmentObjective.SectionTask st : req.getTasks()) {
 
-                Section section = sectionService.fetchEntityById(st.getSectionId());
+                Section section = null;
 
-                if (!section.getDepartment().getId()
-                        .equals(department.getId())) {
+                if (st.getSectionId() != null) {
 
-                    throw new IdInvalidException(
-                            "Section không thuộc phòng ban này");
+                    section = sectionService.fetchEntityById(st.getSectionId());
+
+                    if (!section.getDepartment().getId()
+                            .equals(department.getId())) {
+
+                        throw new IdInvalidException(
+                                "Section không thuộc phòng ban này");
+                    }
                 }
 
                 if (st.getItems() != null) {
@@ -104,11 +110,30 @@ public class DepartmentObjectiveService {
                         entity.setOrderNo(t.getOrderNo());
                         entity.setIssueDate(issueDate);
                         entity.setDepartment(department);
-                        entity.setSection(section);
+                        entity.setSection(section); // null nếu không có bộ phận
 
                         repository.save(entity);
                     }
                 }
+            }
+        }
+
+        /*
+         * CREATE AUTHORITIES
+         */
+        if (req.getAuthorities() != null) {
+
+            for (ReqCreateDepartmentObjective.AuthorityItem a : req.getAuthorities()) {
+
+                DepartmentObjective entity = new DepartmentObjective();
+
+                entity.setType("AUTHORITY");
+                entity.setContent(a.getContent());
+                entity.setOrderNo(a.getOrderNo());
+                entity.setIssueDate(issueDate);
+                entity.setDepartment(department);
+
+                repository.save(entity);
             }
         }
     }
@@ -177,8 +202,7 @@ public class DepartmentObjectiveService {
      * CONVERT ENTITY -> DTO
      * ==========================================
      */
-    public ResDepartmentObjectiveDTO convert(
-            DepartmentObjective e) {
+    public ResDepartmentObjectiveDTO convert(DepartmentObjective e) {
 
         ResDepartmentObjectiveDTO res = new ResDepartmentObjectiveDTO();
 
@@ -223,12 +247,16 @@ public class DepartmentObjectiveService {
      * LOAD MISSION TREE
      * ==========================================
      */
-    public ResDepartmentMissionTreeDTO fetchMissionTree(
-            Long departmentId) {
+    public ResDepartmentMissionTreeDTO fetchMissionTree(Long departmentId) {
 
         Department department = departmentService.fetchEntityById(departmentId);
 
         List<DepartmentObjective> list = repository.findByDepartmentId(departmentId);
+
+        /*
+         * TỰ ĐỘNG CHECK CÓ BỘ PHẬN KHÔNG
+         */
+        boolean hasSections = sectionService.existsByDepartmentId(departmentId);
 
         ResDepartmentMissionTreeDTO res = new ResDepartmentMissionTreeDTO();
 
@@ -238,6 +266,7 @@ public class DepartmentObjectiveService {
         d.setName(department.getName());
 
         res.setDepartment(d);
+        res.setHasSections(hasSections);
 
         res.setIssueDate(
                 list.isEmpty()
@@ -263,41 +292,85 @@ public class DepartmentObjectiveService {
                         .collect(Collectors.toList()));
 
         /*
-         * TASK GROUP BY SECTION
+         * TASKS
          */
-        Map<Section, List<DepartmentObjective>> map = list.stream()
-                .filter(i -> "TASK".equals(i.getType())
-                        && i.getSection() != null)
-                .collect(Collectors.groupingBy(
-                        DepartmentObjective::getSection));
+        if (hasSections) {
 
-        List<ResDepartmentMissionTreeDTO.SectionTask> sectionTasks = new ArrayList<>();
+            /*
+             * CÓ BỘ PHẬN → nhóm theo section
+             */
+            Map<Section, List<DepartmentObjective>> map = list.stream()
+                    .filter(i -> "TASK".equals(i.getType())
+                            && i.getSection() != null)
+                    .collect(Collectors.groupingBy(
+                            DepartmentObjective::getSection));
 
-        map.forEach((section, tasks) -> {
+            List<ResDepartmentMissionTreeDTO.SectionTask> sectionTasks = new ArrayList<>();
 
-            ResDepartmentMissionTreeDTO.SectionTask st = new ResDepartmentMissionTreeDTO.SectionTask();
+            map.forEach((section, tasks) -> {
 
-            st.setSectionId(section.getId());
-            st.setSectionName(section.getName());
+                ResDepartmentMissionTreeDTO.SectionTask st = new ResDepartmentMissionTreeDTO.SectionTask();
 
-            st.setTasks(
-                    tasks.stream()
-                            .map(t -> {
+                st.setSectionId(section.getId());
+                st.setSectionName(section.getName());
+
+                st.setTasks(
+                        tasks.stream()
+                                .map(t -> {
+
+                                    ResDepartmentMissionTreeDTO.TaskItem ti = new ResDepartmentMissionTreeDTO.TaskItem();
+
+                                    ti.setId(t.getId());
+                                    ti.setContent(t.getContent());
+
+                                    return ti;
+
+                                })
+                                .collect(Collectors.toList()));
+
+                sectionTasks.add(st);
+            });
+
+            res.setTasks(sectionTasks);
+
+        } else {
+
+            /*
+             * KHÔNG CÓ BỘ PHẬN → list thẳng
+             */
+            res.setGeneralTasks(
+                    list.stream()
+                            .filter(i -> "TASK".equals(i.getType()))
+                            .map(i -> {
 
                                 ResDepartmentMissionTreeDTO.TaskItem ti = new ResDepartmentMissionTreeDTO.TaskItem();
 
-                                ti.setId(t.getId());
-                                ti.setContent(t.getContent());
+                                ti.setId(i.getId());
+                                ti.setContent(i.getContent());
 
                                 return ti;
 
                             })
                             .collect(Collectors.toList()));
+        }
 
-            sectionTasks.add(st);
-        });
+        /*
+         * AUTHORITIES
+         */
+        res.setAuthorities(
+                list.stream()
+                        .filter(i -> "AUTHORITY".equals(i.getType()))
+                        .map(i -> {
 
-        res.setTasks(sectionTasks);
+                            ResDepartmentMissionTreeDTO.AuthorityItem a = new ResDepartmentMissionTreeDTO.AuthorityItem();
+
+                            a.setId(i.getId());
+                            a.setContent(i.getContent());
+
+                            return a;
+
+                        })
+                        .collect(Collectors.toList()));
 
         return res;
     }

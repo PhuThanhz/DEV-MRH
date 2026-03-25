@@ -22,6 +22,7 @@ import jakarta.validation.Valid;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.auth.domain.request.ReqChangePasswordDTO;
 import vn.system.app.modules.auth.domain.request.ReqLoginDTO;
 import vn.system.app.modules.auth.domain.response.ResLoginDTO;
 import vn.system.app.modules.user.domain.User;
@@ -71,6 +72,7 @@ public class AuthController {
                     currentUserDB.getId(),
                     currentUserDB.getEmail(),
                     currentUserDB.getName(),
+                    currentUserDB.getAvatar(), // 🔥 THÊM DÒNG NÀY
                     currentUserDB.getRole());
             res.setUser(userLogin);
         }
@@ -114,6 +116,7 @@ public class AuthController {
             userLogin.setId(currentUserDB.getId());
             userLogin.setEmail(currentUserDB.getEmail());
             userLogin.setName(currentUserDB.getName());
+            userLogin.setAvatar(currentUserDB.getAvatar()); // 🔥 THÊM DÒNG NÀY
             userLogin.setRole(currentUserDB.getRole());
 
             userGetAccount.setUser(userLogin);
@@ -147,6 +150,8 @@ public class AuthController {
                     currentUserDB.getId(),
                     currentUserDB.getEmail(),
                     currentUserDB.getName(),
+                    currentUserDB.getAvatar(), // 🔥 THÊM DÒNG NÀY
+
                     currentUserDB.getRole());
             res.setUser(userLogin);
         }
@@ -214,5 +219,19 @@ public class AuthController {
         postManUser.setPassword(hashPassword);
         User ericUser = this.userService.handleCreateUser(postManUser);
         return ResponseEntity.status(HttpStatus.CREATED).body(this.userService.convertToResCreateUserDTO(ericUser));
+    }
+
+    // Thêm vào AuthController.java
+    @PostMapping("/auth/change-password")
+    @ApiMessage("Change password")
+    public ResponseEntity<Void> changePassword(
+            @Valid @RequestBody ReqChangePasswordDTO req) throws IdInvalidException {
+
+        this.userService.changePassword(
+                req.getOldPassword(),
+                req.getNewPassword(),
+                passwordEncoder);
+
+        return ResponseEntity.ok().body(null);
     }
 }

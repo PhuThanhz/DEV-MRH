@@ -10,7 +10,8 @@ import lombok.Setter;
 public class ResUpdateUserDTO {
     private long id;
     private String name;
-    private String address;
-    private int age;
+    // ⭐ XÓA address
+    // ⭐ THÊM active
+    private boolean active;
     private Instant updatedAt;
 }

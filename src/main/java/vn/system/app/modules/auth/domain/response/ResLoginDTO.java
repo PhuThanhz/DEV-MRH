@@ -23,6 +23,7 @@ public class ResLoginDTO {
         private long id;
         private String email;
         private String name;
+        private String avatar; // 🔥 THÊM DÒNG NÀY
         private Role role;
     }
 

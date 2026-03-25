@@ -139,6 +139,15 @@ public class SectionService {
 
     /*
      * ============================================================
+     * CHECK CÓ BỘ PHẬN KHÔNG — THÊM MỚI
+     * ============================================================
+     */
+    public boolean existsByDepartmentId(Long departmentId) {
+        return sectionRepo.existsByDepartmentId(departmentId);
+    }
+
+    /*
+     * ============================================================
      * FETCH ALL
      * ============================================================
      */

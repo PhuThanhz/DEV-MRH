@@ -1,15 +1,19 @@
 package vn.system.app.modules.companyprocedure.domain;
 
 import java.time.Instant;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.modules.companyprocedure.domain.enums.ProcedureStatus;
+import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.section.domain.Section;
 
 @Entity
-@Table(name = "company_procedures") // ❌ bỏ uniqueConstraints cho đồng bộ với các entity khác
+@Table(name = "company_procedures")
 @Getter
 @Setter
 public class CompanyProcedure {
@@ -18,27 +22,34 @@ public class CompanyProcedure {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "procedure_name", nullable = false)
     private String procedureName;
-
-    @Column(length = 500)
-    private String fileUrl;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "section_id", nullable = false)
-    private Section section;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ProcedureStatus status;
-
+    private String status;
     private Integer planYear;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String fileUrls; // ← đổi từ fileUrl
+
     private String note;
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(nullable = false)
+    private Integer version = 1;
+
+    // ===== RELATIONSHIP =====
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id", nullable = false)
+    @JsonIgnoreProperties({ "companyProcedures" })
+    private Department department;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_id")
+    @JsonIgnoreProperties({ "companyProcedures" })
+    private Section section;
+
+    // ===== AUDIT =====
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -51,6 +62,8 @@ public class CompanyProcedure {
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
         if (!this.active)
             this.active = true;
+        if (this.version == null)
+            this.version = 1;
     }
 
     @PreUpdate

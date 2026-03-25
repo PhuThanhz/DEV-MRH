@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Thông báo công việc</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            margin: auto;
+        }
+
+        h2 {
+            color: #333333;
+        }
+
+        .job-card {
+            border: 1px solid #dddddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .job-card h3 {
+            margin: 0 0 8px 0;
+            color: #2c3e50;
+        }
+
+        .skill-tag {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin: 3px;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #999999;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Xin chào, <span th:text="${name}">User</span>!</h2>
+        <p>Dưới đây là danh sách công việc phù hợp với bạn:</p>
+
+        <div th:each="job : ${jobs}" class="job-card">
+            <h3 th:text="${job.name}">Tên công việc</h3>
+            <p>Mức lương: <strong th:text="${job.salary}">0</strong> VNĐ</p>
+            <div>
+                <span th:each="skill : ${job.skills}" th:text="${skill.name}" class="skill-tag">Skill</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Email này được gửi tự động, vui lòng không reply.</p>
+        </div>
+    </div>
+</body>
+
+</html>

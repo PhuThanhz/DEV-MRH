@@ -3,77 +3,132 @@ package vn.system.app.modules.jd.jobdescription.domain;
 import java.time.Instant;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.modules.company.domain.Company;
+import vn.system.app.modules.department.domain.Department;
+import vn.system.app.modules.companyjobtitle.domain.CompanyJobTitle;
+import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
+import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
 
 @Entity
 @Table(name = "job_descriptions")
 @Getter
 @Setter
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 public class JobDescription {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ================= HEADER =================
+    /*
+     * ==========================
+     * RELATION
+     * ==========================
+     */
 
-    @NotBlank
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String companyName;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    private Company company;
 
-    private String issueNumber;
-    private Instant issueDate;
-    private String pageTotal;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    private Department department;
 
-    // ⭐ NEW FIELD — Mã số JD
+    /*
+     * ==========================
+     * JOB TITLE
+     * ==========================
+     */
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_job_title_id")
+    private CompanyJobTitle companyJobTitle;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_job_title_id")
+    private DepartmentJobTitle departmentJobTitle;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_job_title_id")
+    private SectionJobTitle sectionJobTitle;
+
+    /*
+     * ==========================
+     * BASIC JD INFO
+     * ==========================
+     */
+
     private String code;
 
-    // ⭐ NEW FIELD — Lần ban hành
-    private String revision;
+    @Column(columnDefinition = "TEXT")
+    private String reportTo;
 
-    // ================= POSITION INFO =================
-
-    @NotBlank
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String jobTitleName;
-
-    @NotBlank
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String departmentName;
-
+    @Column(columnDefinition = "TEXT")
     private String belongsTo;
-    private String directManager;
-    private String workWith;
 
-    // ================= ASSIGNMENT =================
+    @Column(columnDefinition = "TEXT")
+    private String collaborateWith;
 
-    private String assignerTitle;
-    private String assignerName;
+    /*
+     * ==========================
+     * STATUS
+     * ==========================
+     */
 
-    // ================= STATUS =================
+    @Column(length = 20)
+    private String status = "DRAFT";
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private JDStatus status = JDStatus.DRAFT;
+    private Integer version;
 
-    // ================= AUDIT =================
+    private Instant effectiveDate;
+
+    /*
+     * ==========================
+     * AUDIT
+     * ==========================
+     */
 
     private Instant createdAt;
+
     private Instant updatedAt;
+
+    @Column(updatable = false)
     private String createdBy;
+
     private String updatedBy;
+
+    /*
+     * ==========================
+     * JPA AUDIT
+     * ==========================
+     */
 
     @PrePersist
     public void beforeCreate() {
+
         this.createdAt = Instant.now();
+
+        if (this.version == null) {
+            this.version = 1;
+        }
+
+        if (this.status == null) {
+            this.status = "DRAFT";
+        }
+
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }
 
     @PreUpdate
     public void beforeUpdate() {
+
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
     }

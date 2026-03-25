@@ -1,7 +1,6 @@
 package vn.system.app.modules.jobtitle.domain;
 
 import java.time.Instant;
-import java.util.List;
 
 import jakarta.persistence.*;
 
@@ -11,13 +10,12 @@ import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.modules.positionlevel.domain.PositionLevel;
-import vn.system.app.modules.user.domain.User;
 
 @Entity
 @Table(name = "job_titles")
 @Getter
 @Setter
-@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" }) // đồng bộ với Role/User
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 public class JobTitle {
 
     @Id
@@ -29,7 +27,6 @@ public class JobTitle {
 
     private String nameEn;
 
-    // ⭐ Đổi từ Integer status → boolean active
     private boolean active = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -37,9 +34,7 @@ public class JobTitle {
     @JsonIgnoreProperties({ "jobTitles" })
     private PositionLevel positionLevel;
 
-    @ManyToMany(mappedBy = "jobTitles", fetch = FetchType.LAZY)
-    @JsonIgnoreProperties({ "jobTitles", "role" })
-    private List<User> users;
+    // ⭐ XÓA List<User> users — quan hệ chuyển sang UserPosition
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -52,7 +47,7 @@ public class JobTitle {
         this.updatedAt = this.createdAt;
         this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
         if (!this.active)
-            this.active = true; // mặc định true
+            this.active = true;
     }
 
     @PreUpdate

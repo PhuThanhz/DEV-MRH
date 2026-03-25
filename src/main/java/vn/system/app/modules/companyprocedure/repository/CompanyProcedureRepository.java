@@ -5,29 +5,20 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
+
 import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
 
 @Repository
-public interface CompanyProcedureRepository
-        extends JpaRepository<CompanyProcedure, Long>, JpaSpecificationExecutor<CompanyProcedure> {
+public interface CompanyProcedureRepository extends
+        JpaRepository<CompanyProcedure, Long>,
+        JpaSpecificationExecutor<CompanyProcedure> {
 
-    // =========================
-    // EXISTS (check trùng khi tạo)
-    // =========================
-    boolean existsBySection_IdAndProcedureName(Long sectionId, String procedureName);
+    List<CompanyProcedure> findByDepartment_Id(Long departmentId);
 
-    // =========================
-    // FETCH BY DEPARTMENT
-    // =========================
-    List<CompanyProcedure> findBySection_Department_Id(Long departmentId);
-
-    // =========================
-    // FETCH BY SECTION
-    // =========================
     List<CompanyProcedure> findBySection_Id(Long sectionId);
 
-    // =========================
-    // FETCH ALL COMPANY (Toàn bộ công ty)
-    // =========================
-    List<CompanyProcedure> findAllByOrderBySection_Department_NameAsc();
+    boolean existsByDepartment_IdAndProcedureName(Long departmentId, String procedureName);
+
+    // ← THÊM: filter theo công ty
+    List<CompanyProcedure> findByDepartment_Company_Id(Long companyId);
 }

@@ -8,9 +8,12 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.modules.company.domain.Company; // ⭐ import Company
 
 @Entity
-@Table(name = "position_levels")
+@Table(name = "position_levels", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "code", "company_id" }) // ⭐ unique theo cặp
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
@@ -20,15 +23,17 @@ public class PositionLevel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
-    private String code; // S1, S2, M1...
+    @Column(nullable = false)
+    private String code; // S1, S2, M1... — unique constraint chuyển lên @Table
 
     private Integer bandOrder;
 
-    // ============================
-    // THÊM MỚI — Đồng bộ cấu trúc
-    // ============================
     private Integer status = 1; // 1 = active, 0 = inactive
+
+    // ⭐ THÊM MỚI — liên kết công ty
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
 
     private Instant createdAt;
     private Instant updatedAt;

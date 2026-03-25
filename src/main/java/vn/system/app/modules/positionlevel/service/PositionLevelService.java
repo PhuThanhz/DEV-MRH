@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.company.domain.Company;
+import vn.system.app.modules.company.repository.CompanyRepository;
 import vn.system.app.modules.positionlevel.domain.PositionLevel;
 import vn.system.app.modules.positionlevel.domain.request.ReqCreatePositionLevelDTO;
 import vn.system.app.modules.positionlevel.domain.request.ReqUpdatePositionLevelDTO;
@@ -21,9 +23,11 @@ import vn.system.app.modules.positionlevel.repository.PositionLevelRepository;
 public class PositionLevelService {
 
     private final PositionLevelRepository repo;
+    private final CompanyRepository companyRepo; // ⭐ THÊM MỚI
 
-    public PositionLevelService(PositionLevelRepository repo) {
+    public PositionLevelService(PositionLevelRepository repo, CompanyRepository companyRepo) {
         this.repo = repo;
+        this.companyRepo = companyRepo;
     }
 
     // ================= HELPERS ============================
@@ -35,8 +39,9 @@ public class PositionLevelService {
         return Integer.parseInt(code.replaceAll("[^0-9]", ""));
     }
 
-    private Integer findBandOrder(String band) {
-        return repo.findAll().stream()
+    // ⭐ THAY — filter theo companyId thay vì findAll()
+    private Integer findBandOrder(String band, Long companyId) {
+        return repo.findByCompanyId(companyId).stream()
                 .filter(x -> extractBand(x.getCode()).equals(band))
                 .map(PositionLevel::getBandOrder)
                 .findFirst()
@@ -48,7 +53,7 @@ public class PositionLevelService {
         PositionLevel pl = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tồn tại ID để vô hiệu hóa."));
 
-        pl.setStatus(0); // soft delete
+        pl.setStatus(0);
         repo.save(pl);
     }
 
@@ -67,23 +72,29 @@ public class PositionLevelService {
     // ================= CREATE ==============================
     public ResCreatePositionLevelDTO handleCreate(ReqCreatePositionLevelDTO req) {
 
-        if (repo.existsByCode(req.getCode())) {
-            throw new IdInvalidException("Code đã tồn tại.");
+        // ⭐ THÊM — validate & lấy company
+        Company company = companyRepo.findById(req.getCompanyId())
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy công ty."));
+
+        // ⭐ THAY — check code trùng trong phạm vi công ty
+        if (repo.existsByCodeAndCompanyId(req.getCode(), req.getCompanyId())) {
+            throw new IdInvalidException("Code đã tồn tại trong công ty này.");
         }
 
         String band = extractBand(req.getCode());
         Integer level = extractLevel(req.getCode());
 
-        boolean bandExists = repo.findAll()
+        // ⭐ THAY — check band tồn tại trong phạm vi công ty
+        boolean bandExists = repo.findByCompanyId(req.getCompanyId())
                 .stream()
                 .anyMatch(x -> extractBand(x.getCode()).equals(band));
 
         PositionLevel pl = new PositionLevel();
         pl.setCode(req.getCode());
-        pl.setStatus(1); // mặc định kích hoạt khi tạo
+        pl.setStatus(1);
+        pl.setCompany(company); // ⭐ THÊM — gán company
 
         if (!bandExists) {
-            // Band đầu tiên → phải level = 1
             if (level != 1) {
                 throw new IdInvalidException("Band mới phải bắt đầu bằng cấp 1 (S1, M1...).");
             }
@@ -92,13 +103,15 @@ public class PositionLevelService {
                 throw new IdInvalidException("BandOrder bắt buộc cho cấp đầu tiên.");
             }
 
-            if (repo.existsByBandOrder(req.getBandOrder())) {
-                throw new IdInvalidException("BandOrder đã tồn tại.");
+            // ⭐ THAY — check bandOrder trùng trong phạm vi công ty
+            if (repo.existsByBandOrderAndCompanyId(req.getBandOrder(), req.getCompanyId())) {
+                throw new IdInvalidException("BandOrder đã tồn tại trong công ty này.");
             }
 
             pl.setBandOrder(req.getBandOrder());
         } else {
-            pl.setBandOrder(findBandOrder(band));
+            // ⭐ THAY — truyền companyId vào helper
+            pl.setBandOrder(findBandOrder(band, req.getCompanyId()));
         }
 
         pl = repo.save(pl);
@@ -111,11 +124,16 @@ public class PositionLevelService {
         PositionLevel current = repo.findById(req.getId())
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy ID."));
 
+        // ⭐ Lấy companyId từ bản ghi hiện tại — không cho đổi công ty
+        Long companyId = current.getCompany().getId();
+
         // update code
         if (req.getCode() != null) {
 
-            if (repo.existsByCode(req.getCode()) && !req.getCode().equals(current.getCode())) {
-                throw new IdInvalidException("Code đã tồn tại.");
+            // ⭐ THAY — check code trùng trong phạm vi công ty
+            if (repo.existsByCodeAndCompanyId(req.getCode(), companyId)
+                    && !req.getCode().equals(current.getCode())) {
+                throw new IdInvalidException("Code đã tồn tại trong công ty này.");
             }
 
             String newBand = extractBand(req.getCode());
@@ -131,7 +149,9 @@ public class PositionLevelService {
         // update bandOrder
         if (req.getBandOrder() != null) {
             String band = extractBand(current.getCode());
-            Integer existingOrder = findBandOrder(band);
+
+            // ⭐ THAY — truyền companyId vào helper
+            Integer existingOrder = findBandOrder(band, companyId);
 
             if (existingOrder != null && !existingOrder.equals(req.getBandOrder())) {
                 throw new IdInvalidException("Không thể thay đổi bandOrder của band này.");
@@ -140,7 +160,7 @@ public class PositionLevelService {
             current.setBandOrder(req.getBandOrder());
         }
 
-        // ⭐⭐⭐ UPDATE STATUS — FIX BUG "KHÔNG BẬT TẮT ĐƯỢC"
+        // update status
         if (req.getStatus() != null) {
             current.setStatus(req.getStatus());
         }
@@ -189,6 +209,11 @@ public class PositionLevelService {
         res.setBand(extractBand(pl.getCode()));
         res.setLevelNumber(extractLevel(pl.getCode()));
         res.setBandOrder(pl.getBandOrder());
+
+        // ⭐ THÊM — thông tin công ty
+        res.setCompanyId(pl.getCompany().getId());
+        res.setCompanyName(pl.getCompany().getName());
+
         res.setCreatedAt(pl.getCreatedAt());
         res.setCreatedBy(pl.getCreatedBy());
 
@@ -206,6 +231,10 @@ public class PositionLevelService {
 
         res.setStatus(pl.getStatus());
         res.setActive(pl.getStatus() != null && pl.getStatus() == 1);
+
+        // ⭐ THÊM — thông tin công ty
+        res.setCompanyId(pl.getCompany().getId());
+        res.setCompanyName(pl.getCompany().getName());
 
         res.setCreatedAt(pl.getCreatedAt());
         res.setUpdatedAt(pl.getUpdatedAt());

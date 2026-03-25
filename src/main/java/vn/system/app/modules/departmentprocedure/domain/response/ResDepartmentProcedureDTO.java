@@ -1,6 +1,7 @@
 package vn.system.app.modules.departmentprocedure.domain.response;
 
 import java.time.Instant;
+import java.util.List;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -11,23 +12,25 @@ public class ResDepartmentProcedureDTO {
 
     private Long id;
 
-    private String procedureName;
-
+    private String companyCode;
     private String companyName;
 
+    private Long departmentId;
     private String departmentName;
 
+    private Long sectionId;
     private String sectionName;
 
+    private String procedureName;
     private String status;
-
     private Integer planYear;
-
-    private String fileUrl;
-
+    private List<String> fileUrls; // ← đổi từ String fileUrl
     private String note;
-
     private boolean active;
+    private Integer version;
 
     private Instant createdAt;
+    private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
 }

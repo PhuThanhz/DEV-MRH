@@ -14,9 +14,30 @@ public class ResDepartmentMissionTreeDTO {
 
     private LocalDate issueDate;
 
+    /*
+     * FE dùng flag này để biết render list thẳng hay nhóm theo bộ phận
+     */
+    private boolean hasSections;
+
+    /*
+     * MỤC TIÊU
+     */
     private List<ObjectiveItem> objectives;
 
+    /*
+     * NHIỆM VỤ THEO BỘ PHẬN (hasSections = true)
+     */
     private List<SectionTask> tasks;
+
+    /*
+     * NHIỆM VỤ KHÔNG CÓ BỘ PHẬN (hasSections = false)
+     */
+    private List<TaskItem> generalTasks;
+
+    /*
+     * QUYỀN HẠN — null/empty thì FE không hiển thị
+     */
+    private List<AuthorityItem> authorities;
 
     @Getter
     @Setter
@@ -50,6 +71,15 @@ public class ResDepartmentMissionTreeDTO {
     @Getter
     @Setter
     public static class TaskItem {
+
+        private Long id;
+
+        private String content;
+    }
+
+    @Getter
+    @Setter
+    public static class AuthorityItem {
 
         private Long id;
 

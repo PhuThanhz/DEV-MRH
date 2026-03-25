@@ -1,19 +1,22 @@
 package vn.system.app.modules.departmentprocedure.service;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
-
-import vn.system.app.modules.company.domain.Company;
-import vn.system.app.modules.company.repository.CompanyRepository;
 
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
@@ -22,168 +25,328 @@ import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
 
 import vn.system.app.modules.departmentprocedure.domain.DepartmentProcedure;
-import vn.system.app.modules.departmentprocedure.domain.request.ReqCreateDepartmentProcedure;
+import vn.system.app.modules.departmentprocedure.domain.DepartmentProcedureHistory;
+import vn.system.app.modules.departmentprocedure.domain.request.DepartmentProcedureRequest;
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureDTO;
+import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureHistoryDTO;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureRepository;
+import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureHistoryRepository;
 
 @Service
 public class DepartmentProcedureService {
 
     private final DepartmentProcedureRepository repository;
-    private final CompanyRepository companyRepository;
+    private final DepartmentProcedureHistoryRepository historyRepository;
     private final DepartmentRepository departmentRepository;
     private final SectionRepository sectionRepository;
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     public DepartmentProcedureService(
             DepartmentProcedureRepository repository,
-            CompanyRepository companyRepository,
+            DepartmentProcedureHistoryRepository historyRepository,
             DepartmentRepository departmentRepository,
             SectionRepository sectionRepository) {
-
         this.repository = repository;
-        this.companyRepository = companyRepository;
+        this.historyRepository = historyRepository;
         this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
     }
 
-    /*
-     * CREATE
-     */
-    public DepartmentProcedure handleCreate(ReqCreateDepartmentProcedure req) throws IdInvalidException {
+    // =====================================================
+    // CREATE
+    // =====================================================
+    @Transactional
+    public ResDepartmentProcedureDTO handleCreate(DepartmentProcedureRequest req) {
 
-        Company company = companyRepository.findById(req.getCompanyId())
-                .orElseThrow(() -> new IdInvalidException("Company không tồn tại"));
+        if (req.getDepartmentId() != null &&
+                repository.existsByDepartment_IdAndProcedureName(
+                        req.getDepartmentId(), req.getProcedureName())) {
+            throw new IdInvalidException("Quy trình đã tồn tại trong phòng ban này");
+        }
 
-        Department department = departmentRepository.findById(req.getDepartmentId())
-                .orElseThrow(() -> new IdInvalidException("Department không tồn tại"));
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
 
         Section section = null;
-
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
-                    .orElseThrow(() -> new IdInvalidException("Section không tồn tại"));
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
-        DepartmentProcedure p = new DepartmentProcedure();
+        DepartmentProcedure entity = new DepartmentProcedure();
+        entity.setProcedureName(req.getProcedureName());
+        entity.setStatus(req.getStatus());
+        entity.setPlanYear(req.getPlanYear());
+        entity.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        entity.setNote(req.getNote());
+        entity.setActive(true);
+        entity.setVersion(1);
+        entity.setDepartment(department);
+        entity.setSection(section);
 
-        p.setProcedureName(req.getProcedureName());
-        p.setStatus(req.getStatus());
-        p.setPlanYear(req.getPlanYear());
-        p.setFileUrl(req.getFileUrl());
-        p.setNote(req.getNote());
-        p.setActive(req.isActive());
-
-        p.setCompany(company);
-        p.setDepartment(department);
-        p.setSection(section);
-
-        return repository.save(p);
+        return convertToDTO(repository.save(entity));
     }
 
-    /*
-     * DELETE
-     */
-    public void handleDelete(Long id) throws IdInvalidException {
-
-        DepartmentProcedure procedure = fetchById(id);
-
-        if (procedure == null) {
-            throw new IdInvalidException("Procedure không tồn tại");
-        }
-
-        repository.deleteById(id);
-    }
-
-    /*
-     * FIND BY ID
-     */
-    public DepartmentProcedure fetchById(Long id) {
-        Optional<DepartmentProcedure> procedureOptional = repository.findById(id);
-        return procedureOptional.orElse(null);
-    }
-
-    /*
-     * UPDATE
-     */
-    public DepartmentProcedure handleUpdate(Long id, ReqCreateDepartmentProcedure req) throws IdInvalidException {
+    // =====================================================
+    // UPDATE
+    // =====================================================
+    @Transactional
+    public ResDepartmentProcedureDTO handleUpdate(Long id, DepartmentProcedureRequest req) {
 
         DepartmentProcedure current = fetchById(id);
+        saveHistory(current, "EDIT");
 
-        if (current == null) {
-            throw new IdInvalidException("Procedure không tồn tại");
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
+
+        Section section = null;
+        if (req.getSectionId() != null) {
+            section = sectionRepository.findById(req.getSectionId())
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
-        current.setFileUrl(req.getFileUrl());
+        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
         current.setNote(req.getNote());
-        current.setActive(req.isActive());
+        current.setDepartment(department);
+        current.setSection(section);
 
-        return repository.save(current);
+        return convertToDTO(repository.save(current));
     }
 
-    /*
-     * FETCH ALL
-     */
-    public ResultPaginationDTO fetchAll(
-            Specification<DepartmentProcedure> spec,
-            Pageable pageable) {
+    // =====================================================
+    // REVISE
+    // =====================================================
+    @Transactional
+    public ResDepartmentProcedureDTO handleRevise(Long id, DepartmentProcedureRequest req) {
 
-        Page<DepartmentProcedure> pageProcedure = repository.findAll(spec, pageable);
+        DepartmentProcedure current = fetchById(id);
+        saveHistory(current, "REVISE");
+
+        Department department = null;
+        if (req.getDepartmentId() != null) {
+            department = departmentRepository.findById(req.getDepartmentId())
+                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        }
+
+        Section section = null;
+        if (req.getSectionId() != null) {
+            section = sectionRepository.findById(req.getSectionId())
+                    .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+        }
+
+        current.setProcedureName(req.getProcedureName());
+        current.setStatus(req.getStatus());
+        current.setPlanYear(req.getPlanYear());
+        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        current.setNote(req.getNote());
+        current.setDepartment(department);
+        current.setSection(section);
+        current.setVersion(current.getVersion() + 1);
+
+        return convertToDTO(repository.save(current));
+    }
+
+    // =====================================================
+    // TOGGLE ACTIVE
+    // =====================================================
+    @Transactional
+    public void handleToggleActive(Long id) {
+        DepartmentProcedure current = fetchById(id);
+        current.setActive(!current.isActive());
+        repository.save(current);
+    }
+
+    // =====================================================
+    // DELETE
+    // =====================================================
+    @Transactional
+    public void handleDelete(Long id) {
+        fetchById(id);
+        repository.deleteById(id);
+    }
+
+    // =====================================================
+    // FETCH ONE
+    // =====================================================
+    public DepartmentProcedure fetchById(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Quy trình không tồn tại"));
+    }
+
+    // =====================================================
+    // FETCH ALL
+    // =====================================================
+    public ResultPaginationDTO fetchAll(
+            Specification<DepartmentProcedure> spec, Pageable pageable) {
+
+        Page<DepartmentProcedure> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
-        ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
 
-        mt.setPage(pageable.getPageNumber() + 1);
-        mt.setPageSize(pageable.getPageSize());
-        mt.setPages(pageProcedure.getTotalPages());
-        mt.setTotal(pageProcedure.getTotalElements());
+        meta.setPage(pageable.getPageNumber() + 1);
+        meta.setPageSize(pageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        rs.setMeta(meta);
 
-        rs.setMeta(mt);
-
-        List<ResDepartmentProcedureDTO> listProcedure = pageProcedure.getContent()
-                .stream()
+        rs.setResult(page.getContent().stream()
                 .map(this::convertToDTO)
-                .collect(Collectors.toList());
-
-        rs.setResult(listProcedure);
+                .collect(Collectors.toList()));
 
         return rs;
     }
 
-    /*
-     * CONVERT ENTITY → DTO
-     */
-    public ResDepartmentProcedureDTO convertToDTO(DepartmentProcedure procedure) {
+    // =====================================================
+    // FETCH BY DEPARTMENT
+    // =====================================================
+    public List<ResDepartmentProcedureDTO> fetchByDepartment(Long departmentId) {
+        return repository.findByDepartment_Id(departmentId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =====================================================
+    // FETCH BY SECTION
+    // =====================================================
+    public List<ResDepartmentProcedureDTO> fetchBySection(Long sectionId) {
+        return repository.findBySection_Id(sectionId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =====================================================
+    // FETCH HISTORY
+    // =====================================================
+    public List<ResDepartmentProcedureHistoryDTO> fetchHistory(Long procedureId) {
+        fetchById(procedureId);
+        return historyRepository.findByProcedure_IdOrderByVersionDesc(procedureId)
+                .stream()
+                .map(this::convertHistoryToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =====================================================
+    // FETCH BY COMPANY
+    // =====================================================
+    public List<ResDepartmentProcedureDTO> fetchByCompany(Long companyId) {
+        return repository.findByDepartment_Company_Id(companyId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =====================================================
+    // SAVE HISTORY (private)
+    // =====================================================
+    private void saveHistory(DepartmentProcedure e, String action) {
+        DepartmentProcedureHistory history = new DepartmentProcedureHistory();
+        history.setProcedure(e);
+        history.setVersion(e.getVersion());
+        history.setProcedureName(e.getProcedureName());
+        history.setStatus(e.getStatus());
+        history.setPlanYear(e.getPlanYear());
+        history.setFileUrls(e.getFileUrls()); // ← đổi
+        history.setNote(e.getNote());
+        history.setDepartmentName(e.getDepartment() != null ? e.getDepartment().getName() : null);
+        history.setSectionName(e.getSection() != null ? e.getSection().getName() : null);
+        history.setAction(action);
+        history.setChangedAt(Instant.now());
+        history.setChangedBy(SecurityUtil.getCurrentUserLogin().orElse(""));
+        historyRepository.save(history);
+    }
+
+    // =====================================================
+    // HELPER — JSON array
+    // =====================================================
+    private String toJsonArray(List<String> urls) {
+        try {
+            return mapper.writeValueAsString(urls != null ? urls : new ArrayList<>());
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private List<String> fromJsonArray(String json) {
+        if (json == null || json.isBlank())
+            return new ArrayList<>();
+        try {
+            if (!json.trim().startsWith("["))
+                return List.of(json); // backward compatible
+            return mapper.readValue(json, new TypeReference<List<String>>() {
+            });
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    // =====================================================
+    // CONVERT TO DTO
+    // =====================================================
+    public ResDepartmentProcedureDTO convertToDTO(DepartmentProcedure e) {
 
         ResDepartmentProcedureDTO dto = new ResDepartmentProcedureDTO();
 
-        dto.setId(procedure.getId());
-        dto.setProcedureName(procedure.getProcedureName());
+        dto.setId(e.getId());
 
-        dto.setCompanyName(
-                procedure.getCompany() != null
-                        ? procedure.getCompany().getName()
-                        : null);
+        if (e.getDepartment() != null) {
+            dto.setDepartmentId(e.getDepartment().getId());
+            dto.setDepartmentName(e.getDepartment().getName());
+            if (e.getDepartment().getCompany() != null) {
+                dto.setCompanyCode(e.getDepartment().getCompany().getCode());
+                dto.setCompanyName(e.getDepartment().getCompany().getName());
+            }
+        }
 
-        dto.setDepartmentName(
-                procedure.getDepartment() != null
-                        ? procedure.getDepartment().getName()
-                        : null);
+        if (e.getSection() != null) {
+            dto.setSectionId(e.getSection().getId());
+            dto.setSectionName(e.getSection().getName());
+        }
 
-        dto.setSectionName(
-                procedure.getSection() != null
-                        ? procedure.getSection().getName()
-                        : null);
+        dto.setProcedureName(e.getProcedureName());
+        dto.setStatus(e.getStatus());
+        dto.setPlanYear(e.getPlanYear());
+        dto.setFileUrls(fromJsonArray(e.getFileUrls())); // ← đổi
+        dto.setNote(e.getNote());
+        dto.setActive(e.isActive());
+        dto.setVersion(e.getVersion());
+        dto.setCreatedAt(e.getCreatedAt());
+        dto.setUpdatedAt(e.getUpdatedAt());
+        dto.setCreatedBy(e.getCreatedBy());
+        dto.setUpdatedBy(e.getUpdatedBy());
 
-        dto.setStatus(procedure.getStatus());
-        dto.setPlanYear(procedure.getPlanYear());
-        dto.setFileUrl(procedure.getFileUrl());
-        dto.setNote(procedure.getNote());
-        dto.setActive(procedure.isActive());
-        dto.setCreatedAt(procedure.getCreatedAt());
+        return dto;
+    }
 
+    // =====================================================
+    // CONVERT HISTORY TO DTO
+    // =====================================================
+    public ResDepartmentProcedureHistoryDTO convertHistoryToDTO(DepartmentProcedureHistory h) {
+        ResDepartmentProcedureHistoryDTO dto = new ResDepartmentProcedureHistoryDTO();
+        dto.setId(h.getId());
+        dto.setProcedureId(h.getProcedure().getId());
+        dto.setVersion(h.getVersion());
+        dto.setProcedureName(h.getProcedureName());
+        dto.setStatus(h.getStatus());
+        dto.setPlanYear(h.getPlanYear());
+        dto.setFileUrls(fromJsonArray(h.getFileUrls())); // ← đổi
+        dto.setNote(h.getNote());
+        dto.setDepartmentName(h.getDepartmentName());
+        dto.setSectionName(h.getSectionName());
+        dto.setAction(h.getAction());
+        dto.setChangedAt(h.getChangedAt());
+        dto.setChangedBy(h.getChangedBy());
         return dto;
     }
 }
