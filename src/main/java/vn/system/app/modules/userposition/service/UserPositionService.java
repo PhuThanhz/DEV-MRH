@@ -1,6 +1,8 @@
 package vn.system.app.modules.userposition.service;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -121,6 +123,7 @@ public class UserPositionService {
         position.setActive(false);
         repo.save(position);
     }
+
     // =====================================================
     // GET ALL BY USER
     // =====================================================
@@ -135,6 +138,7 @@ public class UserPositionService {
                 .map(this::convertToResDTO)
                 .collect(Collectors.toList());
     }
+
     // =====================================================
     // GET USERS BY COMPANY
     // =====================================================
@@ -144,6 +148,23 @@ public class UserPositionService {
                 .map(this::convertToResDTO)
                 .collect(Collectors.toList());
     }
+
+    // =====================================================
+    // GET COMPANY IDs BY USER (dùng cho scope filter)
+    // =====================================================
+    public Set<Long> getCompanyIdsByUser(Long userId) {
+        return repo.findByUser_IdAndActiveTrue(userId)
+                .stream()
+                .map(pos -> switch (pos.getSource().toUpperCase()) {
+                    case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();
+                    case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getCompany().getId();
+                    case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
+                    default -> null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
     // =====================================================
     // CONVERTER
     // =====================================================
@@ -157,11 +178,13 @@ public class UserPositionService {
         res.setUpdatedAt(p.getUpdatedAt());
         res.setCreatedBy(p.getCreatedBy());
         res.setUpdatedBy(p.getUpdatedBy());
+
         ResUserPositionDTO.UserInfo userInfo = new ResUserPositionDTO.UserInfo();
         userInfo.setId(p.getUser().getId());
         userInfo.setName(p.getUser().getName());
         userInfo.setEmail(p.getUser().getEmail());
         res.setUser(userInfo);
+
         // ===== Lấy JobTitle + context theo source =====
         switch (p.getSource().toUpperCase()) {
 

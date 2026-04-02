@@ -13,6 +13,7 @@ import com.turkraft.springfilter.boot.Filter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.section.domain.request.ReqCreateSectionDTO;
 import vn.system.app.modules.section.domain.request.ReqUpdateSectionDTO;
@@ -87,6 +88,8 @@ public class SectionController {
     public ResponseEntity<ResultPaginationDTO> fetchAll(
             @Filter Specification spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
 
         return ResponseEntity.ok(sectionService.fetchAll(spec, pageable));
     }

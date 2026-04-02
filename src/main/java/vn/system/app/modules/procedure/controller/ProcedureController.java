@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 
 import vn.system.app.modules.procedure.enums.ProcedureType;
@@ -152,7 +153,7 @@ public class ProcedureController {
             return ResponseEntity.ok(departmentProcedureService.convertToDTO(
                     departmentProcedureService.fetchById(id)));
         } else {
-            confidentialProcedureService.checkAccess(id); // ← CHECK QUYỀN
+            confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.convertToDTO(
                     confidentialProcedureService.fetchById(id)));
         }
@@ -168,11 +169,14 @@ public class ProcedureController {
             Pageable pageable) {
 
         if (type == ProcedureType.COMPANY) {
-            return ResponseEntity.ok(companyProcedureService.fetchAll(null, pageable));
+            Specification<CompanyProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
+            return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
         } else if (type == ProcedureType.DEPARTMENT) {
-            return ResponseEntity.ok(departmentProcedureService.fetchAll(null, pageable));
+            Specification<DepartmentProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
+            return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
         } else {
-            return ResponseEntity.ok(confidentialProcedureService.fetchAll(null, pageable));
+            Specification<ConfidentialProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
+            return ResponseEntity.ok(confidentialProcedureService.fetchAll(spec, pageable));
         }
     }
 
@@ -184,6 +188,9 @@ public class ProcedureController {
     public ResponseEntity<ResultPaginationDTO> getAllCompany(
             @Filter Specification<CompanyProcedure> spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+
         return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
     }
 
@@ -195,6 +202,9 @@ public class ProcedureController {
     public ResponseEntity<ResultPaginationDTO> getAllDepartment(
             @Filter Specification<DepartmentProcedure> spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+
         return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
     }
 
@@ -205,6 +215,9 @@ public class ProcedureController {
     public ResponseEntity<ResultPaginationDTO> getAllConfidential(
             @Filter Specification<ConfidentialProcedure> spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+
         return ResponseEntity.ok(confidentialProcedureService.fetchAll(spec, pageable));
     }
 
@@ -276,7 +289,7 @@ public class ProcedureController {
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.fetchHistory(id));
         } else {
-            confidentialProcedureService.checkAccess(id); // ← CHECK QUYỀN
+            confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
         }
     }

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
 
 import vn.system.app.modules.department.domain.Department;
@@ -210,7 +211,10 @@ public class CompanyProcedureService {
     // FETCH BY DEPARTMENT
     // =====================================================
     public List<ResCompanyProcedureDTO> fetchByDepartment(Long departmentId) {
-        return repository.findByDepartment_Id(departmentId)
+        Specification<CompanyProcedure> spec = (root, query, cb) -> cb.equal(root.get("department").get("id"),
+                departmentId);
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        return repository.findAll(spec)
                 .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -220,7 +224,9 @@ public class CompanyProcedureService {
     // FETCH BY SECTION
     // =====================================================
     public List<ResCompanyProcedureDTO> fetchBySection(Long sectionId) {
-        return repository.findBySection_Id(sectionId)
+        Specification<CompanyProcedure> spec = (root, query, cb) -> cb.equal(root.get("section").get("id"), sectionId);
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        return repository.findAll(spec)
                 .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());

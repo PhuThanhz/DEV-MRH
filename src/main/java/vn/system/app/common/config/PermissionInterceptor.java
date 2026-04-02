@@ -1,6 +1,7 @@
 package vn.system.app.common.config;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,16 +11,21 @@ import org.springframework.web.servlet.HandlerMapping;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext; // ← THÊM
 import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.permission.domain.Permission;
 import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.service.UserService;
+import vn.system.app.modules.userposition.service.UserPositionService; // ← THÊM
 
 public class PermissionInterceptor implements HandlerInterceptor {
 
     @Autowired
     UserService userService;
+
+    @Autowired
+    UserPositionService userPositionService; // ← THÊM
 
     @Override
     @Transactional
@@ -40,11 +46,31 @@ public class PermissionInterceptor implements HandlerInterceptor {
         String email = SecurityUtil.getCurrentUserLogin().isPresent() == true
                 ? SecurityUtil.getCurrentUserLogin().get()
                 : "";
+
         if (email != null && !email.isEmpty()) {
             User user = this.userService.handleGetUserByUsername(email);
             if (user != null) {
+
+                // ── SET SCOPE vào ThreadLocal ──────────────────────────────
+                boolean isSuperAdmin = user.getRole() != null
+                        && "SUPER_ADMIN".equals(user.getRole().getName());
+
+                Set<Long> companyIds = isSuperAdmin
+                        ? Set.of()
+                        : userPositionService.getCompanyIdsByUser(user.getId());
+
+                UserScopeContext.set(new UserScopeContext.UserScope(
+                        user.getId(), companyIds, isSuperAdmin));
+                // ───────────────────────────────────────────────────────────
+
                 Role role = user.getRole();
                 if (role != null) {
+
+                    // SUPER_ADMIN bỏ qua check permission
+                    if ("SUPER_ADMIN".equals(role.getName())) {
+                        return true;
+                    }
+
                     List<Permission> permissions = role.getPermissions();
                     boolean isAllow = permissions.stream().anyMatch(item -> item.getApiPath().equals(path)
                             && item.getMethod().equals(httpMethod));
@@ -59,5 +85,14 @@ public class PermissionInterceptor implements HandlerInterceptor {
         }
 
         return true;
+    }
+
+    // ── DỌN SCOPE SAU MỖI REQUEST ─────────────────────────────────────────────
+    @Override
+    public void afterCompletion(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Object handler, Exception ex) {
+        UserScopeContext.clear(); // ← THÊM
     }
 }

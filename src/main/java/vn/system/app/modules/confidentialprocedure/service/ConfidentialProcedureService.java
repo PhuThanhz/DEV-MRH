@@ -19,6 +19,7 @@ import jakarta.persistence.criteria.Join;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
@@ -241,12 +242,20 @@ public class ConfidentialProcedureService {
     }
 
     public List<ResConfidentialProcedureDTO> fetchByDepartment(Long departmentId) {
-        return repository.findByDepartment_Id(departmentId)
+        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(root.get("department").get("id"),
+                departmentId);
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        spec = spec.and(filterByCurrentUser());
+        return repository.findAll(spec)
                 .stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
     public List<ResConfidentialProcedureDTO> fetchBySection(Long sectionId) {
-        return repository.findBySection_Id(sectionId)
+        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(root.get("section").get("id"),
+                sectionId);
+        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        spec = spec.and(filterByCurrentUser());
+        return repository.findAll(spec)
                 .stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 

@@ -10,6 +10,7 @@ import com.turkraft.springfilter.boot.Filter;
 
 import jakarta.validation.Valid;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
@@ -78,6 +79,8 @@ public class DepartmentController {
     public ResponseEntity<ResultPaginationDTO> fetchAllDepartments(
             @Filter Specification<Department> spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
 
         return ResponseEntity.ok(
                 departmentService.fetchAllDepartments(spec, pageable));

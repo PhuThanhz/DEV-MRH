@@ -10,6 +10,7 @@ import com.turkraft.springfilter.boot.Filter;
 
 import jakarta.validation.Valid;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec; // ← THÊM
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.domain.request.ReqCreateCompanyDTO;
@@ -67,6 +68,8 @@ public class CompanyController {
     public ResponseEntity<ResultPaginationDTO> getAllCompanies(
             @Filter Specification<Company> spec,
             Pageable pageable) {
+
+        spec = spec.and(ScopeSpec.byCompanyScope("id")); // ← THÊM
 
         return ResponseEntity.ok(
                 companyService.fetchAllCompany(spec, pageable));
