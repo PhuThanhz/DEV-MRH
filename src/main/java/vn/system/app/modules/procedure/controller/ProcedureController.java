@@ -293,4 +293,37 @@ public class ProcedureController {
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
         }
     }
+
+    // =====================================================
+    // CREATE COMPANY
+    // =====================================================
+    @PostMapping("/company")
+    @ApiMessage("Tạo quy trình công ty")
+    public ResponseEntity<?> createCompany(
+            @Valid @RequestBody ProcedureRequestWrapper req) {
+        ResCompanyProcedureDTO res = companyProcedureService.handleCreate(req.toCompanyRequest());
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    }
+
+    // =====================================================
+    // CREATE DEPARTMENT
+    // =====================================================
+    @PostMapping("/department")
+    @ApiMessage("Tạo quy trình phòng ban")
+    public ResponseEntity<?> createDepartment(
+            @Valid @RequestBody ProcedureRequestWrapper req) {
+        ResDepartmentProcedureDTO res = departmentProcedureService.handleCreate(req.toDepartmentRequest());
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    }
+
+    // =====================================================
+    // CREATE CONFIDENTIAL
+    // =====================================================
+    @PostMapping("/confidential")
+    @ApiMessage("Tạo quy trình bảo mật")
+    public ResponseEntity<?> createConfidential(
+            @Valid @RequestBody ProcedureRequestWrapper req) {
+        ResConfidentialProcedureDTO res = confidentialProcedureService.handleCreate(req.toConfidentialRequest());
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    }
 }

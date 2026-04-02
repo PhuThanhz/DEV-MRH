@@ -133,7 +133,7 @@ public class UserPositionService {
             throw new IdInvalidException("Không tìm thấy user ID = " + userId);
         }
 
-        return repo.findByUser_IdAndActiveTrue(userId)
+        return repo.findActiveFullByUserId(userId)
                 .stream()
                 .map(this::convertToResDTO)
                 .collect(Collectors.toList());

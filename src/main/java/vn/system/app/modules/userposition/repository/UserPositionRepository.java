@@ -43,4 +43,23 @@ public interface UserPositionRepository
                 )
             """)
     List<UserPosition> findActiveByCompanyId(@Param("companyId") Long companyId);
+
+    @Query("""
+                SELECT up FROM UserPosition up
+                LEFT JOIN FETCH up.companyJobTitle cjt
+                LEFT JOIN FETCH cjt.company
+
+                LEFT JOIN FETCH up.departmentJobTitle djt
+                LEFT JOIN FETCH djt.department dept
+                LEFT JOIN FETCH dept.company
+
+                LEFT JOIN FETCH up.sectionJobTitle sjt
+                LEFT JOIN FETCH sjt.section sec
+                LEFT JOIN FETCH sec.department sdept
+                LEFT JOIN FETCH sdept.company
+
+                WHERE up.user.id = :userId
+                AND up.active = true
+            """)
+    List<UserPosition> findActiveFullByUserId(@Param("userId") Long userId);
 }

@@ -25,12 +25,15 @@ import vn.system.app.modules.user.domain.response.ResUserDTO;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.userinfo.domain.UserInfo;
 import vn.system.app.modules.userinfo.repository.UserInfoRepository;
+import vn.system.app.modules.userposition.domain.UserPosition;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 @Service
 public class UserService {
 
     private final UserRepository userRepository;
     private final UserInfoRepository userInfoRepository;
+    private final UserPositionRepository userPositionRepository; // ✅ THÊM
     private final RoleService roleService;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
@@ -38,11 +41,13 @@ public class UserService {
     public UserService(
             UserRepository userRepository,
             UserInfoRepository userInfoRepository,
+            UserPositionRepository userPositionRepository, // ✅ THÊM
             RoleService roleService,
             EmailService emailService,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.userInfoRepository = userInfoRepository;
+        this.userPositionRepository = userPositionRepository; // ✅ THÊM
         this.roleService = roleService;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
@@ -366,7 +371,42 @@ public class UserService {
             userInfoBasic.setContractExpireDate(info.getContractExpireDate());
             res.setUserInfo(userInfoBasic);
         }
+        // ✅ THÊM ĐOẠN NÀY VÀO CUỐI convertToResUserDTO, TRƯỚC return res;
+        List<UserPosition> posList = userPositionRepository
+                .findByUser_IdAndActiveTrue(user.getId());
 
+        if (posList != null && !posList.isEmpty()) {
+            List<ResUserDTO.PositionBasic> positionBasics = posList.stream()
+                    .map(p -> {
+                        ResUserDTO.PositionBasic pb = new ResUserDTO.PositionBasic();
+                        pb.setId(p.getId());
+                        pb.setSource(p.getSource());
+
+                        switch (p.getSource().toUpperCase()) {
+                            case "COMPANY" -> {
+                                pb.setCompanyName(p.getCompanyJobTitle().getCompany().getName());
+                                pb.setJobTitleNameVi(p.getCompanyJobTitle().getJobTitle().getNameVi());
+                            }
+                            case "DEPARTMENT" -> {
+                                pb.setCompanyName(p.getDepartmentJobTitle().getDepartment().getCompany().getName());
+                                pb.setDepartmentName(p.getDepartmentJobTitle().getDepartment().getName());
+                                pb.setJobTitleNameVi(p.getDepartmentJobTitle().getJobTitle().getNameVi());
+                            }
+                            case "SECTION" -> {
+                                pb.setCompanyName(
+                                        p.getSectionJobTitle().getSection().getDepartment().getCompany().getName());
+                                pb.setDepartmentName(p.getSectionJobTitle().getSection().getDepartment().getName());
+                                pb.setSectionName(p.getSectionJobTitle().getSection().getName());
+                                pb.setJobTitleNameVi(p.getSectionJobTitle().getJobTitle().getNameVi());
+                            }
+                        }
+                        return pb;
+                    })
+                    .collect(Collectors.toList());
+
+            res.setPositions(positionBasics);
+        }
+        // ✅ HẾT PHẦN THÊM
         return res;
     }
 

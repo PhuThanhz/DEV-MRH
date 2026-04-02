@@ -91,4 +91,12 @@ public class RoleService {
         rs.setResult(pRole.getContent());
         return rs;
     }
+
+    public Role findByName(String name) {
+        Role role = roleRepository.findByName(name);
+        if (role == null) {
+            throw new RuntimeException("Role " + name + " không tồn tại");
+        }
+        return role;
+    }
 }
