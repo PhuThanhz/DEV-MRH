@@ -56,8 +56,7 @@ public class SecurityConfiguration {
                 "/api/v1/salary-grade-performance-ratings/**", "/api/v1/salary-grade-incomes/**",
                 "/api/v1/process-actions/**",
                 "/api/v1/permission-category-scopes/**", "/api/v1/company-job-titles/**",
-                "/api/v1/department-job-titles/**",
-                "/api/v1/section-job-titles/**",
+
                 "/api/v1/permission-categories/**", "/api/v1/dept-missions/**",
                 "/api/v1/company-salary-grades/**",
                 "/api/v1/department-salary-grades/**",

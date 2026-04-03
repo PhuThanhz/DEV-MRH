@@ -71,10 +71,7 @@ public class JobDescriptionService {
         jd.setReportTo(req.getReportTo());
         jd.setBelongsTo(req.getBelongsTo());
         jd.setCollaborateWith(req.getCollaborateWith());
-
-        // luôn tạo JD ở trạng thái DRAFT
         jd.setStatus("DRAFT");
-
         jd.setEffectiveDate(req.getEffectiveDate());
 
         if (req.getDepartmentJobTitleId() != null) {
@@ -156,41 +153,20 @@ public class JobDescriptionService {
      * ==========================================
      */
     public JobDescription fetchById(Long id) {
-
-        Optional<JobDescription> optional = repository.findById(id);
-
-        return optional.orElseThrow(
-                () -> new IdInvalidException("JobDescription không tồn tại với id = " + id));
+        return repository.findById(id)
+                .orElseThrow(() -> new IdInvalidException(
+                        "JobDescription không tồn tại với id = " + id));
     }
 
     /*
      * ==========================================
-     * FETCH ALL
+     * FETCH ALL (có filter)
      * ==========================================
      */
     public ResultPaginationDTO fetchAll(
             Specification<JobDescription> spec,
             Pageable pageable) {
-
-        Page<JobDescription> page = repository.findAll(spec, pageable);
-
-        ResultPaginationDTO rs = new ResultPaginationDTO();
-        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
-
-        meta.setPage(pageable.getPageNumber() + 1);
-        meta.setPageSize(pageable.getPageSize());
-        meta.setPages(page.getTotalPages());
-        meta.setTotal(page.getTotalElements());
-
-        rs.setMeta(meta);
-
-        rs.setResult(
-                page.getContent()
-                        .stream()
-                        .map(this::convertToDTO)
-                        .collect(Collectors.toList()));
-
-        return rs;
+        return buildPaginationDTO(repository.findAll(spec, pageable));
     }
 
     /*
@@ -198,28 +174,36 @@ public class JobDescriptionService {
      * JD TÔI TẠO
      * ==========================================
      */
-    // MỚI
     public ResultPaginationDTO fetchMyJobDescriptions(Pageable pageable) {
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
+        return buildPaginationDTO(repository.findByCreatedBy(email, pageable));
+    }
 
-        Page<JobDescription> page = repository.findByCreatedBy(email, pageable);
+    /*
+     * ==========================================
+     * JD ĐÃ BAN HÀNH
+     * ==========================================
+     */
+    public ResultPaginationDTO fetchPublished(Pageable pageable) {
+        return buildPaginationDTO(repository.findByStatus("PUBLISHED", pageable));
+    }
 
-        ResultPaginationDTO rs = new ResultPaginationDTO();
-        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+    /*
+     * ==========================================
+     * JD ĐÃ TỪ CHỐI
+     * ==========================================
+     */
+    public ResultPaginationDTO fetchRejected(Pageable pageable) {
+        return buildPaginationDTO(repository.findByStatus("REJECTED", pageable));
+    }
 
-        meta.setPage(pageable.getPageNumber() + 1);
-        meta.setPageSize(pageable.getPageSize());
-        meta.setPages(page.getTotalPages());
-        meta.setTotal(page.getTotalElements());
-
-        rs.setMeta(meta);
-        rs.setResult(
-                page.getContent()
-                        .stream()
-                        .map(this::convertToDTO)
-                        .collect(Collectors.toList()));
-
-        return rs;
+    /*
+     * ==========================================
+     * TẤT CẢ JD (admin)
+     * ==========================================
+     */
+    public ResultPaginationDTO fetchAllJd(Pageable pageable) {
+        return buildPaginationDTO(repository.findAll(pageable));
     }
 
     /*
@@ -228,14 +212,35 @@ public class JobDescriptionService {
      * ==========================================
      */
     private void validateScope(JobDescription jd) {
-
         if (jd.getCompanyJobTitle() == null
                 && jd.getDepartmentJobTitle() == null
                 && jd.getSectionJobTitle() == null) {
-
             throw new IdInvalidException(
                     "JobDescription phải gắn ít nhất 1 chức danh");
         }
+    }
+
+    /*
+     * ==========================================
+     * HELPER — build pagination DTO
+     * ==========================================
+     */
+    private ResultPaginationDTO buildPaginationDTO(Page<JobDescription> page) {
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+
+        meta.setPage(page.getNumber() + 1);
+        meta.setPageSize(page.getSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+
+        rs.setMeta(meta);
+        rs.setResult(
+                page.getContent()
+                        .stream()
+                        .map(this::convertToDTO)
+                        .collect(Collectors.toList()));
+        return rs;
     }
 
     /*
@@ -249,27 +254,16 @@ public class JobDescriptionService {
 
         res.setId(jd.getId());
         res.setCode(jd.getCode());
-
         res.setReportTo(jd.getReportTo());
         res.setBelongsTo(jd.getBelongsTo());
         res.setCollaborateWith(jd.getCollaborateWith());
-
         res.setStatus(jd.getStatus());
         res.setVersion(jd.getVersion());
         res.setEffectiveDate(jd.getEffectiveDate());
-
         res.setCreatedAt(jd.getCreatedAt());
         res.setUpdatedAt(jd.getUpdatedAt());
-
-        // thêm audit để frontend filter đúng
         res.setCreatedBy(jd.getCreatedBy());
         res.setUpdatedBy(jd.getUpdatedBy());
-
-        /*
-         * =========================
-         * RELATION
-         * =========================
-         */
 
         if (jd.getCompany() != null) {
             res.setCompanyId(jd.getCompany().getId());
@@ -286,26 +280,16 @@ public class JobDescriptionService {
         }
 
         if (jd.getDepartmentJobTitle() != null) {
-
             res.setDepartmentJobTitleId(jd.getDepartmentJobTitle().getId());
-
             if (jd.getDepartmentJobTitle().getJobTitle() != null) {
                 res.setJobTitleName(
-                        jd.getDepartmentJobTitle()
-                                .getJobTitle()
-                                .getNameVi());
+                        jd.getDepartmentJobTitle().getJobTitle().getNameVi());
             }
         }
 
         if (jd.getSectionJobTitle() != null) {
             res.setSectionJobTitleId(jd.getSectionJobTitle().getId());
         }
-
-        /*
-         * =========================
-         * CHILD DATA
-         * =========================
-         */
 
         res.setRequirements(requirementService.getByJobDescription(jd.getId()));
         res.setTasks(taskService.getByJobDescription(jd.getId()));

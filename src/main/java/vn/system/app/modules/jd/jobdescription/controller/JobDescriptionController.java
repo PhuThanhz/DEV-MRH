@@ -1,7 +1,5 @@
 package vn.system.app.modules.jd.jobdescription.controller;
 
-import java.util.List;
-
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
@@ -27,90 +25,64 @@ public class JobDescriptionController {
         this.service = service;
     }
 
-    /*
-     * ==========================================
-     * TẠO JD
-     * ==========================================
-     */
     @PostMapping("/job-descriptions")
     @ApiMessage("Tạo mới mô tả công việc")
     public ResponseEntity<ResJobDescriptionDTO> create(
             @RequestBody ReqCreateJobDescriptionDTO req) {
-
-        JobDescription created = service.handleCreate(req);
-
-        return ResponseEntity
-                .status(201)
-                .body(service.convertToDTO(created));
+        return ResponseEntity.status(201).body(service.convertToDTO(service.handleCreate(req)));
     }
 
-    /*
-     * ==========================================
-     * CẬP NHẬT JD
-     * ==========================================
-     */
     @PutMapping("/job-descriptions/{id}")
     @ApiMessage("Cập nhật mô tả công việc")
     public ResponseEntity<ResJobDescriptionDTO> update(
             @PathVariable Long id,
             @RequestBody ReqCreateJobDescriptionDTO req) {
-
-        JobDescription updated = service.handleUpdate(id, req);
-
-        return ResponseEntity.ok(service.convertToDTO(updated));
+        return ResponseEntity.ok(service.convertToDTO(service.handleUpdate(id, req)));
     }
 
-    /*
-     * ==========================================
-     * XÓA JD
-     * ==========================================
-     */
     @DeleteMapping("/job-descriptions/{id}")
     @ApiMessage("Xóa mô tả công việc")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-
         service.handleDelete(id);
-
         return ResponseEntity.ok().build();
     }
 
-    /*
-     * ==========================================
-     * LẤY JD THEO ID
-     * ==========================================
-     */
     @GetMapping("/job-descriptions/{id}")
     @ApiMessage("Lấy chi tiết mô tả công việc")
     public ResponseEntity<ResJobDescriptionDTO> fetchById(@PathVariable Long id) {
-
-        JobDescription jd = service.fetchById(id);
-
-        return ResponseEntity.ok(service.convertToDTO(jd));
+        return ResponseEntity.ok(service.convertToDTO(service.fetchById(id)));
     }
 
-    /*
-     * ==========================================
-     * DANH SÁCH JD
-     * ==========================================
-     */
     @GetMapping("/job-descriptions")
     @ApiMessage("Danh sách mô tả công việc")
     public ResponseEntity<ResultPaginationDTO> fetchAll(
             @Filter Specification<JobDescription> spec,
             Pageable pageable) {
-
         return ResponseEntity.ok(service.fetchAll(spec, pageable));
     }
 
-    /*
-     * ==========================================
-     * JD TÔI TẠO
-     * ==========================================
-     */
     @GetMapping("/job-descriptions/my")
     @ApiMessage("Danh sách JD do tôi tạo")
     public ResponseEntity<ResultPaginationDTO> fetchMyJobDescriptions(Pageable pageable) {
         return ResponseEntity.ok(service.fetchMyJobDescriptions(pageable));
     }
 
+    // ← THÊM 3 ENDPOINT MỚI
+    @GetMapping("/job-descriptions/published")
+    @ApiMessage("Danh sách JD đã ban hành")
+    public ResponseEntity<ResultPaginationDTO> fetchPublished(Pageable pageable) {
+        return ResponseEntity.ok(service.fetchPublished(pageable));
+    }
+
+    @GetMapping("/job-descriptions/rejected")
+    @ApiMessage("Danh sách JD đã từ chối")
+    public ResponseEntity<ResultPaginationDTO> fetchRejected(Pageable pageable) {
+        return ResponseEntity.ok(service.fetchRejected(pageable));
+    }
+
+    @GetMapping("/job-descriptions/all")
+    @ApiMessage("Tất cả JD")
+    public ResponseEntity<ResultPaginationDTO> fetchAllJd(Pageable pageable) {
+        return ResponseEntity.ok(service.fetchAllJd(pageable));
+    }
 }

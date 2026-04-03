@@ -22,8 +22,8 @@ public class PermissionInterceptorConfiguration implements WebMvcConfigurer {
                 "/api/v1/process-actions/**",
                 "/api/v1/permission-category-scopes/**",
                 "/api/v1/permission-categories/**", "/api/v1/company-job-titles/**",
-                "/api/v1/department-job-titles/**",
-                "/api/v1/section-job-titles/**", "/api/v1/permission-contents/**",
+
+                "/api/v1/permission-contents/**",
                 "/api/v1/permission-contents/**",
                 "/api/v1/permission-categories/**", "/api/v1/dept-missions/**",
                 "/api/v1/company-salary-grades/**",
