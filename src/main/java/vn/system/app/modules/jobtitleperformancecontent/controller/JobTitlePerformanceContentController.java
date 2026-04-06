@@ -43,7 +43,7 @@ public class JobTitlePerformanceContentController {
         return ResponseEntity.ok(service.update(id, req));
     }
 
-    @DeleteMapping("/{id}")
+    @PutMapping("/{id}/disable")
     @ApiMessage("Vô hiệu nội dung đánh giá")
     public ResponseEntity<?> disable(@PathVariable Long id) {
         service.disable(id);

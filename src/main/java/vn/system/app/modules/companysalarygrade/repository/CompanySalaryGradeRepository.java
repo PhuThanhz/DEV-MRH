@@ -10,15 +10,15 @@ import java.util.List;
 public interface CompanySalaryGradeRepository
                 extends JpaRepository<CompanySalaryGrade, Long> {
 
-        // Kiểm tra trùng bậc lương
         boolean existsByCompanyJobTitleIdAndGradeLevel(Long companyJobTitleId, Integer gradeLevel);
 
-        // ⛔ Trả ra TẤT CẢ (active + inactive) theo thứ tự level
         List<CompanySalaryGrade> findByCompanyJobTitleIdOrderByGradeLevelAsc(Long companyJobTitleId);
 
-        // Tìm 1 bản ghi theo jobTitle + gradeLevel (phục vụ restore)
         CompanySalaryGrade findByCompanyJobTitleIdAndGradeLevel(Long companyJobTitleId, Integer gradeLevel);
 
+        // Dùng cho fetch toàn công ty (admin/HR công ty)
         List<CompanySalaryGrade> findByCompanyJobTitleIdIn(List<Long> ids);
 
+        // Dùng cho fetch cá nhân (active only)
+        List<CompanySalaryGrade> findByCompanyJobTitleIdInAndActiveTrue(List<Long> ids);
 }

@@ -244,7 +244,7 @@ public class JobTitlePerformanceContentService {
     public List<ResJobTitlePerformanceContentDTO> findByOwner(OwnerLevel level, Long jobTitleId) {
 
         return repository
-                .findByOwnerLevelAndOwnerJobTitleIdAndActiveTrue(level, jobTitleId)
+                .findByOwnerLevelAndOwnerJobTitleId(level, jobTitleId)
                 .stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());

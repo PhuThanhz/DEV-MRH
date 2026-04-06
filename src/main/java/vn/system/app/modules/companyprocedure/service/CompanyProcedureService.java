@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
 
@@ -32,6 +33,7 @@ import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedur
 import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureHistoryDTO;
 import vn.system.app.modules.companyprocedure.repository.CompanyProcedureRepository;
 import vn.system.app.modules.companyprocedure.repository.CompanyProcedureHistoryRepository;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class CompanyProcedureService {
@@ -188,7 +190,11 @@ public class CompanyProcedureService {
     // =====================================================
     public ResultPaginationDTO fetchAll(
             Specification<CompanyProcedure> spec, Pageable pageable) {
-
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<CompanyProcedure> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<CompanyProcedure> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

@@ -6,25 +6,26 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import lombok.RequiredArgsConstructor;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.departmentjobtitle.repository.DepartmentJobTitleRepository;
 import vn.system.app.modules.departmentsalarygrade.domain.DepartmentSalaryGrade;
 import vn.system.app.modules.departmentsalarygrade.domain.request.*;
 import vn.system.app.modules.departmentsalarygrade.domain.response.*;
 import vn.system.app.modules.departmentsalarygrade.repository.DepartmentSalaryGradeRepository;
+import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 @Service
+@RequiredArgsConstructor
 public class DepartmentSalaryGradeService {
 
     private final DepartmentSalaryGradeRepository repo;
     private final DepartmentJobTitleRepository deptJobTitleRepo;
-
-    public DepartmentSalaryGradeService(
-            DepartmentSalaryGradeRepository repo,
-            DepartmentJobTitleRepository deptJobTitleRepo) {
-        this.repo = repo;
-        this.deptJobTitleRepo = deptJobTitleRepo;
-    }
+    private final UserRepository userRepo;
+    private final UserPositionRepository userPositionRepo;
 
     private void validate(Integer grade) {
         if (grade == null || grade <= 0) {
@@ -32,14 +33,11 @@ public class DepartmentSalaryGradeService {
         }
     }
 
-    /*
-     * ============================================================
-     * CREATE
-     * ============================================================
-     */
+    // ============================================================
+    // CREATE
+    // ============================================================
     @Transactional
     public ResDepartmentSalaryGradeDTO create(ReqCreateDepartmentSalaryGradeDTO req) {
-
         validate(req.getGradeLevel());
 
         if (!deptJobTitleRepo.existsById(req.getDepartmentJobTitleId())) {
@@ -47,8 +45,7 @@ public class DepartmentSalaryGradeService {
         }
 
         if (repo.existsByDepartmentJobTitleIdAndGradeLevel(
-                req.getDepartmentJobTitleId(),
-                req.getGradeLevel())) {
+                req.getDepartmentJobTitleId(), req.getGradeLevel())) {
             throw new IdInvalidException("Bậc lương đã tồn tại");
         }
 
@@ -59,14 +56,11 @@ public class DepartmentSalaryGradeService {
         return toDTO(repo.save(sg));
     }
 
-    /*
-     * ============================================================
-     * UPDATE
-     * ============================================================
-     */
+    // ============================================================
+    // UPDATE
+    // ============================================================
     @Transactional
     public ResDepartmentSalaryGradeDTO update(Long id, ReqUpdateDepartmentSalaryGradeDTO req) {
-
         validate(req.getGradeLevel());
 
         DepartmentSalaryGrade sg = repo.findById(id)
@@ -77,8 +71,7 @@ public class DepartmentSalaryGradeService {
         }
 
         boolean existed = repo.existsByDepartmentJobTitleIdAndGradeLevel(
-                sg.getDepartmentJobTitleId(),
-                req.getGradeLevel());
+                sg.getDepartmentJobTitleId(), req.getGradeLevel());
 
         if (existed && !req.getGradeLevel().equals(sg.getGradeLevel())) {
             throw new IdInvalidException("Bậc lương đã tồn tại");
@@ -88,14 +81,11 @@ public class DepartmentSalaryGradeService {
         return toDTO(repo.save(sg));
     }
 
-    /*
-     * ============================================================
-     * DELETE (SOFT DELETE)
-     * ============================================================
-     */
+    // ============================================================
+    // DELETE (SOFT DELETE)
+    // ============================================================
     @Transactional
     public void delete(Long id) {
-
         DepartmentSalaryGrade sg = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy ID"));
 
@@ -107,14 +97,11 @@ public class DepartmentSalaryGradeService {
         repo.save(sg);
     }
 
-    /*
-     * ============================================================
-     * RESTORE
-     * ============================================================
-     */
+    // ============================================================
+    // RESTORE
+    // ============================================================
     @Transactional
     public ResDepartmentSalaryGradeDTO restore(Long id) {
-
         DepartmentSalaryGrade sg = repo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy ID"));
 
@@ -126,13 +113,10 @@ public class DepartmentSalaryGradeService {
         return toDTO(repo.save(sg));
     }
 
-    /*
-     * ============================================================
-     * FETCH LIST — ⭐ TRẢ FULL LIST (active + inactive)
-     * ============================================================
-     */
+    // ============================================================
+    // FETCH ALL theo departmentJobTitleId (admin dùng)
+    // ============================================================
     public List<ResDepartmentSalaryGradeDTO> fetchByDepartmentJobTitle(Long deptJobTitleId) {
-
         if (deptJobTitleId == null || deptJobTitleId <= 0) {
             throw new IdInvalidException("departmentJobTitleId không hợp lệ");
         }
@@ -143,14 +127,76 @@ public class DepartmentSalaryGradeService {
                 .collect(Collectors.toList());
     }
 
-    /*
-     * ============================================================
-     * MAPPER
-     * ============================================================
-     */
+    // ============================================================
+    // FETCH CÁ NHÂN — chỉ thấy khung lương chức danh của mình
+    // ============================================================
+    public List<ResDepartmentSalaryGradeDTO> fetchMy() {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
+
+        User user = userRepo.findByEmail(email);
+        if (user == null)
+            throw new IdInvalidException("Không tìm thấy user");
+
+        List<Long> myJobTitleIds = userPositionRepo
+                .findByUser_IdAndActiveTrue(user.getId())
+                .stream()
+                .filter(p -> "DEPARTMENT".equalsIgnoreCase(p.getSource()))
+                .map(p -> p.getDepartmentJobTitle().getId())
+                .collect(Collectors.toList());
+
+        if (myJobTitleIds.isEmpty())
+            return List.of();
+
+        return repo.findByDepartmentJobTitleIdInAndActiveTrue(myJobTitleIds)
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    // ============================================================
+    // FETCH THEO PHÒNG BAN — HR / trưởng phòng xem toàn phòng ban
+    // ============================================================
+    public List<ResDepartmentSalaryGradeDTO> fetchByMyDepartment() {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
+
+        User user = userRepo.findByEmail(email);
+        if (user == null)
+            throw new IdInvalidException("Không tìm thấy user");
+
+        // Lấy tất cả departmentId mà user có position
+        List<Long> departmentIds = userPositionRepo
+                .findByUser_IdAndActiveTrue(user.getId())
+                .stream()
+                .filter(p -> "DEPARTMENT".equalsIgnoreCase(p.getSource()))
+                .map(p -> p.getDepartmentJobTitle().getDepartment().getId())
+                .collect(Collectors.toList());
+
+        if (departmentIds.isEmpty())
+            return List.of();
+
+        // Lấy tất cả departmentJobTitleId thuộc các department đó
+        List<Long> jobTitleIds = deptJobTitleRepo
+                .findByDepartment_IdIn(departmentIds)
+                .stream()
+                .map(djt -> djt.getId())
+                .collect(Collectors.toList());
+
+        if (jobTitleIds.isEmpty())
+            return List.of();
+
+        return repo.findByDepartmentJobTitleIdIn(jobTitleIds)
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    // ============================================================
+    // MAPPER
+    // ============================================================
     private ResDepartmentSalaryGradeDTO toDTO(DepartmentSalaryGrade sg) {
         ResDepartmentSalaryGradeDTO res = new ResDepartmentSalaryGradeDTO();
-
         res.setId(sg.getId());
         res.setDepartmentJobTitleId(sg.getDepartmentJobTitleId());
         res.setGradeLevel(sg.getGradeLevel());
@@ -159,7 +205,6 @@ public class DepartmentSalaryGradeService {
         res.setUpdatedAt(sg.getUpdatedAt());
         res.setCreatedBy(sg.getCreatedBy());
         res.setUpdatedBy(sg.getUpdatedBy());
-
         return res;
     }
 }

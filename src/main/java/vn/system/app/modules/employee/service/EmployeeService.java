@@ -9,6 +9,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.employee.domain.request.ReqCreateEmployeeDTO;
 import vn.system.app.modules.employee.domain.request.ReqUpdateEmployeeDTO;
@@ -152,11 +153,48 @@ public class EmployeeService {
     // ======================================================
     public ResultPaginationDTO getAll(Specification<User> spec, Pageable pageable) {
 
-        Specification<User> specWithJoin = (root, query, cb) -> {
-            root.join("userInfo", jakarta.persistence.criteria.JoinType.LEFT); // ✅ FIX
-            query.distinct(true); // ✅ tránh duplicate
+        // ── ADMIN_SUB_2 filter ────────────────────────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            if (scope.companyIds().isEmpty()) {
+                ResultPaginationDTO rs = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                mt.setPage(pageable.getPageNumber() + 1);
+                mt.setPageSize(pageable.getPageSize());
+                mt.setPages(0);
+                mt.setTotal(0);
+                rs.setMeta(mt);
+                rs.setResult(List.of());
+                return rs;
+            }
+            Specification<User> scopeSpec = (root, query, cb) -> {
+                var sub = query.subquery(Long.class);
+                var posRoot = sub.from(UserPosition.class);
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.or(
+                                        cb.and(cb.equal(posRoot.get("source"), "COMPANY"),
+                                                posRoot.get("companyJobTitle").get("company").get("id")
+                                                        .in(scope.companyIds())),
+                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                posRoot.get("departmentJobTitle").get("department").get("company")
+                                                        .get("id").in(scope.companyIds())),
+                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"),
+                                                posRoot.get("sectionJobTitle").get("section").get("department")
+                                                        .get("company").get("id").in(scope.companyIds())))));
+                return root.get("id").in(sub);
+            };
+            spec = Specification.where(spec).and(scopeSpec); // ← gộp vào spec gốc
+        }
+        // ── HẾT FILTER ───────────────────────────────────────
 
-            return spec == null ? null : spec.toPredicate(root, query, cb);
+        // specWithJoin bọc bên ngoài, bao gồm cả scopeSpec
+        Specification<User> finalSpec = spec;
+        Specification<User> specWithJoin = (root, query, cb) -> {
+            root.join("userInfo", jakarta.persistence.criteria.JoinType.LEFT);
+            query.distinct(true);
+            return finalSpec == null ? null : finalSpec.toPredicate(root, query, cb);
         };
 
         Page<User> page = userRepository.findAll(specWithJoin, pageable);

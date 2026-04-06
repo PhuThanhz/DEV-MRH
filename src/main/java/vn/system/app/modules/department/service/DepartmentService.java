@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.service.CompanyService;
@@ -18,6 +20,8 @@ import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
 import vn.system.app.modules.department.domain.request.UpdateDepartmentRequest;
 import vn.system.app.modules.department.domain.response.DepartmentResponse;
 import vn.system.app.modules.department.repository.DepartmentRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentService {
@@ -118,7 +122,11 @@ public class DepartmentService {
     public ResultPaginationDTO fetchAllDepartments(
             Specification<Department> spec,
             Pageable pageable) {
-
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<Department> scopeSpec = ScopeSpec.byCompanyScope("company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<Department> page = departmentRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

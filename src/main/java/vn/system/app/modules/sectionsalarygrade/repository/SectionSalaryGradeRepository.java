@@ -10,17 +10,15 @@ import vn.system.app.modules.sectionsalarygrade.domain.SectionSalaryGrade;
 public interface SectionSalaryGradeRepository
         extends JpaRepository<SectionSalaryGrade, Long> {
 
-    // Kiểm tra tồn tại (dùng cho validate UNIQUE)
     boolean existsBySectionJobTitleIdAndGradeLevel(Long sectionJobTitleId, Integer gradeLevel);
 
-    // Lấy danh sách active = true
-
-    // 🔥 Thêm method này để hỗ trợ restore
     List<SectionSalaryGrade> findBySectionJobTitleIdOrderByGradeLevelAsc(Long sectionJobTitleId);
 
-    // 🔥 Thêm method để tìm grade bất kể active (phục vụ restore)
     SectionSalaryGrade findBySectionJobTitleIdAndGradeLevel(Long sectionJobTitleId, Integer gradeLevel);
 
+    // Dùng cho SalaryMatrix + fetchByMySection
     List<SectionSalaryGrade> findBySectionJobTitleIdIn(List<Long> ids);
 
+    // Dùng cho fetchMy (active only)
+    List<SectionSalaryGrade> findBySectionJobTitleIdInAndActiveTrue(List<Long> ids);
 }

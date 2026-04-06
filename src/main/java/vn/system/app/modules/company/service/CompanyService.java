@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.domain.request.ReqCreateCompanyDTO;
@@ -18,6 +20,8 @@ import vn.system.app.modules.company.domain.response.ResCompanyDTO;
 import vn.system.app.modules.company.domain.response.ResCreateCompanyDTO;
 import vn.system.app.modules.company.domain.response.ResUpdateCompanyDTO;
 import vn.system.app.modules.company.repository.CompanyRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class CompanyService {
@@ -75,7 +79,13 @@ public class CompanyService {
     public ResultPaginationDTO fetchAllCompany(
             Specification<Company> spec,
             Pageable pageable) {
-
+        // ── ADMIN_SUB_2: chỉ thấy công ty của mình ────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<Company> scopeSpec = ScopeSpec.byCompanyScope("id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
+        // ── HẾT FILTER ────────────────────────────────────────
         Page<Company> page = companyRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

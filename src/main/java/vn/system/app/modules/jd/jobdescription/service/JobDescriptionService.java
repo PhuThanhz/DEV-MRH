@@ -31,12 +31,16 @@ import vn.system.app.modules.sectionjobtitle.service.SectionJobTitleService;
 import vn.system.app.modules.jd.jobdescriptionrequirement.service.JobDescriptionRequirementService;
 import vn.system.app.modules.jd.jobdescriptiontask.service.JobDescriptionTaskService;
 import vn.system.app.modules.jd.jobdescriptionposition.service.JobDescriptionPositionService;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.modules.jd.jdflow.service.JdFlowLogService;
 
 @Service
 @RequiredArgsConstructor
 public class JobDescriptionService {
 
     private final JobDescriptionRepository repository;
+    private final JdFlowLogService jdFlowLogService; // ← THÊM
 
     private final CompanyService companyService;
     private final DepartmentService departmentService;
@@ -166,6 +170,11 @@ public class JobDescriptionService {
     public ResultPaginationDTO fetchAll(
             Specification<JobDescription> spec,
             Pageable pageable) {
+
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
+        }
         return buildPaginationDTO(repository.findAll(spec, pageable));
     }
 
@@ -185,7 +194,12 @@ public class JobDescriptionService {
      * ==========================================
      */
     public ResultPaginationDTO fetchPublished(Pageable pageable) {
-        return buildPaginationDTO(repository.findByStatus("PUBLISHED", pageable));
+        Specification<JobDescription> spec = (root, query, cb) -> cb.equal(root.get("status"), "PUBLISHED");
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
+        }
+        return buildPaginationDTO(repository.findAll(spec, pageable));
     }
 
     /*
@@ -203,7 +217,12 @@ public class JobDescriptionService {
      * ==========================================
      */
     public ResultPaginationDTO fetchAllJd(Pageable pageable) {
-        return buildPaginationDTO(repository.findAll(pageable));
+        Specification<JobDescription> spec = Specification.where(null);
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
+        }
+        return buildPaginationDTO(repository.findAll(spec, pageable));
     }
 
     /*
@@ -295,6 +314,17 @@ public class JobDescriptionService {
         res.setTasks(taskService.getByJobDescription(jd.getId()));
         res.setPositions(positionService.getByJobDescription(jd.getId()));
 
+        // THAY BẰNG đoạn mới này
+        if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus())) {
+            JdFlowLogService.RejectInfo rejectInfo = jdFlowLogService.findLatestRejectInfo(jd.getId());
+            if (rejectInfo != null) {
+                res.setRejectComment(rejectInfo.getComment());
+                res.setRejectorName(rejectInfo.getRejectorName());
+                res.setRejectorPosition(rejectInfo.getRejectorPosition());
+                res.setRejectorDepartment(rejectInfo.getRejectorDepartment());
+                res.setRejectorPositionCode(rejectInfo.getRejectorPositionCode()); // ← cần thêm vào convertToDTO()
+            }
+        }
         return res;
     }
 }

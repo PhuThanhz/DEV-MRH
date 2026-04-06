@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
 
@@ -32,6 +33,7 @@ import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentPr
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureHistoryDTO;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureRepository;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureHistoryRepository;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentProcedureService {
@@ -188,7 +190,12 @@ public class DepartmentProcedureService {
     // =====================================================
     public ResultPaginationDTO fetchAll(
             Specification<DepartmentProcedure> spec, Pageable pageable) {
-
+        // ── ADMIN_SUB_2 filter ────────────────────────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<DepartmentProcedure> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<DepartmentProcedure> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

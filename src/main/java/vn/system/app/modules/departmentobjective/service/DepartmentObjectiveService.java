@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 
 import jakarta.transaction.Transactional;
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.service.DepartmentService;
@@ -21,6 +23,8 @@ import vn.system.app.modules.departmentobjective.domain.request.ReqCreateDepartm
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentMissionTreeDTO;
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentObjectiveDTO;
 import vn.system.app.modules.departmentobjective.repository.DepartmentObjectiveRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentObjectiveService {
@@ -174,7 +178,12 @@ public class DepartmentObjectiveService {
     public ResultPaginationDTO fetchAll(
             Specification<DepartmentObjective> spec,
             Pageable pageable) {
-
+        // ── ADMIN_SUB_2 filter ────────────────────────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<DepartmentObjective> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<DepartmentObjective> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

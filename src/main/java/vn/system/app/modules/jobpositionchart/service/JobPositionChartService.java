@@ -10,6 +10,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.modules.department.repository.DepartmentRepository;
 import vn.system.app.modules.jobpositionchart.domain.JobPositionChart;
 import vn.system.app.modules.jobpositionchart.domain.response.ResJobPositionChartDTO;
 import vn.system.app.modules.jobpositionchart.repository.JobPositionChartRepository;
@@ -18,9 +20,13 @@ import vn.system.app.modules.jobpositionchart.repository.JobPositionChartReposit
 public class JobPositionChartService {
 
     private final JobPositionChartRepository chartRepository;
+    private final DepartmentRepository departmentRepository; // ⭐ THÊM
 
-    public JobPositionChartService(JobPositionChartRepository chartRepository) {
+    public JobPositionChartService(
+            JobPositionChartRepository chartRepository,
+            DepartmentRepository departmentRepository) { // ⭐ THÊM
         this.chartRepository = chartRepository;
+        this.departmentRepository = departmentRepository; // ⭐ THÊM
     }
 
     /*
@@ -79,6 +85,41 @@ public class JobPositionChartService {
      */
     public ResultPaginationDTO fetchAllCharts(Specification<JobPositionChart> spec, Pageable pageable) {
 
+        // ── ADMIN_SUB_2: filter theo company ──────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+
+            if (scope.companyIds().isEmpty()) {
+                ResultPaginationDTO rs = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                mt.setPage(pageable.getPageNumber() + 1);
+                mt.setPageSize(pageable.getPageSize());
+                mt.setPages(0);
+                mt.setTotal(0);
+                rs.setMeta(mt);
+                rs.setResult(List.of());
+                return rs;
+            }
+
+            // Lấy tất cả departmentId thuộc company của user
+            List<Long> deptIds = departmentRepository
+                    .findByCompany_IdIn(scope.companyIds())
+                    .stream()
+                    .map(d -> d.getId())
+                    .toList();
+
+            Specification<JobPositionChart> scopeSpec = (root, query, cb) -> cb.or(
+                    // chart gắn thẳng vào company
+                    root.get("companyId").in(scope.companyIds()),
+                    // chart gắn vào department thuộc company
+                    deptIds.isEmpty()
+                            ? cb.disjunction()
+                            : root.get("departmentId").in(deptIds));
+
+            spec = Specification.where(spec).and(scopeSpec);
+        }
+        // ── HẾT FILTER ────────────────────────────────────
+
         Page<JobPositionChart> page = this.chartRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -106,7 +147,6 @@ public class JobPositionChartService {
      * CONVERT DTO
      * ==========================
      */
-
     public ResJobPositionChartDTO convertToDTO(JobPositionChart chart) {
 
         ResJobPositionChartDTO res = new ResJobPositionChartDTO();
@@ -119,5 +159,4 @@ public class JobPositionChartService {
 
         return res;
     }
-
 }

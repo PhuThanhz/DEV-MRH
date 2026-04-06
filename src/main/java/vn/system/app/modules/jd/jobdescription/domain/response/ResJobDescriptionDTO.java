@@ -86,4 +86,15 @@ public class ResJobDescriptionDTO {
     private List<ResTaskDTO> tasks;
 
     private List<ResPositionDTO> positions;
+
+    /*
+     * =========================
+     * REJECT INFO
+     * =========================
+     */
+    private String rejectComment;
+    private String rejectorName;
+    private String rejectorPosition;
+    private String rejectorDepartment;
+    private String rejectorPositionCode; // ← THÊM
 }

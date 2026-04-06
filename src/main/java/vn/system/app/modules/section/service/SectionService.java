@@ -18,6 +18,8 @@ import vn.system.app.modules.section.domain.request.ReqCreateSectionDTO;
 import vn.system.app.modules.section.domain.request.ReqUpdateSectionDTO;
 import vn.system.app.modules.section.domain.response.ResSectionDTO;
 import vn.system.app.modules.section.repository.SectionRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class SectionService {
@@ -154,7 +156,11 @@ public class SectionService {
     public ResultPaginationDTO fetchAll(
             Specification<Section> spec,
             Pageable pageable) {
-
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<Section> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<Section> page = sectionRepo.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

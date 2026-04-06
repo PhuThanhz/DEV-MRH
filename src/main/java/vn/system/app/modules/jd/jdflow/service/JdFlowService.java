@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.jd.jdflow.domain.JdFlow;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdApproverDTO;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdFlowDTO;
@@ -16,6 +17,7 @@ import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 import vn.system.app.modules.jd.jobdescription.repository.JobDescriptionRepository;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 @Service
 public class JdFlowService {
@@ -23,22 +25,24 @@ public class JdFlowService {
     private final JdFlowRepository jdFlowRepository;
     private final UserRepository userRepository;
     private final JobDescriptionRepository jobDescriptionRepository;
-
     private final JdFlowLogService logService;
     private final JdPermissionService permissionService;
+    private final UserPositionRepository userPositionRepository;
 
     public JdFlowService(
             JdFlowRepository jdFlowRepository,
             UserRepository userRepository,
             JobDescriptionRepository jobDescriptionRepository,
             JdFlowLogService logService,
-            JdPermissionService permissionService) {
+            JdPermissionService permissionService,
+            UserPositionRepository userPositionRepository) {
 
         this.jdFlowRepository = jdFlowRepository;
         this.userRepository = userRepository;
         this.jobDescriptionRepository = jobDescriptionRepository;
         this.logService = logService;
         this.permissionService = permissionService;
+        this.userPositionRepository = userPositionRepository;
     }
 
     /*
@@ -47,13 +51,9 @@ public class JdFlowService {
      * ==========================================
      */
     public ResJdFlowDTO fetchFlowByJd(Long jdId) {
-
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
-
-        if (flow == null) {
+        if (flow == null)
             return null;
-        }
-
         return convertToDTO(flow);
     }
 
@@ -71,37 +71,31 @@ public class JdFlowService {
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User fromUser = userRepository.findByEmail(email);
 
-        if (fromUser == null) {
+        if (fromUser == null)
             throw new RuntimeException("Không xác định được người gửi JD");
-        }
 
-        if (nextUserId == null) {
+        if (nextUserId == null)
             throw new RuntimeException("Người duyệt tiếp theo không được để trống");
-        }
 
         User toUser = userRepository.findById(nextUserId)
                 .orElseThrow(() -> new RuntimeException("User không tồn tại"));
 
-        if (fromUser.getId().equals(toUser.getId())) {
+        if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể gửi JD duyệt cho chính mình");
-        }
 
-        if ("PUBLISHED".equals(jd.getStatus())) {
+        if ("PUBLISHED".equals(jd.getStatus()))
             throw new RuntimeException("JD đã ban hành, không thể gửi duyệt");
-        }
 
-        if ("REJECTED".equals(jd.getStatus())) {
+        // ── Reset status khi gửi lại từ REJECTED hoặc RETURNED ──
+        if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus()))
             jd.setStatus("DRAFT");
-        }
 
         if (!permissionService.hasApprovePermission(toUser)
                 && !permissionService.hasApproveFinalPermission(toUser)
-                && !permissionService.hasIssuePermission(toUser)) {
+                && !permissionService.hasIssuePermission(toUser))
             throw new RuntimeException("User không có quyền duyệt hoặc ban hành JD");
-        }
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
-
         if (flow == null) {
             flow = new JdFlow();
             flow.setJobDescription(jd);
@@ -134,37 +128,31 @@ public class JdFlowService {
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
 
-        if (flow == null) {
+        if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
-        }
 
-        if ("REJECTED".equals(flow.getStatus())) {
+        if ("REJECTED".equals(flow.getStatus()))
             throw new RuntimeException("JD đã bị từ chối");
-        }
 
-        if ("ISSUED".equals(flow.getStatus())) {
+        if ("ISSUED".equals(flow.getStatus()))
             throw new RuntimeException("JD đã ban hành");
-        }
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User fromUser = userRepository.findByEmail(email);
 
-        if (fromUser == null || !fromUser.getId().equals(flow.getCurrentUser().getId())) {
+        if (fromUser == null || !fromUser.getId().equals(flow.getCurrentUser().getId()))
             throw new RuntimeException("Bạn không phải người đang duyệt JD này");
-        }
 
         if (permissionService.hasApproveFinalPermission(fromUser)) {
 
-            if (nextUserId == null) {
+            if (nextUserId == null)
                 throw new RuntimeException("Phải chọn người ban hành JD");
-            }
 
             User issuer = userRepository.findById(nextUserId)
                     .orElseThrow(() -> new RuntimeException("User không tồn tại"));
 
-            if (!permissionService.hasIssuePermission(issuer)) {
+            if (!permissionService.hasIssuePermission(issuer))
                 throw new RuntimeException("User không có quyền ban hành JD");
-            }
 
             JobDescription jd = flow.getJobDescription();
             jd.setStatus("APPROVED");
@@ -181,21 +169,18 @@ public class JdFlowService {
             return flow;
         }
 
-        if (nextUserId == null) {
+        if (nextUserId == null)
             throw new RuntimeException("Phải chọn người duyệt tiếp theo");
-        }
 
         User toUser = userRepository.findById(nextUserId)
                 .orElseThrow(() -> new RuntimeException("User tiếp theo không tồn tại"));
 
-        if (fromUser.getId().equals(toUser.getId())) {
+        if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể chuyển duyệt cho chính mình");
-        }
 
         if (!permissionService.hasApprovePermission(toUser)
-                && !permissionService.hasApproveFinalPermission(toUser)) {
+                && !permissionService.hasApproveFinalPermission(toUser))
             throw new RuntimeException("User tiếp theo không có quyền duyệt JD");
-        }
 
         flow.setFromUser(fromUser);
         flow.setCurrentUser(toUser);
@@ -218,30 +203,30 @@ public class JdFlowService {
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
 
-        if (flow == null) {
+        if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
-        }
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User rejectUser = userRepository.findByEmail(email);
 
-        if (rejectUser == null || !rejectUser.getId().equals(flow.getCurrentUser().getId())) {
+        if (rejectUser == null || !rejectUser.getId().equals(flow.getCurrentUser().getId()))
             throw new RuntimeException("Bạn không phải người đang duyệt JD này");
-        }
 
         JobDescription jd = flow.getJobDescription();
 
         User previousUser = logService.findPreviousApprover(jdId, rejectUser.getId());
 
         if (previousUser != null) {
+            // ── Trả về approver trung gian → RETURNED (vẫn nằm trong INBOX) ──
             flow.setCurrentUser(previousUser);
+            flow.setStatus("RETURNED");
+            jd.setStatus("RETURNED");
         } else {
+            // ── Trả về người tạo → REJECTED (nằm trong JD của tôi) ──
             flow.setCurrentUser(flow.getFromUser());
+            flow.setStatus("REJECTED");
+            jd.setStatus("REJECTED");
         }
-
-        // ✅ Đổi sang REJECTED
-        flow.setStatus("REJECTED");
-        jd.setStatus("REJECTED");
 
         jobDescriptionRepository.save(jd);
         jdFlowRepository.save(flow);
@@ -261,24 +246,20 @@ public class JdFlowService {
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
 
-        if (flow == null) {
+        if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
-        }
 
-        if (!"APPROVED".equals(flow.getStatus())) {
+        if (!"APPROVED".equals(flow.getStatus()))
             throw new RuntimeException("JD chưa được duyệt hoàn tất");
-        }
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User fromUser = userRepository.findByEmail(email);
 
-        if (fromUser == null || !fromUser.getId().equals(flow.getCurrentUser().getId())) {
+        if (fromUser == null || !fromUser.getId().equals(flow.getCurrentUser().getId()))
             throw new RuntimeException("Bạn không phải người ban hành JD này");
-        }
 
-        if (!permissionService.hasIssuePermission(fromUser)) {
+        if (!permissionService.hasIssuePermission(fromUser))
             throw new RuntimeException("Bạn không có quyền ban hành JD");
-        }
 
         flow.setStatus("ISSUED");
         flow.setCurrentUser(null);
@@ -310,42 +291,33 @@ public class JdFlowService {
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User user = userRepository.findByEmail(email);
 
-        if (user == null) {
+        if (user == null)
             return List.of();
-        }
 
-        // ✅ Thêm REJECTED để người nhận JD bị từ chối thấy và gửi lại
+        // ── RETURNED thay REJECTED — người tạo không còn xuất hiện trong INBOX ──
         List<JdFlow> flows = jdFlowRepository
                 .findByCurrentUserIdAndStatusIn(
                         user.getId(),
-                        List.of("IN_REVIEW", "APPROVED", "REJECTED"));
+                        List.of("IN_REVIEW", "APPROVED", "RETURNED"));
 
         return flows.stream().map(flow -> {
 
             JobDescription jd = flow.getJobDescription();
-
             ResJdInboxDTO dto = new ResJdInboxDTO();
 
             dto.setJdId(jd.getId());
             dto.setCode(jd.getCode());
             dto.setStatus(jd.getStatus());
+            dto.setUpdatedAt(flow.getUpdatedAt() != null ? flow.getUpdatedAt() : flow.getCreatedAt());
 
-            dto.setUpdatedAt(
-                    flow.getUpdatedAt() != null
-                            ? flow.getUpdatedAt()
-                            : flow.getCreatedAt());
-
-            if (jd.getCompany() != null) {
+            if (jd.getCompany() != null)
                 dto.setCompanyName(jd.getCompany().getName());
-            }
 
-            if (jd.getDepartment() != null) {
+            if (jd.getDepartment() != null)
                 dto.setDepartmentName(jd.getDepartment().getName());
-            }
 
-            if (jd.getCompanyJobTitle() != null) {
+            if (jd.getCompanyJobTitle() != null)
                 dto.setJobTitleName(jd.getCompanyJobTitle().getJobTitle().getNameVi());
-            }
 
             if (flow.getCurrentUser() != null) {
                 ResJdInboxDTO.UserSimple current = new ResJdInboxDTO.UserSimple();
@@ -355,12 +327,25 @@ public class JdFlowService {
             }
 
             User fromUser = logService.findLastSender(jd.getId());
-
             if (fromUser != null) {
                 ResJdInboxDTO.UserSimple from = new ResJdInboxDTO.UserSimple();
                 from.setId(fromUser.getId());
                 from.setName(fromUser.getName());
                 dto.setFromUser(from);
+            }
+
+            // ── LÝ DO TỪ CHỐI (cả REJECTED lẫn RETURNED) ──
+
+            if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus())) {
+                JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jd.getId());
+                if (rejectInfo != null) {
+                    dto.setRejectComment(rejectInfo.getComment());
+                    dto.setRejectorName(rejectInfo.getRejectorName());
+                    dto.setRejectorPosition(rejectInfo.getRejectorPosition());
+                    dto.setRejectorDepartment(rejectInfo.getRejectorDepartment());
+                    dto.setRejectorPositionCode(rejectInfo.getRejectorPositionCode()); // ← THÊM
+
+                }
             }
 
             return dto;
@@ -370,20 +355,90 @@ public class JdFlowService {
 
     /*
      * ==========================================
+     * HELPER — check scope công ty
+     * ==========================================
+     */
+    private boolean isUserInScope(User u, UserScopeContext.UserScope scope) {
+        if (scope == null || scope.isSuperAdmin())
+            return true;
+        return userPositionRepository.findByUser_IdAndActiveTrue(u.getId())
+                .stream()
+                .anyMatch(pos -> {
+                    Long companyId = switch (pos.getSource().toUpperCase()) {
+                        case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();
+                        case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getCompany().getId();
+                        case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
+                        default -> null;
+                    };
+                    return companyId != null && scope.companyIds().contains(companyId);
+                });
+    }
+
+    /*
+     * ==========================================
+     * HELPER — build danh sách chức danh
+     * ==========================================
+     */
+    private List<ResJdApproverDTO.PositionInfo> buildPositions(Long userId) {
+        return userPositionRepository.findByUser_IdAndActiveTrue(userId)
+                .stream()
+                .map(pos -> {
+                    ResJdApproverDTO.PositionInfo info = new ResJdApproverDTO.PositionInfo();
+                    info.setSource(pos.getSource());
+
+                    switch (pos.getSource().toUpperCase()) {
+                        case "COMPANY" -> {
+                            var cjt = pos.getCompanyJobTitle();
+                            info.setCompanyName(cjt.getCompany().getName());
+                            info.setJobTitleName(cjt.getJobTitle().getNameVi());
+                            if (cjt.getJobTitle().getPositionLevel() != null)
+                                info.setPositionCode(cjt.getJobTitle().getPositionLevel().getCode());
+                        }
+                        case "DEPARTMENT" -> {
+                            var djt = pos.getDepartmentJobTitle();
+                            info.setCompanyName(djt.getDepartment().getCompany().getName());
+                            info.setDepartmentName(djt.getDepartment().getName());
+                            info.setJobTitleName(djt.getJobTitle().getNameVi());
+                            if (djt.getJobTitle().getPositionLevel() != null)
+                                info.setPositionCode(djt.getJobTitle().getPositionLevel().getCode());
+                        }
+                        case "SECTION" -> {
+                            var sjt = pos.getSectionJobTitle();
+                            info.setCompanyName(sjt.getSection().getDepartment().getCompany().getName());
+                            info.setDepartmentName(sjt.getSection().getDepartment().getName());
+                            info.setJobTitleName(sjt.getJobTitle().getNameVi());
+                            if (sjt.getJobTitle().getPositionLevel() != null)
+                                info.setPositionCode(sjt.getJobTitle().getPositionLevel().getCode());
+                        }
+                    }
+                    return info;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /*
+     * ==========================================
      * FETCH JD APPROVERS
      * ==========================================
      */
     public List<ResJdApproverDTO> fetchApprovers() {
 
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+
         return userRepository.findAll().stream()
-                .filter(u -> permissionService.hasApprovePermission(u)
-                        || permissionService.hasApproveFinalPermission(u))
-                .map(u -> new ResJdApproverDTO(
-                        u.getId(),
-                        u.getName(),
-                        u.getEmail(),
-                        u.getAvatar(),
-                        permissionService.hasApproveFinalPermission(u)))
+                .filter(u -> isUserInScope(u, scope)
+                        && (permissionService.hasApprovePermission(u)
+                                || permissionService.hasApproveFinalPermission(u)))
+                .map(u -> {
+                    ResJdApproverDTO dto = new ResJdApproverDTO(
+                            u.getId(),
+                            u.getName(),
+                            u.getEmail(),
+                            u.getAvatar(),
+                            permissionService.hasApproveFinalPermission(u));
+                    dto.setPositions(buildPositions(u.getId()));
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -394,14 +449,21 @@ public class JdFlowService {
      */
     public List<ResJdApproverDTO> fetchIssuers() {
 
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+
         return userRepository.findAll().stream()
-                .filter(permissionService::hasIssuePermission)
-                .map(u -> new ResJdApproverDTO(
-                        u.getId(),
-                        u.getName(),
-                        u.getEmail(),
-                        u.getAvatar(),
-                        false))
+                .filter(u -> isUserInScope(u, scope)
+                        && permissionService.hasIssuePermission(u))
+                .map(u -> {
+                    ResJdApproverDTO dto = new ResJdApproverDTO(
+                            u.getId(),
+                            u.getName(),
+                            u.getEmail(),
+                            u.getAvatar(),
+                            false);
+                    dto.setPositions(buildPositions(u.getId()));
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -417,16 +479,12 @@ public class JdFlowService {
         dto.setJdId(flow.getJobDescription().getId());
         dto.setCode(flow.getJobDescription().getCode());
         dto.setStatus(flow.getJobDescription().getStatus());
-        dto.setUpdatedAt(
-                flow.getUpdatedAt() != null
-                        ? flow.getUpdatedAt()
-                        : flow.getCreatedAt());
+        dto.setUpdatedAt(flow.getUpdatedAt() != null ? flow.getUpdatedAt() : flow.getCreatedAt());
 
         if (flow.getCurrentUser() != null) {
             dto.setCurrentUser(new ResJdFlowDTO.UserInfo(
                     flow.getCurrentUser().getId(),
                     flow.getCurrentUser().getName()));
-
             dto.setCurrentUserIsFinal(
                     permissionService.hasApproveFinalPermission(flow.getCurrentUser()));
         }

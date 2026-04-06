@@ -9,6 +9,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.repository.CompanyRepository;
@@ -18,6 +20,8 @@ import vn.system.app.modules.positionlevel.domain.request.ReqUpdatePositionLevel
 import vn.system.app.modules.positionlevel.domain.response.ResCreatePositionLevelDTO;
 import vn.system.app.modules.positionlevel.domain.response.ResPositionLevelDTO;
 import vn.system.app.modules.positionlevel.repository.PositionLevelRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class PositionLevelService {
@@ -178,7 +182,21 @@ public class PositionLevelService {
 
     // ================= FETCH ALL ===========================
     public ResultPaginationDTO fetchAll(Specification<PositionLevel> spec, Pageable pageable) {
+        // ── ADMIN_SUB_2: filter theo company ──────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
+        }
+        // ⭐ THÊM LOG
+        System.out.println(">>> [PositionLevelService] scope = " + scope);
+        if (scope != null) {
+            System.out.println(">>> isSuperAdmin = " + scope.isSuperAdmin());
+            System.out.println(">>> companyIds = " + scope.companyIds());
+        }
 
+        if (scope != null && !scope.isSuperAdmin()) {
+            spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
+        }
         Page<PositionLevel> pagePL = repo.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

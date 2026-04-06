@@ -37,4 +37,7 @@ public interface DepartmentJobTitleRepository
         // + active
         Optional<DepartmentJobTitle> findByDepartment_IdAndJobTitle_IdAndActiveTrue(
                         Long departmentId, Long jobTitleId);
+
+        List<DepartmentJobTitle> findByDepartment_IdIn(List<Long> departmentIds);
+
 }

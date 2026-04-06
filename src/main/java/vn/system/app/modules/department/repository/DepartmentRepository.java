@@ -1,5 +1,6 @@
 package vn.system.app.modules.department.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,10 @@ public interface DepartmentRepository
 
     // lấy phòng ban theo công ty
     List<Department> findByCompanyId(Long companyId);
+
+    long countByCompany_IdIn(java.util.Set<Long> companyIds);
+
+    // ⭐ THÊM — lấy phòng ban theo nhiều companyId (dùng cho scope filter OrgChart)
+    List<Department> findByCompany_IdIn(Collection<Long> companyIds);
+
 }

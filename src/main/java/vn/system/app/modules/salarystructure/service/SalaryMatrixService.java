@@ -1,10 +1,15 @@
 package vn.system.app.modules.salarystructure.service;
 
 import java.util.*;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+
+import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.error.IdInvalidException;
 
 import vn.system.app.modules.companysalarygrade.domain.CompanySalaryGrade;
 import vn.system.app.modules.companysalarygrade.repository.CompanySalaryGradeRepository;
@@ -32,6 +37,10 @@ import vn.system.app.modules.salarystructure.repository.SalaryStructureRepositor
 import vn.system.app.modules.departmentjobtitle.domain.response.ResDepartmentJobTitleDTO;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleScopeService;
 
+import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
+
 @Service
 @RequiredArgsConstructor
 public class SalaryMatrixService {
@@ -48,6 +57,13 @@ public class SalaryMatrixService {
 
     private final SalaryStructureRepository structureRepo;
 
+    // ← THÊM MỚI
+    private final UserRepository userRepo;
+    private final UserPositionRepository userPositionRepo;
+
+    // ======================================================
+    // ADMIN — xem full phòng ban
+    // ======================================================
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getDepartmentSalaryMatrix(Long departmentId) {
 
@@ -55,100 +71,144 @@ public class SalaryMatrixService {
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (ResDepartmentJobTitleDTO jt : jobTitles) {
-
-            Long jobTitleId = jt.getJobTitle().getId();
-
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("jobTitleId", jobTitleId);
-            row.put("jobTitleName", jt.getJobTitle().getNameVi());
-            row.put("band", jt.getJobTitle().getBand());
-            row.put("level", jt.getJobTitle().getLevel());
-            row.put("source", jt.getSource());
-
-            List<Map<String, Object>> grades = new ArrayList<>();
-
-            // ==========================
-            // LẤY DANH SÁCH BẬC LƯƠNG
-            // ==========================
-            List<?> gradeList = switch (jt.getSource()) {
-
-                case "COMPANY" -> {
-                    List<Long> ids = companyJobTitleRepo
-                            .findByJobTitle_IdAndActiveTrue(jobTitleId)
-                            .stream().map(CompanyJobTitle::getId).toList();
-
-                    yield ids.isEmpty()
-                            ? Collections.emptyList()
-                            : companyGradeRepo.findByCompanyJobTitleIdIn(ids);
-                }
-
-                case "DEPARTMENT" -> {
-                    List<Long> ids = deptJobTitleRepo
-                            .findByJobTitle_IdAndActiveTrue(jobTitleId)
-                            .stream().map(DepartmentJobTitle::getId).toList();
-
-                    yield ids.isEmpty()
-                            ? Collections.emptyList()
-                            : deptGradeRepo.findByDepartmentJobTitleIdIn(ids);
-                }
-
-                case "SECTION" -> {
-                    List<Long> ids = sectionJobTitleRepo
-                            .findByJobTitle_IdAndActiveTrue(jobTitleId)
-                            .stream().map(SectionJobTitle::getId).toList();
-
-                    yield ids.isEmpty()
-                            ? Collections.emptyList()
-                            : sectionGradeRepo.findBySectionJobTitleIdIn(ids);
-                }
-
-                default -> Collections.emptyList();
-            };
-
-            // ==========================
-            // TỪNG BẬC LƯƠNG → LẤY CẤU TRÚC
-            // ==========================
-            for (Object g : gradeList) {
-
-                Integer gradeLevel = null;
-                Long gradeId = null;
-                OwnerLevel ownerLevel = OwnerLevel.valueOf(jt.getSource());
-
-                if (g instanceof CompanySalaryGrade cg) {
-                    gradeLevel = cg.getGradeLevel();
-                    gradeId = cg.getId();
-                } else if (g instanceof DepartmentSalaryGrade dg) {
-                    gradeLevel = dg.getGradeLevel();
-                    gradeId = dg.getId();
-                } else if (g instanceof SectionSalaryGrade sg) {
-                    gradeLevel = sg.getGradeLevel();
-                    gradeId = sg.getId();
-                }
-
-                if (gradeId == null)
-                    continue;
-
-                Optional<SalaryStructure> ss = structureRepo.findByOwnerLevelAndOwnerJobTitleIdAndSalaryGradeId(
-                        ownerLevel, jobTitleId, gradeId);
-
-                Map<String, Object> gRow = new LinkedHashMap<>();
-                gRow.put("gradeLevel", gradeLevel);
-                gRow.put("gradeId", gradeId);
-                gRow.put("structure", ss.map(this::convertToDTO).orElse(null));
-
-                grades.add(gRow);
-            }
-
-            row.put("grades", grades);
-            result.add(row);
+            result.add(buildJobTitleRow(jt));
         }
 
         return result;
     }
 
-    // =====================================================
+    // ======================================================
+    // USER — chỉ xem chức danh của mình trong phòng ban
+    // ======================================================
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getMyDepartmentSalaryMatrix(Long departmentId) {
+
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
+
+        User user = userRepo.findByEmail(email);
+        if (user == null)
+            throw new IdInvalidException("Không tìm thấy user");
+
+        // Lấy tất cả jobTitleId mà user có trong phòng ban này
+        Set<Long> myJobTitleIds = userPositionRepo
+                .findByUser_IdAndActiveTrue(user.getId())
+                .stream()
+                .filter(p -> {
+                    String src = p.getSource().toUpperCase();
+                    if ("DEPARTMENT".equals(src))
+                        return p.getDepartmentJobTitle()
+                                .getDepartment().getId().equals(departmentId);
+                    if ("SECTION".equals(src))
+                        return p.getSectionJobTitle()
+                                .getSection().getDepartment().getId().equals(departmentId);
+                    return false;
+                })
+                .map(p -> "DEPARTMENT".equalsIgnoreCase(p.getSource())
+                        ? p.getDepartmentJobTitle().getJobTitle().getId()
+                        : p.getSectionJobTitle().getJobTitle().getId())
+                .collect(Collectors.toSet());
+
+        if (myJobTitleIds.isEmpty())
+            return List.of();
+
+        // Tái dụng getDepartmentSalaryMatrix rồi filter theo jobTitleId của user
+        return getDepartmentSalaryMatrix(departmentId)
+                .stream()
+                .filter(row -> myJobTitleIds.contains((Long) row.get("jobTitleId")))
+                .collect(Collectors.toList());
+    }
+
+    // ======================================================
+    // HELPER — build 1 row chức danh (tái dụng cho cả 2 method)
+    // ======================================================
+    private Map<String, Object> buildJobTitleRow(ResDepartmentJobTitleDTO jt) {
+
+        Long jobTitleId = jt.getJobTitle().getId();
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("jobTitleId", jobTitleId);
+        row.put("jobTitleName", jt.getJobTitle().getNameVi());
+        row.put("band", jt.getJobTitle().getBand());
+        row.put("level", jt.getJobTitle().getLevel());
+        row.put("source", jt.getSource());
+
+        List<Map<String, Object>> grades = new ArrayList<>();
+
+        List<?> gradeList = switch (jt.getSource()) {
+
+            case "COMPANY" -> {
+                List<Long> ids = companyJobTitleRepo
+                        .findByJobTitle_IdAndActiveTrue(jobTitleId)
+                        .stream().map(CompanyJobTitle::getId).toList();
+
+                yield ids.isEmpty()
+                        ? Collections.emptyList()
+                        : companyGradeRepo.findByCompanyJobTitleIdIn(ids);
+            }
+
+            case "DEPARTMENT" -> {
+                List<Long> ids = deptJobTitleRepo
+                        .findByJobTitle_IdAndActiveTrue(jobTitleId)
+                        .stream().map(DepartmentJobTitle::getId).toList();
+
+                yield ids.isEmpty()
+                        ? Collections.emptyList()
+                        : deptGradeRepo.findByDepartmentJobTitleIdIn(ids);
+            }
+
+            case "SECTION" -> {
+                List<Long> ids = sectionJobTitleRepo
+                        .findByJobTitle_IdAndActiveTrue(jobTitleId)
+                        .stream().map(SectionJobTitle::getId).toList();
+
+                yield ids.isEmpty()
+                        ? Collections.emptyList()
+                        : sectionGradeRepo.findBySectionJobTitleIdIn(ids);
+            }
+
+            default -> Collections.emptyList();
+        };
+
+        for (Object g : gradeList) {
+
+            Integer gradeLevel = null;
+            Long gradeId = null;
+            OwnerLevel ownerLevel = OwnerLevel.valueOf(jt.getSource());
+
+            if (g instanceof CompanySalaryGrade cg) {
+                gradeLevel = cg.getGradeLevel();
+                gradeId = cg.getId();
+            } else if (g instanceof DepartmentSalaryGrade dg) {
+                gradeLevel = dg.getGradeLevel();
+                gradeId = dg.getId();
+            } else if (g instanceof SectionSalaryGrade sg) {
+                gradeLevel = sg.getGradeLevel();
+                gradeId = sg.getId();
+            }
+
+            if (gradeId == null)
+                continue;
+
+            Optional<SalaryStructure> ss = structureRepo
+                    .findByOwnerLevelAndOwnerJobTitleIdAndSalaryGradeId(
+                            ownerLevel, jobTitleId, gradeId);
+
+            Map<String, Object> gRow = new LinkedHashMap<>();
+            gRow.put("gradeLevel", gradeLevel);
+            gRow.put("gradeId", gradeId);
+            gRow.put("structure", ss.map(this::convertToDTO).orElse(null));
+
+            grades.add(gRow);
+        }
+
+        row.put("grades", grades);
+        return row;
+    }
+
+    // ======================================================
     // DTO CONVERTER
-    // =====================================================
+    // ======================================================
     private ResSalaryStructureDTO convertToDTO(SalaryStructure e) {
         ResSalaryStructureDTO r = new ResSalaryStructureDTO();
 
@@ -157,28 +217,23 @@ public class SalaryMatrixService {
         r.setOwnerJobTitleId(e.getOwnerJobTitleId());
         r.setSalaryGradeId(e.getSalaryGradeId());
 
-        /* ========================= MONTH ========================= */
         r.setMonthBaseSalary(e.getMonthBaseSalary());
         r.setMonthPositionAllowance(e.getMonthPositionAllowance());
         r.setMonthMealAllowance(e.getMonthMealAllowance());
         r.setMonthFuelSupport(e.getMonthFuelSupport());
         r.setMonthPhoneSupport(e.getMonthPhoneSupport());
         r.setMonthOtherSupport(e.getMonthOtherSupport());
-
-        // 4 mức KPI A/B/C/D
         r.setMonthKpiBonusA(e.getMonthKpiBonusA());
         r.setMonthKpiBonusB(e.getMonthKpiBonusB());
         r.setMonthKpiBonusC(e.getMonthKpiBonusC());
         r.setMonthKpiBonusD(e.getMonthKpiBonusD());
 
-        /* ========================= HOUR ========================= */
         r.setHourBaseSalary(e.getHourBaseSalary());
         r.setHourPositionAllowance(e.getHourPositionAllowance());
         r.setHourMealAllowance(e.getHourMealAllowance());
         r.setHourFuelSupport(e.getHourFuelSupport());
         r.setHourPhoneSupport(e.getHourPhoneSupport());
         r.setHourOtherSupport(e.getHourOtherSupport());
-
         r.setHourKpiBonusA(e.getHourKpiBonusA());
         r.setHourKpiBonusB(e.getHourKpiBonusB());
         r.setHourKpiBonusC(e.getHourKpiBonusC());

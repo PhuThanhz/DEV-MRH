@@ -26,6 +26,8 @@ import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.service.JobTitleService;
 import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
 import vn.system.app.modules.sectionjobtitle.repository.SectionJobTitleRepository;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class CompanyJobTitleService {
@@ -170,7 +172,12 @@ public class CompanyJobTitleService {
     public ResultPaginationDTO fetchAll(
             Specification<CompanyJobTitle> spec,
             Pageable pageable) {
-
+        // ── ADMIN_SUB_2 filter ────────────────────────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            Specification<CompanyJobTitle> scopeSpec = ScopeSpec.byCompanyScope("company.id");
+            spec = Specification.where(spec).and(scopeSpec);
+        }
         Page<CompanyJobTitle> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();

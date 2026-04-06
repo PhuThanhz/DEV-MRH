@@ -48,4 +48,7 @@ public interface SectionJobTitleRepository
 
         // ⭐⭐ NEW — hàm cần thiết cho PositionService
         boolean existsBySection_IdAndJobTitle_IdAndActiveTrue(Long sectionId, Long jobTitleId);
+
+        List<SectionJobTitle> findBySection_IdIn(List<Long> sectionIds);
+
 }

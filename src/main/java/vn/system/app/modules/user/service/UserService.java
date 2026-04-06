@@ -9,9 +9,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import vn.system.app.common.util.UserScopeContext;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.email.service.EmailService;
 import vn.system.app.modules.role.domain.Role;
@@ -166,16 +168,64 @@ public class UserService {
     // ======================================================
     public ResultPaginationDTO fetchAllUser(Specification<User> spec, Pageable pageable) {
 
+        // ── ADMIN_SUB_2: filter user theo company ──────────────
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+
+            if (scope.companyIds().isEmpty()) {
+                // Không thuộc công ty nào → trả về rỗng
+                ResultPaginationDTO rs = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                mt.setPage(pageable.getPageNumber() + 1);
+                mt.setPageSize(pageable.getPageSize());
+                mt.setPages(0);
+                mt.setTotal(0);
+                rs.setMeta(mt);
+                rs.setResult(List.of());
+                return rs;
+            }
+
+            // Filter: chỉ lấy user thuộc company của admin này
+            // User không có company trực tiếp → đi qua UserPosition
+            Specification<User> scopeSpec = (root, query, cb) -> {
+
+                var sub = query.subquery(Long.class);
+                var posRoot = sub.from(UserPosition.class);
+
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.or(
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "COMPANY"),
+                                                posRoot.get("companyJobTitle").get("company").get("id")
+                                                        .in(scope.companyIds())),
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                posRoot.get("departmentJobTitle").get("department").get("company")
+                                                        .get("id")
+                                                        .in(scope.companyIds())),
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "SECTION"),
+                                                posRoot.get("sectionJobTitle").get("section").get("department")
+                                                        .get("company").get("id")
+                                                        .in(scope.companyIds())))));
+
+                return root.get("id").in(sub);
+            };
+
+            spec = Specification.where(spec).and(scopeSpec);
+        }
+        // ── HẾT FILTER ────────────────────────────────────────
+
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
-
         mt.setPage(pageable.getPageNumber() + 1);
         mt.setPageSize(pageable.getPageSize());
         mt.setPages(pageUser.getTotalPages());
         mt.setTotal(pageUser.getTotalElements());
-
         rs.setMeta(mt);
 
         List<ResUserDTO> listUser = pageUser.getContent()

@@ -10,6 +10,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,6 +23,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.nimbusds.jose.util.Base64;
 
@@ -73,7 +75,6 @@ public class SecurityUtil {
 
         JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
         return this.jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();
-
     }
 
     public String createRefreshToken(String email, ResLoginDTO dto) {
@@ -95,7 +96,6 @@ public class SecurityUtil {
 
         JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
         return this.jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();
-
     }
 
     private SecretKey getSecretKey() {
@@ -104,17 +104,17 @@ public class SecurityUtil {
                 JWT_ALGORITHM.getName());
     }
 
-    public Jwt checkValidRefreshToken(String token){
-     NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withSecretKey(
+    public Jwt checkValidRefreshToken(String token) {
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withSecretKey(
                 getSecretKey()).macAlgorithm(SecurityUtil.JWT_ALGORITHM).build();
-                try {
-                     return jwtDecoder.decode(token);
-                } catch (Exception e) {
-                    System.out.println(">>> Refresh Token error: " + e.getMessage());
-                    throw e;
-                }
+        try {
+            return jwtDecoder.decode(token);
+        } catch (Exception e) {
+            System.out.println(">>> Refresh Token error: " + e.getMessage());
+            throw e;
+        }
     }
-    
+
     /**
      * Get the login of the current user.
      *
@@ -150,22 +150,51 @@ public class SecurityUtil {
             .map(authentication -> (String) authentication.getCredentials());
     }
 
+    // =====================================================
+    // THÊM MỚI — chặn API theo permission, không phá logic cũ
+    // =====================================================
+
     /**
-     * Check if a user is authenticated.
-     *
-     * @return true if the user is authenticated, false otherwise.
+     * Throw 403 nếu user không có permission.
+     * Ví dụ: checkPermission("PROCEDURE_DEPARTMENT_UPDATE")
      */
+    public static void checkPermission(String permission) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Chưa xác thực");
+        }
+
+        boolean hasPermission = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(permission));
+
+        if (!hasPermission) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Không có quyền: " + permission
+            );
+        }
+    }
+
+    /**
+     * Trả về boolean — không throw, dùng để kiểm tra trước khi ẩn/hiện UI.
+     */
+    public static boolean hasPermission(String permission) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return false;
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(permission));
+    }
+
+    // =====================================================
+    // CÁC METHOD CŨ ĐÃ COMMENT — giữ nguyên không đụng
+    // =====================================================
+
     // public static boolean isAuthenticated() {
     //     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     //     return authentication != null && getAuthorities(authentication).noneMatch(AuthoritiesConstants.ANONYMOUS::equals);
     // }
 
-    /**
-     * Checks if the current user has any of the authorities.
-     *
-     * @param authorities the authorities to check.
-     * @return true if the current user has any of the authorities, false otherwise.
-     */
     // public static boolean hasCurrentUserAnyOfAuthorities(String... authorities) {
     //     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     //     return (
@@ -173,22 +202,10 @@ public class SecurityUtil {
     //     );
     // }
 
-    /**
-     * Checks if the current user has none of the authorities.
-     *
-     * @param authorities the authorities to check.
-     * @return true if the current user has none of the authorities, false otherwise.
-     */
     // public static boolean hasCurrentUserNoneOfAuthorities(String... authorities) {
     //     return !hasCurrentUserAnyOfAuthorities(authorities);
     // }
 
-    /**
-     * Checks if the current user has a specific authority.
-     *
-     * @param authority the authority to check.
-     * @return true if the current user has the authority, false otherwise.
-     */
     // public static boolean hasCurrentUserThisAuthority(String authority) {
     //     return hasCurrentUserAnyOfAuthorities(authority);
     // }
@@ -196,5 +213,4 @@ public class SecurityUtil {
     // private static Stream<String> getAuthorities(Authentication authentication) {
     //     return authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority);
     // }
-
 }

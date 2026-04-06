@@ -11,13 +11,13 @@ import org.springframework.web.servlet.HandlerMapping;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.common.util.UserScopeContext; // ← THÊM
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.permission.domain.Permission;
 import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.service.UserService;
-import vn.system.app.modules.userposition.service.UserPositionService; // ← THÊM
+import vn.system.app.modules.userposition.service.UserPositionService;
 
 public class PermissionInterceptor implements HandlerInterceptor {
 
@@ -25,7 +25,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
     UserService userService;
 
     @Autowired
-    UserPositionService userPositionService; // ← THÊM
+    UserPositionService userPositionService;
 
     @Override
     @Transactional
@@ -42,7 +42,6 @@ public class PermissionInterceptor implements HandlerInterceptor {
         System.out.println(">>> httpMethod= " + httpMethod);
         System.out.println(">>> requestURI= " + requestURI);
 
-        // check permission
         String email = SecurityUtil.getCurrentUserLogin().isPresent() == true
                 ? SecurityUtil.getCurrentUserLogin().get()
                 : "";
@@ -55,18 +54,25 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 boolean isSuperAdmin = user.getRole() != null
                         && "SUPER_ADMIN".equals(user.getRole().getName());
 
-                Set<Long> companyIds = isSuperAdmin
+                // ← THÊM: role được xem hết data như SUPER_ADMIN
+                boolean isFullViewRole = user.getRole() != null
+                        && List.of("SUPER_ADMIN", "ADMIN_SUB_1") // ← đổi "ADMIN_SUB_1" thành tên role đúng trong DB
+                                .contains(user.getRole().getName());
+
+                // ← ĐỔI: dùng isFullViewRole thay vì isSuperAdmin
+                Set<Long> companyIds = isFullViewRole
                         ? Set.of()
                         : userPositionService.getCompanyIdsByUser(user.getId());
 
+                // ← ĐỔI: truyền isFullViewRole thay vì isSuperAdmin
                 UserScopeContext.set(new UserScopeContext.UserScope(
-                        user.getId(), companyIds, isSuperAdmin));
+                        user.getId(), companyIds, isFullViewRole));
                 // ───────────────────────────────────────────────────────────
 
                 Role role = user.getRole();
                 if (role != null) {
 
-                    // SUPER_ADMIN bỏ qua check permission
+                    // SUPER_ADMIN bỏ qua check permission — KHÔNG ĐỔI
                     if ("SUPER_ADMIN".equals(role.getName())) {
                         return true;
                     }
@@ -87,12 +93,11 @@ public class PermissionInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    // ── DỌN SCOPE SAU MỖI REQUEST ─────────────────────────────────────────────
     @Override
     public void afterCompletion(
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler, Exception ex) {
-        UserScopeContext.clear(); // ← THÊM
+        UserScopeContext.clear();
     }
 }

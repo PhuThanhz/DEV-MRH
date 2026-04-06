@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.annotation.ApiMessage;
 
 import vn.system.app.modules.procedure.enums.ProcedureType;
@@ -39,6 +40,15 @@ public class ProcedureController {
     private final CompanyProcedureService companyProcedureService;
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
+
+    // =====================================================
+    // HELPER — check permission theo type + action
+    // Sinh ra: PROCEDURE_COMPANY_UPDATE, PROCEDURE_DEPARTMENT_DELETE, ...
+    // =====================================================
+    private void checkPermissionByType(ProcedureType type, String action) {
+        String permission = "PROCEDURE_" + type.name() + "_" + action;
+        SecurityUtil.checkPermission(permission);
+    }
 
     // =====================================================
     // CREATE
@@ -71,6 +81,8 @@ public class ProcedureController {
             @RequestParam ProcedureType type,
             @Valid @RequestBody ProcedureRequestWrapper req) {
 
+        checkPermissionByType(type, "UPDATE");
+
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.handleUpdate(id, req.toCompanyRequest()));
         } else if (type == ProcedureType.DEPARTMENT) {
@@ -89,6 +101,8 @@ public class ProcedureController {
             @PathVariable Long id,
             @RequestParam ProcedureType type,
             @Valid @RequestBody ProcedureRequestWrapper req) {
+
+        checkPermissionByType(type, "REVISE");
 
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.handleRevise(id, req.toCompanyRequest()));
@@ -127,6 +141,8 @@ public class ProcedureController {
             @PathVariable Long id,
             @RequestParam ProcedureType type) {
 
+        checkPermissionByType(type, "DELETE");
+
         if (type == ProcedureType.COMPANY) {
             companyProcedureService.handleDelete(id);
         } else if (type == ProcedureType.DEPARTMENT) {
@@ -145,6 +161,8 @@ public class ProcedureController {
     public ResponseEntity<?> getOne(
             @PathVariable Long id,
             @RequestParam ProcedureType type) {
+
+        checkPermissionByType(type, "GET_BY_ID");
 
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.convertToDTO(
@@ -190,7 +208,6 @@ public class ProcedureController {
             Pageable pageable) {
 
         spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
-
         return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
     }
 
@@ -204,7 +221,6 @@ public class ProcedureController {
             Pageable pageable) {
 
         spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
-
         return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
     }
 
@@ -212,12 +228,12 @@ public class ProcedureController {
     // GET ALL CONFIDENTIAL — có @Filter
     // =====================================================
     @GetMapping("/confidential")
+    @ApiMessage("Danh sách quy trình bảo mật có filter")
     public ResponseEntity<ResultPaginationDTO> getAllConfidential(
             @Filter Specification<ConfidentialProcedure> spec,
             Pageable pageable) {
 
         spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
-
         return ResponseEntity.ok(confidentialProcedureService.fetchAll(spec, pageable));
     }
 

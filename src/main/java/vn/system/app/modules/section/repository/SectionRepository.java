@@ -23,4 +23,7 @@ public interface SectionRepository
 
     // THÊM MỚI — check phòng ban có bộ phận không
     boolean existsByDepartmentId(Long departmentId);
+
+    long countByDepartment_Company_IdIn(java.util.Set<Long> companyIds);
+
 }

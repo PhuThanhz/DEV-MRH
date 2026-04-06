@@ -20,69 +20,71 @@ public class CompanySalaryGradeController {
 
     private final CompanySalaryGradeService service;
 
-    /*
-     * ================================
-     * CREATE
-     * =================================
-     */
+    // ================================
+    // CREATE
+    // ================================
     @PostMapping
     @ApiMessage("Tạo bậc lương")
     public ResponseEntity<ResCompanySalaryGradeDTO> create(
             @Valid @RequestBody ReqCreateCompanySalaryGradeDTO req) {
-
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.create(req));
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }
 
-    /*
-     * ================================
-     * UPDATE
-     * =================================
-     */
+    // ================================
+    // UPDATE
+    // ================================
     @PutMapping("/{id}")
     @ApiMessage("Cập nhật bậc lương")
     public ResponseEntity<ResCompanySalaryGradeDTO> update(
             @PathVariable Long id,
             @Valid @RequestBody ReqUpdateCompanySalaryGradeDTO req) {
-
         return ResponseEntity.ok(service.update(id, req));
     }
 
-    /*
-     * ================================
-     * DELETE (SOFT DELETE)
-     * =================================
-     */
+    // ================================
+    // DELETE (SOFT DELETE)
+    // ================================
     @DeleteMapping("/{id}")
     @ApiMessage("Xoá bậc lương (soft delete)")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
 
-    /*
-     * ================================
-     * RESTORE (RE-ACTIVATE)
-     * =================================
-     */
+    // ================================
+    // RESTORE
+    // ================================
     @PutMapping("/{id}/restore")
     @ApiMessage("Khôi phục bậc lương đã vô hiệu")
     public ResponseEntity<ResCompanySalaryGradeDTO> restore(@PathVariable Long id) {
-
         return ResponseEntity.ok(service.restore(id));
     }
 
-    /*
-     * ================================
-     * FETCH LIST
-     * =================================
-     */
+    // ================================
+    // FETCH ALL theo companyJobTitleId (admin)
+    // ================================
     @GetMapping
     @ApiMessage("Danh sách bậc lương theo companyJobTitleId")
     public ResponseEntity<List<ResCompanySalaryGradeDTO>> fetch(
             @RequestParam Long companyJobTitleId) {
-
         return ResponseEntity.ok(service.fetch(companyJobTitleId));
+    }
+
+    // ================================
+    // FETCH CÁ NHÂN — chỉ thấy của mình
+    // ================================
+    @GetMapping("/my")
+    @ApiMessage("Khung lương của tôi (cấp công ty)")
+    public ResponseEntity<List<ResCompanySalaryGradeDTO>> fetchMy() {
+        return ResponseEntity.ok(service.fetchMy());
+    }
+
+    // ================================
+    // FETCH THEO CÔNG TY — HR / trưởng phòng
+    // ================================
+    @GetMapping("/my-company")
+    @ApiMessage("Khung lương toàn công ty của tôi")
+    public ResponseEntity<List<ResCompanySalaryGradeDTO>> fetchByMyCompany() {
+        return ResponseEntity.ok(service.fetchByMyCompany());
     }
 }
