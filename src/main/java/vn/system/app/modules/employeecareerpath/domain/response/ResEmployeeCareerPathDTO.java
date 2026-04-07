@@ -13,20 +13,12 @@ public class ResEmployeeCareerPathDTO {
 
     private Long id;
 
-    // Thông tin nhân viên
     private UserInfo user;
-
-    // Thông tin template lộ trình
     private TemplateInfo template;
-
-    // Toàn bộ lộ trình — nhìn thấy hết từ đầu đến cuối
     private List<StepProgress> allSteps;
-
-    // Bước hiện tại & tiếp theo (shortcut)
     private StepInfo currentStep;
     private StepInfo nextStep;
 
-    // Tiến độ
     private Integer currentStepOrder;
     private Integer totalSteps;
     private LocalDate stepStartedAt;
@@ -55,6 +47,7 @@ public class ResEmployeeCareerPathDTO {
         private Long id;
         private String name;
         private String email;
+        private String employeeCode; // ← THÊM
     }
 
     @Getter
@@ -76,7 +69,6 @@ public class ResEmployeeCareerPathDTO {
         private Integer durationMonths;
     }
 
-    // Dùng cho allSteps — mỗi bước có thêm trạng thái + ngày thăng tiến thực tế
     @Getter
     @Setter
     public static class StepProgress {
@@ -85,19 +77,8 @@ public class ResEmployeeCareerPathDTO {
         private String jobTitleName;
         private String positionLevelCode;
         private Integer durationMonths;
-
-        /*
-         * stepStatus:
-         * COMPLETED — đã qua bước này (có ngày thăng tiến)
-         * CURRENT — đang ở bước này
-         * UPCOMING — chưa đến
-         */
         private String stepStatus;
-
-        // Ngày thăng tiến thực tế (chỉ có khi COMPLETED)
         private LocalDate promotedAt;
-
-        // Số tháng thực tế đã ở bước này (chỉ có khi COMPLETED)
         private Long actualMonths;
     }
 }

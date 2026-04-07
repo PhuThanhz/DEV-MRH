@@ -311,6 +311,10 @@ public class EmployeeCareerPathService {
         userInfo.setId(e.getUser().getId());
         userInfo.setName(e.getUser().getName());
         userInfo.setEmail(e.getUser().getEmail());
+        // ← THÊM 3 DÒNG NÀY
+        if (e.getUser().getUserInfo() != null) {
+            userInfo.setEmployeeCode(e.getUser().getUserInfo().getEmployeeCode());
+        }
         r.setUser(userInfo);
 
         // Template
