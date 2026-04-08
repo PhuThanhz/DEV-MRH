@@ -20,4 +20,14 @@ public interface JobTitleRepository
 
     // PHỤC VỤ LỘ TRÌNH THĂNG TIẾN (CAO → THẤP)
     List<JobTitle> findAllByOrderByPositionLevel_BandOrderDesc();
+
+    // ★ CREATE: kiểm tra trùng nameVi + cùng bậc (positionLevel)
+    // Dùng trong handleCreate — khác công ty nhưng khác bậc → cho phép
+    boolean existsByNameViAndPositionLevel_Id(String nameVi, Long positionLevelId);
+
+    // ★ UPDATE: kiểm tra trùng nameVi + cùng bậc, nhưng bỏ qua chính record đang
+    // sửa
+    // Dùng trong handleUpdate — tránh báo lỗi khi user chỉ sửa field khác mà không
+    // đổi tên
+    boolean existsByNameViAndPositionLevel_IdAndIdNot(String nameVi, Long positionLevelId, Long id);
 }

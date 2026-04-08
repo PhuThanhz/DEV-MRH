@@ -100,16 +100,16 @@ public class PositionLevelService {
 
         if (!bandExists) {
             if (level != 1) {
-                throw new IdInvalidException("Band mới phải bắt đầu bằng cấp 1 (S1, M1...).");
+                throw new IdInvalidException("Nhóm chức danh mới phải bắt đầu từ cấp 1 (ví dụ: S1, M1...).");
             }
 
             if (req.getBandOrder() == null) {
-                throw new IdInvalidException("BandOrder bắt buộc cho cấp đầu tiên.");
+                throw new IdInvalidException("Vui lòng nhập thứ tự cho nhóm chức danh này");
             }
 
             // ⭐ THAY — check bandOrder trùng trong phạm vi công ty
             if (repo.existsByBandOrderAndCompanyId(req.getBandOrder(), req.getCompanyId())) {
-                throw new IdInvalidException("BandOrder đã tồn tại trong công ty này.");
+                throw new IdInvalidException("Thứ tự nhóm chức danh đã tồn tại trong công ty.");
             }
 
             pl.setBandOrder(req.getBandOrder());

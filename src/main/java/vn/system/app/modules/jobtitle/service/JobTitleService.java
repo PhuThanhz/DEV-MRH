@@ -44,15 +44,20 @@ public class JobTitleService {
             throw new IdInvalidException("Tên chức danh (tiếng Việt) không được để trống");
         }
 
-        if (jobTitleRepo.existsByNameVi(req.getNameVi())) {
-            throw new IdInvalidException("Tên chức danh đã tồn tại");
-        }
-
+        // Fetch PositionLevel trước để có thông tin company
         PositionLevel pl = positionLevelRepo.findById(req.getPositionLevelId())
                 .orElseThrow(() -> new IdInvalidException("Bậc chức danh không tồn tại"));
 
+        // Validate unique: cùng nameVi + cùng positionLevel (tức là cùng bậc trong cùng
+        // công ty)
+        if (jobTitleRepo.existsByNameViAndPositionLevel_Id(
+                req.getNameVi().trim(), req.getPositionLevelId())) {
+            throw new IdInvalidException(
+                    "Tên chức danh đã tồn tại trong bậc này của công ty");
+        }
+
         JobTitle jt = new JobTitle();
-        jt.setNameVi(req.getNameVi());
+        jt.setNameVi(req.getNameVi().trim());
         jt.setNameEn(req.getNameEn());
         jt.setPositionLevel(pl);
         jt.setActive(req.getActive() != null ? req.getActive() : true);
@@ -71,8 +76,26 @@ public class JobTitleService {
 
         JobTitle jt = fetchEntityById(req.getId());
 
+        // Xác định positionLevelId sẽ dùng sau update (có thể giữ nguyên hoặc đổi mới)
+        Long targetPositionLevelId = req.getPositionLevelId() != null
+                ? req.getPositionLevelId()
+                : jt.getPositionLevel().getId();
+
+        // Xác định nameVi sẽ dùng sau update
+        String targetNameVi = req.getNameVi() != null
+                ? req.getNameVi().trim()
+                : jt.getNameVi();
+
+        // Validate unique: trùng nameVi + positionLevel nhưng khác id (không tính chính
+        // nó)
+        if (jobTitleRepo.existsByNameViAndPositionLevel_IdAndIdNot(
+                targetNameVi, targetPositionLevelId, req.getId())) {
+            throw new IdInvalidException(
+                    "Tên chức danh đã tồn tại trong bậc này của công ty");
+        }
+
         if (req.getNameVi() != null) {
-            jt.setNameVi(req.getNameVi());
+            jt.setNameVi(req.getNameVi().trim());
         }
 
         if (req.getNameEn() != null) {
@@ -188,7 +211,6 @@ public class JobTitleService {
             pl.setId(jt.getPositionLevel().getId());
             pl.setCode(jt.getPositionLevel().getCode());
 
-            // THÊM — map company từ positionLevel
             if (jt.getPositionLevel().getCompany() != null) {
                 pl.setCompanyId(jt.getPositionLevel().getCompany().getId());
                 pl.setCompanyName(jt.getPositionLevel().getCompany().getName());
