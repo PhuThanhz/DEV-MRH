@@ -256,6 +256,10 @@ public class UserService {
         // update active
         if (req.getActive() != null) {
             currentUser.setActive(req.getActive());
+
+            if (!req.getActive()) {
+                currentUser.setRefreshToken(null);
+            }
         }
 
         // ⭐ QUAN TRỌNG NHẤT — update role

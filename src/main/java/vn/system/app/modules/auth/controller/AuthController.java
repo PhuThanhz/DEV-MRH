@@ -87,18 +87,25 @@ public class AuthController {
                 loginDto.getUsername(), loginDto.getPassword());
 
         // xác thực người dùng => cần viết hàm loadUserByUsername
-        Authentication authentication = authenticationManagerBuilder.getObject()
-                .authenticate(authenticationToken);
+        Authentication authentication;
+        try {
+            authentication = authenticationManagerBuilder.getObject()
+                    .authenticate(authenticationToken);
+        } catch (Exception e) {
+            throw new IdInvalidException("Đăng nhập thất bại");
+        }
 
         // set thông tin người dùng đăng nhập vào context (có thể sử dụng sau này)
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         ResLoginDTO res = new ResLoginDTO();
         User currentUserDB = this.userService.handleGetUserByUsername(loginDto.getUsername());
-        if (currentUserDB != null) {
-            res.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
+
+        if (currentUserDB == null || !currentUserDB.isActive()) {
+            throw new IdInvalidException("Tài khoản đã bị vô hiệu hóa");
         }
 
+        res.setUser(buildUserLogin(currentUserDB));
         // create access token
         String access_token = this.securityUtil.createAccessToken(authentication.getName(), res);
         res.setAccessToken(access_token);
@@ -131,11 +138,14 @@ public class AuthController {
                 : "";
 
         User currentUserDB = this.userService.handleGetUserByUsername(email);
+
         ResLoginDTO.UserGetAccount userGetAccount = new ResLoginDTO.UserGetAccount();
 
-        if (currentUserDB != null) {
-            userGetAccount.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
+        if (currentUserDB == null || !currentUserDB.isActive()) {
+            throw new IdInvalidException("Tài khoản đã bị vô hiệu hóa");
         }
+
+        userGetAccount.setUser(buildUserLogin(currentUserDB));
 
         return ResponseEntity.ok().body(userGetAccount);
     }
@@ -155,15 +165,16 @@ public class AuthController {
 
         // check user by token + email
         User currentUser = this.userService.getUserByRefreshTokenAndEmail(refresh_token, email);
-        if (currentUser == null) {
-            throw new IdInvalidException("Refresh Token không hợp lệ");
+
+        if (currentUser == null || !currentUser.isActive()) {
+            throw new IdInvalidException("User đã bị vô hiệu hóa");
         }
 
         // issue new token/set refresh token as cookies
         ResLoginDTO res = new ResLoginDTO();
         User currentUserDB = this.userService.handleGetUserByUsername(email);
-        if (currentUserDB != null) {
-            res.setUser(buildUserLogin(currentUserDB)); // ← dùng helper
+        if (currentUserDB == null || !currentUserDB.isActive()) {
+            throw new IdInvalidException("Tài khoản đã bị vô hiệu hóa");
         }
 
         // create access token

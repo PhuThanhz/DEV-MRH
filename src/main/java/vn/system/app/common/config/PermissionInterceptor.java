@@ -48,6 +48,9 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
         if (email != null && !email.isEmpty()) {
             User user = this.userService.handleGetUserByUsername(email);
+            if (user != null && !user.isActive()) {
+                throw new PermissionException("Tài khoản đã bị vô hiệu hóa");
+            }
             if (user != null) {
 
                 // ── SET SCOPE vào ThreadLocal ──────────────────────────────
