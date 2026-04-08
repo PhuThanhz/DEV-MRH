@@ -3,26 +3,19 @@ package vn.system.app.modules.section.domain;
 import java.time.Instant;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.modules.department.domain.Department;
 
 @Entity
-@Table(name = "sections") // ❗ ĐÃ BỎ uniqueConstraints cho đồng bộ User/Role
+@Table(name = "sections", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "code", "department_id" })
+})
 @Getter
 @Setter
-@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" }) // ⭐ BỔ SUNG như User/Role
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
 public class Section {
 
     @Id

@@ -11,4 +11,6 @@ public interface SalaryGradeRepository
         extends JpaRepository<SalaryGrade, Long>, JpaSpecificationExecutor<SalaryGrade> {
 
     boolean existsByContextTypeAndContextIdAndGradeLevel(String contextType, Long contextId, Integer gradeLevel);
+
+    boolean existsByContextTypeAndContextIdAndActiveTrue(String contextType, Long contextId);
 }

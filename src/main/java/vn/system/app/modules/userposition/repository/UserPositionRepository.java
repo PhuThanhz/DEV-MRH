@@ -21,7 +21,6 @@ public interface UserPositionRepository
 
     boolean existsByUser_IdAndSectionJobTitle_IdAndActiveTrue(Long userId, Long sectionJobTitleId);
 
-    // ✅ THÊM — dùng khi promote: tìm UserPosition DEPARTMENT active của user
     Optional<UserPosition> findByUser_IdAndSourceAndActiveTrue(Long userId, String source);
 
     @Query("""

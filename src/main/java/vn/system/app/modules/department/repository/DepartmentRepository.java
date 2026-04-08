@@ -13,15 +13,13 @@ import vn.system.app.modules.department.domain.Department;
 public interface DepartmentRepository
         extends JpaRepository<Department, Long>, JpaSpecificationExecutor<Department> {
 
-    // kiểm tra trùng mã phòng ban
-    boolean existsByCode(String code);
+    // ✅ check trùng code trong cùng công ty
+    boolean existsByCodeAndCompany_Id(String code, Long companyId);
 
     // lấy phòng ban theo công ty
     List<Department> findByCompanyId(Long companyId);
 
     long countByCompany_IdIn(java.util.Set<Long> companyIds);
 
-    // ⭐ THÊM — lấy phòng ban theo nhiều companyId (dùng cho scope filter OrgChart)
     List<Department> findByCompany_IdIn(Collection<Long> companyIds);
-
 }

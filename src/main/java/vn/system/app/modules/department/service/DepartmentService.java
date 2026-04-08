@@ -20,8 +20,6 @@ import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
 import vn.system.app.modules.department.domain.request.UpdateDepartmentRequest;
 import vn.system.app.modules.department.domain.response.DepartmentResponse;
 import vn.system.app.modules.department.repository.DepartmentRepository;
-import vn.system.app.common.util.ScopeSpec;
-import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentService {
@@ -40,8 +38,9 @@ public class DepartmentService {
 
     @Transactional
     public DepartmentResponse handleCreateDepartment(CreateDepartmentRequest req) {
-        if (departmentRepository.existsByCode(req.getCode())) {
-            throw new IdInvalidException("Mã phòng ban đã tồn tại");
+        // ✅ chỉ check trùng trong cùng công ty
+        if (departmentRepository.existsByCodeAndCompany_Id(req.getCode(), req.getCompanyId())) {
+            throw new IdInvalidException("Mã phòng ban đã tồn tại trong công ty này");
         }
 
         Company company = companyService.fetchEntityById(req.getCompanyId());
@@ -122,11 +121,13 @@ public class DepartmentService {
     public ResultPaginationDTO fetchAllDepartments(
             Specification<Department> spec,
             Pageable pageable) {
+
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
             Specification<Department> scopeSpec = ScopeSpec.byCompanyScope("company.id");
             spec = Specification.where(spec).and(scopeSpec);
         }
+
         Page<Department> page = departmentRepository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -152,10 +153,7 @@ public class DepartmentService {
     /* ================= FETCH BY COMPANY ================= */
 
     public List<DepartmentResponse> fetchDepartmentsByCompany(Long companyId) {
-
-        List<Department> departments = departmentRepository.findByCompanyId(companyId);
-
-        return departments
+        return departmentRepository.findByCompanyId(companyId)
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
@@ -185,5 +183,4 @@ public class DepartmentService {
 
         return res;
     }
-
 }

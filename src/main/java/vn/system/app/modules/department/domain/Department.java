@@ -10,7 +10,9 @@ import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.modules.company.domain.Company;
 
 @Entity
-@Table(name = "departments")
+@Table(name = "departments", uniqueConstraints = {
+        @UniqueConstraint(columnNames = { "code", "company_id" })
+})
 @Getter
 @Setter
 public class Department {
@@ -20,7 +22,7 @@ public class Department {
     private Long id;
 
     @NotBlank(message = "Mã phòng ban không được để trống")
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false) // ✅ bỏ unique = true
     private String code;
 
     @NotBlank(message = "Tên phòng ban không được để trống")
@@ -29,23 +31,12 @@ public class Department {
 
     private String englishName;
 
-    private Integer status; // 1 = active, 0 = inactive
+    private Integer status;
 
-    // =======================
-    // PHÒNG BAN THUỘC CÔNG TY
-    // =======================
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    // =======================
-    // ❌ XOÁ — KHÔNG CÒN MANY TO MANY VỚI JOBTITLE
-    // =======================
-    // private List<JobTitle> jobTitles;
-
-    // =======================
-    // AUDIT FIELDS
-    // =======================
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;

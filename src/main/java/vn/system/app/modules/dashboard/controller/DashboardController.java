@@ -1,5 +1,7 @@
 package vn.system.app.modules.dashboard.controller;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -7,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.dashboard.domain.response.DashboardSummaryDTO;
+import vn.system.app.modules.dashboard.domain.response.DepartmentCompletenessDTO;
 import vn.system.app.modules.dashboard.service.DashboardService;
 
 @RestController
@@ -27,8 +30,19 @@ public class DashboardController {
     @GetMapping("/summary")
     @ApiMessage("Lấy dữ liệu tổng quan dashboard")
     public ResponseEntity<DashboardSummaryDTO> getSummary() {
-
         return ResponseEntity.ok(
                 this.dashboardService.getSummary());
+    }
+
+    /*
+     * ====================================================
+     * GET DEPARTMENT COMPLETENESS
+     * ====================================================
+     */
+    @GetMapping("/department-completeness")
+    @ApiMessage("Kiểm tra mức độ hoàn thiện cấu hình các phòng ban")
+    public ResponseEntity<List<DepartmentCompletenessDTO>> getDepartmentCompleteness() {
+        return ResponseEntity.ok(
+                this.dashboardService.getDepartmentCompleteness());
     }
 }
