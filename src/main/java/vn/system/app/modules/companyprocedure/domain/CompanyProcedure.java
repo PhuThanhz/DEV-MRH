@@ -21,6 +21,8 @@ public class CompanyProcedure {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @Column(name = "procedure_code", length = 100)
+    private String procedureCode;
 
     private String procedureName;
     private String status;

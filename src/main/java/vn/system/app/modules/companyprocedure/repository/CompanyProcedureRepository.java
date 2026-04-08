@@ -19,6 +19,14 @@ public interface CompanyProcedureRepository extends
 
     boolean existsByDepartment_IdAndProcedureName(Long departmentId, String procedureName);
 
+    boolean existsByDepartment_IdAndProcedureCode(Long departmentId, String procedureCode);
+
+    // ✅ THÊM DÒNG NÀY
+    boolean existsByDepartment_IdAndProcedureCodeAndIdNot(
+            Long departmentId,
+            String procedureCode,
+            Long id);
+
     // ← THÊM: filter theo công ty
     List<CompanyProcedure> findByDepartment_Company_Id(Long companyId);
 }

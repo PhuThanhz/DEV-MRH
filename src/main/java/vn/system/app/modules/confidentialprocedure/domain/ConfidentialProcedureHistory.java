@@ -21,12 +21,13 @@ public class ConfidentialProcedureHistory {
     private ConfidentialProcedure procedure;
 
     private Integer version;
+    private String procedureCode; // ← THÊM MỚI
     private String procedureName;
     private String status;
     private Integer planYear;
 
     @Column(columnDefinition = "MEDIUMTEXT")
-    private String fileUrls; // ← đổi từ fileUrl
+    private String fileUrls;
 
     private String note;
     private String departmentName;

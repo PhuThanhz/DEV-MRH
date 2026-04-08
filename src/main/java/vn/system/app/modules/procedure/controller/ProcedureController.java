@@ -15,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
-import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.annotation.ApiMessage;
 
 import vn.system.app.modules.procedure.enums.ProcedureType;
@@ -40,15 +39,6 @@ public class ProcedureController {
     private final CompanyProcedureService companyProcedureService;
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
-
-    // =====================================================
-    // HELPER — check permission theo type + action
-    // Sinh ra: PROCEDURE_COMPANY_UPDATE, PROCEDURE_DEPARTMENT_DELETE, ...
-    // =====================================================
-    private void checkPermissionByType(ProcedureType type, String action) {
-        String permission = "PROCEDURE_" + type.name() + "_" + action;
-        SecurityUtil.checkPermission(permission);
-    }
 
     // =====================================================
     // CREATE
@@ -81,8 +71,6 @@ public class ProcedureController {
             @RequestParam ProcedureType type,
             @Valid @RequestBody ProcedureRequestWrapper req) {
 
-        checkPermissionByType(type, "UPDATE");
-
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.handleUpdate(id, req.toCompanyRequest()));
         } else if (type == ProcedureType.DEPARTMENT) {
@@ -101,8 +89,6 @@ public class ProcedureController {
             @PathVariable Long id,
             @RequestParam ProcedureType type,
             @Valid @RequestBody ProcedureRequestWrapper req) {
-
-        checkPermissionByType(type, "REVISE");
 
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.handleRevise(id, req.toCompanyRequest()));
@@ -141,8 +127,6 @@ public class ProcedureController {
             @PathVariable Long id,
             @RequestParam ProcedureType type) {
 
-        checkPermissionByType(type, "DELETE");
-
         if (type == ProcedureType.COMPANY) {
             companyProcedureService.handleDelete(id);
         } else if (type == ProcedureType.DEPARTMENT) {
@@ -161,8 +145,6 @@ public class ProcedureController {
     public ResponseEntity<?> getOne(
             @PathVariable Long id,
             @RequestParam ProcedureType type) {
-
-        checkPermissionByType(type, "GET_BY_ID");
 
         if (type == ProcedureType.COMPANY) {
             return ResponseEntity.ok(companyProcedureService.convertToDTO(
@@ -199,7 +181,7 @@ public class ProcedureController {
     }
 
     // =====================================================
-    // GET ALL COMPANY — có @Filter
+    // GET ALL COMPANY
     // =====================================================
     @GetMapping("/company")
     @ApiMessage("Danh sách quy trình công ty có filter")
@@ -212,7 +194,7 @@ public class ProcedureController {
     }
 
     // =====================================================
-    // GET ALL DEPARTMENT — có @Filter
+    // GET ALL DEPARTMENT
     // =====================================================
     @GetMapping("/department")
     @ApiMessage("Danh sách quy trình phòng ban có filter")
@@ -225,7 +207,7 @@ public class ProcedureController {
     }
 
     // =====================================================
-    // GET ALL CONFIDENTIAL — có @Filter
+    // GET ALL CONFIDENTIAL
     // =====================================================
     @GetMapping("/confidential")
     @ApiMessage("Danh sách quy trình bảo mật có filter")
@@ -308,38 +290,5 @@ public class ProcedureController {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
         }
-    }
-
-    // =====================================================
-    // CREATE COMPANY
-    // =====================================================
-    @PostMapping("/company")
-    @ApiMessage("Tạo quy trình công ty")
-    public ResponseEntity<?> createCompany(
-            @Valid @RequestBody ProcedureRequestWrapper req) {
-        ResCompanyProcedureDTO res = companyProcedureService.handleCreate(req.toCompanyRequest());
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
-    }
-
-    // =====================================================
-    // CREATE DEPARTMENT
-    // =====================================================
-    @PostMapping("/department")
-    @ApiMessage("Tạo quy trình phòng ban")
-    public ResponseEntity<?> createDepartment(
-            @Valid @RequestBody ProcedureRequestWrapper req) {
-        ResDepartmentProcedureDTO res = departmentProcedureService.handleCreate(req.toDepartmentRequest());
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
-    }
-
-    // =====================================================
-    // CREATE CONFIDENTIAL
-    // =====================================================
-    @PostMapping("/confidential")
-    @ApiMessage("Tạo quy trình bảo mật")
-    public ResponseEntity<?> createConfidential(
-            @Valid @RequestBody ProcedureRequestWrapper req) {
-        ResConfidentialProcedureDTO res = confidentialProcedureService.handleCreate(req.toConfidentialRequest());
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 }

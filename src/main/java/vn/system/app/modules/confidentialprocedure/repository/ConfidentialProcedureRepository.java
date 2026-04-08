@@ -19,5 +19,12 @@ public interface ConfidentialProcedureRepository extends
 
     List<ConfidentialProcedure> findByDepartment_Company_Id(Long companyId);
 
+    // Giữ lại để check tên (nếu vẫn dùng)
     boolean existsByDepartment_IdAndProcedureName(Long departmentId, String procedureName);
+
+    // ← THÊM MỚI: check duplicate procedureCode
+    boolean existsByDepartment_IdAndProcedureCode(Long departmentId, String procedureCode);
+
+    // ← THÊM MỚI: check duplicate procedureCode khi update (loại trừ chính nó)
+    boolean existsByDepartment_IdAndProcedureCodeAndIdNot(Long departmentId, String procedureCode, Long id);
 }

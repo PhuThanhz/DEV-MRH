@@ -25,12 +25,15 @@ public class ConfidentialProcedure {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "procedure_code", length = 100, nullable = false)
+    private String procedureCode; // ← THÊM MỚI
+
     private String procedureName;
     private String status;
     private Integer planYear;
 
     @Column(columnDefinition = "MEDIUMTEXT")
-    private String fileUrls; // ← đổi từ fileUrl
+    private String fileUrls;
 
     private String note;
 
@@ -52,7 +55,6 @@ public class ConfidentialProcedure {
     @JsonIgnoreProperties({ "confidentialProcedures" })
     private Section section;
 
-    // Danh sách user/role được gán quyền xem
     @OneToMany(mappedBy = "procedure", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ConfidentialProcedureAccess> accessList = new ArrayList<>();
 

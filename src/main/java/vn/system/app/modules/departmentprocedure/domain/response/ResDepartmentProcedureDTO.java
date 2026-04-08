@@ -20,7 +20,7 @@ public class ResDepartmentProcedureDTO {
 
     private Long sectionId;
     private String sectionName;
-
+    private String procedureCode; // ← THÊM MỚI
     private String procedureName;
     private String status;
     private Integer planYear;

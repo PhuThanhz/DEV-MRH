@@ -22,6 +22,7 @@ public class CompanyProcedureHistory {
 
     // ===== SNAPSHOT =====
     private Integer version;
+    private String procedureCode; // thêm dòng này
     private String procedureName;
     private String status;
     private Integer planYear;

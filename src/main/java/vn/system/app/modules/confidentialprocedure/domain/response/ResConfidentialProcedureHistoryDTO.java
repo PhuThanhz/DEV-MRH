@@ -13,6 +13,7 @@ public class ResConfidentialProcedureHistoryDTO {
     private Long id;
     private Long procedureId;
     private Integer version;
+    private String procedureCode;
     private String procedureName;
     private String status;
     private Integer planYear;

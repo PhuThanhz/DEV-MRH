@@ -21,10 +21,11 @@ public class ResConfidentialProcedureDTO {
     private Long sectionId;
     private String sectionName;
 
+    private String procedureCode; // ← THÊM MỚI
     private String procedureName;
     private String status;
     private Integer planYear;
-    private List<String> fileUrls; // ← đổi từ String fileUrl
+    private List<String> fileUrls;
     private String note;
     private boolean active;
     private Integer version;

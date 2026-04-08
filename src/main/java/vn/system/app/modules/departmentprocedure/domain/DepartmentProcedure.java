@@ -22,13 +22,14 @@ public class DepartmentProcedure {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
+    @Column(name = "procedure_code", length = 100, nullable = false)
+    private String procedureCode;
     private String procedureName;
     private String status;
     private Integer planYear;
 
     @Column(columnDefinition = "MEDIUMTEXT")
-    private String fileUrls; // ← đổi từ fileUrl
+    private String fileUrls;
 
     private String note;
 

@@ -17,8 +17,15 @@ public interface DepartmentProcedureRepository extends
 
         List<DepartmentProcedure> findBySection_Id(Long sectionId);
 
-        boolean existsByDepartment_IdAndProcedureName(Long departmentId, String procedureName);
-
         // ← THÊM: filter theo công ty
         List<DepartmentProcedure> findByDepartment_Company_Id(Long companyId);
+
+        // ==================== PROCEDURE CODE ====================
+        boolean existsByDepartment_IdAndProcedureCode(Long departmentId, String procedureCode);
+
+        boolean existsByDepartment_IdAndProcedureCodeAndIdNot(
+                        Long departmentId,
+                        String procedureCode,
+                        Long id);
+        // ========================================================
 }

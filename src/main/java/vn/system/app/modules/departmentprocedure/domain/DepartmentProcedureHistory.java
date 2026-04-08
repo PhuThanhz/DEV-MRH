@@ -22,6 +22,7 @@ public class DepartmentProcedureHistory {
 
     // ===== SNAPSHOT =====
     private Integer version;
+    private String procedureCode; // ← THÊM MỚI
     private String procedureName;
     private String status;
     private Integer planYear;

@@ -10,7 +10,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class DepartmentProcedureRequest {
-
+    @NotBlank(message = "Mã quy trình không được để trống")
+    private String procedureCode; // ← THÊM MỚI + VALIDATION
     @NotBlank(message = "Tên quy trình không được để trống")
     private String procedureName;
 

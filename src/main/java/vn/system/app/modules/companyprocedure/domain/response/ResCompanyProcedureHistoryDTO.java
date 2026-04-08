@@ -13,6 +13,7 @@ public class ResCompanyProcedureHistoryDTO {
     private Long id;
     private Long procedureId;
     private Integer version;
+    private String procedureCode;
     private String procedureName;
     private String status;
     private Integer planYear;
@@ -22,5 +23,5 @@ public class ResCompanyProcedureHistoryDTO {
     private String sectionName;
     private Instant changedAt;
     private String changedBy;
-    private String action; // ← THÊM: "EDIT" hoặc "REVISE"
+    private String action;
 }

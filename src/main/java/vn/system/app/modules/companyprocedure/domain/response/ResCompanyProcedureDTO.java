@@ -15,7 +15,7 @@ public class ResCompanyProcedureDTO {
     // ===== Company =====
     private String companyCode;
     private String companyName;
-
+    private String procedureCode;
     // ===== Department =====
     private Long departmentId;
     private String departmentName;

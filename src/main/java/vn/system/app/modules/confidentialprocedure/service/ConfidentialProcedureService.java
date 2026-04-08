@@ -66,10 +66,12 @@ public class ConfidentialProcedureService {
     @Transactional
     public ResConfidentialProcedureDTO handleCreate(ConfidentialProcedureRequest req) {
 
+        String code = req.getProcedureCode().trim().toUpperCase();
+
+        // Check duplicate theo procedureCode (nhất quán với Company/Department)
         if (req.getDepartmentId() != null &&
-                repository.existsByDepartment_IdAndProcedureName(
-                        req.getDepartmentId(), req.getProcedureName())) {
-            throw new IdInvalidException("Quy trình đã tồn tại trong phòng ban này");
+                repository.existsByDepartment_IdAndProcedureCode(req.getDepartmentId(), code)) {
+            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
         Department department = departmentRepository.findById(req.getDepartmentId())
@@ -82,10 +84,11 @@ public class ConfidentialProcedureService {
         }
 
         ConfidentialProcedure entity = new ConfidentialProcedure();
+        entity.setProcedureCode(code); // ← THÊM
         entity.setProcedureName(req.getProcedureName());
         entity.setStatus(req.getStatus());
         entity.setPlanYear(req.getPlanYear());
-        entity.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        entity.setFileUrls(toJsonArray(req.getFileUrls()));
         entity.setNote(req.getNote());
         entity.setActive(true);
         entity.setVersion(1);
@@ -105,20 +108,32 @@ public class ConfidentialProcedureService {
     public ResConfidentialProcedureDTO handleUpdate(Long id, ConfidentialProcedureRequest req) {
 
         ConfidentialProcedure current = fetchById(id);
+        String code = req.getProcedureCode().trim().toUpperCase();
 
+        // 1. Check duplicate
+        if (req.getDepartmentId() != null &&
+                repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
+                        req.getDepartmentId(), code, id)) {
+            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
+        }
+
+        // 2. Validate department trước
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
+        // 3. Validate section trước
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
+        // 4. Update
+        current.setProcedureCode(code); // ← THÊM
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
-        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
         current.setDepartment(department);
         current.setSection(section);
@@ -137,21 +152,35 @@ public class ConfidentialProcedureService {
     public ResConfidentialProcedureDTO handleRevise(Long id, ConfidentialProcedureRequest req) {
 
         ConfidentialProcedure current = fetchById(id);
-        saveHistory(current, "REVISE");
+        String code = req.getProcedureCode().trim().toUpperCase();
 
+        // 1. Check duplicate
+        if (req.getDepartmentId() != null &&
+                repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
+                        req.getDepartmentId(), code, id)) {
+            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
+        }
+
+        // 2. Validate department trước
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
+        // 3. Validate section trước
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
+        // 4. Mọi thứ OK → mới lưu history
+        saveHistory(current, "REVISE");
+
+        // 5. Update + tăng version
+        current.setProcedureCode(code); // ← THÊM
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
-        current.setFileUrls(toJsonArray(req.getFileUrls())); // ← đổi
+        current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
         current.setDepartment(department);
         current.setSection(section);
@@ -242,8 +271,8 @@ public class ConfidentialProcedureService {
     }
 
     public List<ResConfidentialProcedureDTO> fetchByDepartment(Long departmentId) {
-        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(root.get("department").get("id"),
-                departmentId);
+        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(
+                root.get("department").get("id"), departmentId);
         spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
         spec = spec.and(filterByCurrentUser());
         return repository.findAll(spec)
@@ -251,8 +280,8 @@ public class ConfidentialProcedureService {
     }
 
     public List<ResConfidentialProcedureDTO> fetchBySection(Long sectionId) {
-        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(root.get("section").get("id"),
-                sectionId);
+        Specification<ConfidentialProcedure> spec = (root, query, cb) -> cb.equal(
+                root.get("section").get("id"), sectionId);
         spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
         spec = spec.and(filterByCurrentUser());
         return repository.findAll(spec)
@@ -272,13 +301,15 @@ public class ConfidentialProcedureService {
     // SAVE ACCESS LIST (private)
     // =====================================================
     private void saveAccessList(ConfidentialProcedure procedure, ConfidentialProcedureRequest req) {
+        List<ConfidentialProcedureAccess> accesses = new ArrayList<>();
+
         if (req.getUserIds() != null) {
             req.getUserIds().forEach(userId -> {
                 ConfidentialProcedureAccess access = new ConfidentialProcedureAccess();
                 access.setProcedure(procedure);
                 access.setUserId(userId);
                 access.setAccessType("USER");
-                accessRepository.save(access);
+                accesses.add(access);
             });
         }
         if (req.getRoleIds() != null) {
@@ -287,9 +318,11 @@ public class ConfidentialProcedureService {
                 access.setProcedure(procedure);
                 access.setRoleId(roleId);
                 access.setAccessType("ROLE");
-                accessRepository.save(access);
+                accesses.add(access);
             });
         }
+
+        accessRepository.saveAll(accesses); // ← dùng saveAll thay vì save từng dòng
     }
 
     // =====================================================
@@ -299,16 +332,25 @@ public class ConfidentialProcedureService {
         String currentUser = SecurityUtil.getCurrentUserLogin()
                 .orElseThrow(() -> new IdInvalidException("Không xác định được người dùng"));
 
+        // Fix: lấy userId từ email thay vì so sánh string với Long
+        User user = userRepository.findByEmail(currentUser);
+        if (user == null) {
+            throw new IdInvalidException("Người dùng không tồn tại");
+        }
+
         List<ConfidentialProcedureAccess> accessList = accessRepository.findByProcedure_Id(procedureId);
 
-        boolean allowed = accessList.stream().anyMatch(a -> "USER".equals(a.getAccessType())
-                && currentUser.equals(a.getUserId() != null ? a.getUserId().toString() : null));
+        boolean allowed = accessList.stream()
+                .anyMatch(a -> "USER".equals(a.getAccessType()) && user.getId().equals(a.getUserId()));
 
         if (!allowed) {
             throw new IdInvalidException("Bạn không có quyền truy cập quy trình bảo mật này");
         }
     }
 
+    // =====================================================
+    // FILTER BY CURRENT USER (Specification)
+    // =====================================================
     private Specification<ConfidentialProcedure> filterByCurrentUser() {
         return (root, query, cb) -> {
 
@@ -316,11 +358,11 @@ public class ConfidentialProcedureService {
                     .orElseThrow(() -> new IdInvalidException("Không xác định được người dùng"));
 
             User user = userRepository.findByEmail(username);
-
             if (user == null) {
                 throw new IdInvalidException("Người dùng không tồn tại");
             }
 
+            // SUPER_ADMIN xem tất cả
             if (user.getRole() != null && "SUPER_ADMIN".equals(user.getRole().getName())) {
                 return cb.conjunction();
             }
@@ -344,10 +386,11 @@ public class ConfidentialProcedureService {
         ConfidentialProcedureHistory history = new ConfidentialProcedureHistory();
         history.setProcedure(e);
         history.setVersion(e.getVersion());
+        history.setProcedureCode(e.getProcedureCode()); // ← THÊM
         history.setProcedureName(e.getProcedureName());
         history.setStatus(e.getStatus());
         history.setPlanYear(e.getPlanYear());
-        history.setFileUrls(e.getFileUrls()); // ← đổi
+        history.setFileUrls(e.getFileUrls());
         history.setNote(e.getNote());
         history.setDepartmentName(e.getDepartment() != null ? e.getDepartment().getName() : null);
         history.setSectionName(e.getSection() != null ? e.getSection().getName() : null);
@@ -358,7 +401,7 @@ public class ConfidentialProcedureService {
     }
 
     // =====================================================
-    // HELPER — JSON array
+    // JSON HELPER
     // =====================================================
     private String toJsonArray(List<String> urls) {
         try {
@@ -373,7 +416,7 @@ public class ConfidentialProcedureService {
             return new ArrayList<>();
         try {
             if (!json.trim().startsWith("["))
-                return List.of(json); // backward compatible
+                return List.of(json);
             return mapper.readValue(json, new TypeReference<List<String>>() {
             });
         } catch (Exception e) {
@@ -401,10 +444,11 @@ public class ConfidentialProcedureService {
             dto.setSectionName(e.getSection().getName());
         }
 
+        dto.setProcedureCode(e.getProcedureCode()); // ← THÊM
         dto.setProcedureName(e.getProcedureName());
         dto.setStatus(e.getStatus());
         dto.setPlanYear(e.getPlanYear());
-        dto.setFileUrls(fromJsonArray(e.getFileUrls())); // ← đổi
+        dto.setFileUrls(fromJsonArray(e.getFileUrls()));
         dto.setNote(e.getNote());
         dto.setActive(e.isActive());
         dto.setVersion(e.getVersion());
@@ -434,10 +478,11 @@ public class ConfidentialProcedureService {
         dto.setId(h.getId());
         dto.setProcedureId(h.getProcedure().getId());
         dto.setVersion(h.getVersion());
+        dto.setProcedureCode(h.getProcedureCode()); // ← THÊM
         dto.setProcedureName(h.getProcedureName());
         dto.setStatus(h.getStatus());
         dto.setPlanYear(h.getPlanYear());
-        dto.setFileUrls(fromJsonArray(h.getFileUrls())); // ← đổi
+        dto.setFileUrls(fromJsonArray(h.getFileUrls()));
         dto.setNote(h.getNote());
         dto.setDepartmentName(h.getDepartmentName());
         dto.setSectionName(h.getSectionName());

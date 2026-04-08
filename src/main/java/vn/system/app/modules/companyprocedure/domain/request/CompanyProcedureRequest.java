@@ -11,6 +11,9 @@ import lombok.Setter;
 @Setter
 public class CompanyProcedureRequest {
 
+    @NotBlank(message = "Mã quy trình không được để trống")
+    private String procedureCode;
+
     @NotBlank(message = "Tên quy trình không được để trống")
     private String procedureName;
 

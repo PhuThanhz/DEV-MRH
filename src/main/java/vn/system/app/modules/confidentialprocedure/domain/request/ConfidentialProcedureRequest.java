@@ -11,12 +11,15 @@ import lombok.Setter;
 @Setter
 public class ConfidentialProcedureRequest {
 
+    @NotBlank(message = "Mã quy trình không được để trống")
+    private String procedureCode; // ← THÊM MỚI
+
     @NotBlank(message = "Tên quy trình không được để trống")
     private String procedureName;
 
     private String status;
     private Integer planYear;
-    private List<String> fileUrls; // ← đổi từ String fileUrl
+    private List<String> fileUrls;
     private String note;
 
     @NotNull(message = "Phòng ban không được để trống")
