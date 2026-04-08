@@ -1,5 +1,7 @@
 package vn.system.app.common.config;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
@@ -52,7 +54,27 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 throw new PermissionException("Tài khoản đã bị vô hiệu hóa");
             }
             if (user != null) {
+                // ✅ THÊM: cập nhật lastLoginAt nếu quá 10 phút
+                Instant now = Instant.now();
+                boolean shouldUpdate = user.getLastLoginAt() == null
+                        || user.getLastLoginAt().isBefore(now.minus(10, ChronoUnit.MINUTES));
 
+                if (shouldUpdate) {
+                    String ip = request.getHeader("X-Forwarded-For");
+
+                    if (ip != null && !ip.isBlank()) {
+                        ip = ip.split(",")[0].trim();
+                    } else {
+                        ip = request.getHeader("X-Real-IP");
+                    }
+
+                    if (ip == null || ip.isBlank()) {
+                        ip = request.getRemoteAddr();
+                    }
+                    user.setLastLoginAt(now);
+                    user.setLastLoginIp(ip);
+                    userService.save(user);
+                }
                 // ── SET SCOPE vào ThreadLocal ──────────────────────────────
                 boolean isSuperAdmin = user.getRole() != null
                         && "SUPER_ADMIN".equals(user.getRole().getName());

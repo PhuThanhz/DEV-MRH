@@ -26,6 +26,10 @@ public class ResUserDTO {
     private UserInfoBasic userInfo;
     private List<PositionBasic> positions; // ← THÊM
 
+    // ⭐ THÊM
+    private Instant lastLoginAt;
+    private String lastLoginIp;
+
     @Getter
     @Setter
     @AllArgsConstructor

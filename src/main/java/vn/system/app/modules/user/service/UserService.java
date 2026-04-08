@@ -411,7 +411,8 @@ public class UserService {
         res.setAvatar(user.getAvatar());
         res.setUpdatedAt(user.getUpdatedAt());
         res.setCreatedAt(user.getCreatedAt());
-
+        res.setLastLoginAt(user.getLastLoginAt());
+        res.setLastLoginIp(user.getLastLoginIp());
         // ⭐ Dùng thẳng từ entity đã JOIN FETCH — không query thêm
         UserInfo info = user.getUserInfo();
         if (info != null) {

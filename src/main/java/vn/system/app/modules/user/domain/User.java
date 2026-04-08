@@ -38,6 +38,12 @@ public class User {
     @Column(name = "avatar", columnDefinition = "TEXT")
     private String avatar;
 
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
+
+    @Column(name = "last_login_ip", length = 64)
+    private String lastLoginIp;
+
     @Column(nullable = false)
     private boolean active;
 
