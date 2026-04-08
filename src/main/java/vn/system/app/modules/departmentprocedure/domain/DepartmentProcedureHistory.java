@@ -20,23 +20,21 @@ public class DepartmentProcedureHistory {
     @JoinColumn(name = "procedure_id", nullable = false)
     private DepartmentProcedure procedure;
 
-    // ===== SNAPSHOT =====
     private Integer version;
-    private String procedureCode; // ← THÊM MỚI
+    private String procedureCode;
     private String procedureName;
     private String status;
     private Integer planYear;
+    private Instant issuedDate; // ← THÊM
+
     @Column(columnDefinition = "MEDIUMTEXT")
-    private String fileUrls; // ← đổi từ fileUrl
+    private String fileUrls;
 
     private String note;
-
-    // lưu tên để tránh mất data nếu sau này department/section bị xoá
     private String departmentName;
     private String sectionName;
 
-    // ===== AUDIT =====
-    private String action; // "EDIT" hoặc "REVISE" ← THÊM
+    private String action;
     private Instant changedAt;
     private String changedBy;
 }

@@ -1,5 +1,6 @@
 package vn.system.app.modules.companyprocedure.domain.request;
 
+import java.time.Instant;
 import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
@@ -28,4 +29,6 @@ public class CompanyProcedureRequest {
     private Long departmentId;
 
     private Long sectionId;
+    private Instant issuedDate;
+
 }

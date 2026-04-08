@@ -32,6 +32,7 @@ public class ResCompanyProcedureDTO {
     private String note;
     private boolean active;
     private Integer version; // ← thêm vào đây
+    private Instant issuedDate; // ← THÊM — sau version
 
     // ===== Audit =====
     private Instant createdAt;

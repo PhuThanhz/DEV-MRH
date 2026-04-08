@@ -24,4 +24,6 @@ public class ResConfidentialProcedureHistoryDTO {
     private String action;
     private Instant changedAt;
     private String changedBy;
+    private Instant issuedDate; // ← THÊM
+
 }

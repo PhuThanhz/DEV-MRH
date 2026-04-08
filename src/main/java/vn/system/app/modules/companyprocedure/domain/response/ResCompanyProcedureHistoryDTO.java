@@ -24,4 +24,6 @@ public class ResCompanyProcedureHistoryDTO {
     private Instant changedAt;
     private String changedBy;
     private String action;
+    private Instant issuedDate; // ← THÊM — sau version
+
 }

@@ -1,5 +1,6 @@
 package vn.system.app.modules.procedure.controller;
 
+import java.time.Instant;
 import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
@@ -16,13 +17,14 @@ import vn.system.app.modules.confidentialprocedure.domain.request.ConfidentialPr
 public class ProcedureRequestWrapper {
 
     @NotBlank(message = "Mã quy trình không được để trống")
-    private String procedureCode; // ← THÊM MỚI
+    private String procedureCode;
 
     @NotBlank(message = "Tên quy trình không được để trống")
     private String procedureName;
 
     private String status;
     private Integer planYear;
+    private Instant issuedDate; // ← THÊM
     private List<String> fileUrls;
     private String note;
 
@@ -37,10 +39,11 @@ public class ProcedureRequestWrapper {
     // ===== Convert sang CompanyProcedureRequest =====
     public CompanyProcedureRequest toCompanyRequest() {
         CompanyProcedureRequest req = new CompanyProcedureRequest();
-        req.setProcedureCode(this.procedureCode); // ← THÊM
+        req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
+        req.setIssuedDate(this.issuedDate); // ← THÊM
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
         req.setDepartmentId(this.departmentId);
@@ -51,10 +54,11 @@ public class ProcedureRequestWrapper {
     // ===== Convert sang DepartmentProcedureRequest =====
     public DepartmentProcedureRequest toDepartmentRequest() {
         DepartmentProcedureRequest req = new DepartmentProcedureRequest();
-        req.setProcedureCode(this.procedureCode); // ← THÊM
+        req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
+        req.setIssuedDate(this.issuedDate); // ← THÊM
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
         req.setDepartmentId(this.departmentId);
@@ -65,10 +69,11 @@ public class ProcedureRequestWrapper {
     // ===== Convert sang ConfidentialProcedureRequest =====
     public ConfidentialProcedureRequest toConfidentialRequest() {
         ConfidentialProcedureRequest req = new ConfidentialProcedureRequest();
-        req.setProcedureCode(this.procedureCode); // ← THÊM
+        req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
+        req.setIssuedDate(this.issuedDate); // ← THÊM
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
         req.setDepartmentId(this.departmentId);

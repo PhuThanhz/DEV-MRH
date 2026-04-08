@@ -50,6 +50,7 @@ public class CompanyProcedure {
     @JoinColumn(name = "section_id")
     @JsonIgnoreProperties({ "companyProcedures" })
     private Section section;
+    private Instant issuedDate; // ← THÊM — ngày ban hành do user chọn
 
     // ===== AUDIT =====
 

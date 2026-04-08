@@ -38,6 +38,7 @@ public class CompanyProcedureHistory {
 
     // ===== AUDIT =====
     private String action; // "EDIT" hoặc "REVISE" ← THÊM
+    private Instant issuedDate; // ← THÊM — ngày ban hành do user chọn
 
     private Instant changedAt;
     private String changedBy;

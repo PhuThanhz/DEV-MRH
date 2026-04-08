@@ -22,11 +22,14 @@ public class DepartmentProcedure {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "procedure_code", length = 100, nullable = false)
     private String procedureCode;
+
     private String procedureName;
     private String status;
     private Integer planYear;
+    private Instant issuedDate; // ← THÊM
 
     @Column(columnDefinition = "MEDIUMTEXT")
     private String fileUrls;
@@ -39,8 +42,6 @@ public class DepartmentProcedure {
     @Column(nullable = false)
     private Integer version = 1;
 
-    // ===== RELATIONSHIP =====
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
     @JsonIgnoreProperties({ "departmentProcedures" })
@@ -50,8 +51,6 @@ public class DepartmentProcedure {
     @JoinColumn(name = "section_id")
     @JsonIgnoreProperties({ "departmentProcedures" })
     private Section section;
-
-    // ===== AUDIT =====
 
     private Instant createdAt;
     private Instant updatedAt;

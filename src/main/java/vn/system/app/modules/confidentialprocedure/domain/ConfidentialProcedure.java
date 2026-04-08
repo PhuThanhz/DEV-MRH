@@ -31,6 +31,7 @@ public class ConfidentialProcedure {
     private String procedureName;
     private String status;
     private Integer planYear;
+    private Instant issuedDate; // ← THÊM
 
     @Column(columnDefinition = "MEDIUMTEXT")
     private String fileUrls;

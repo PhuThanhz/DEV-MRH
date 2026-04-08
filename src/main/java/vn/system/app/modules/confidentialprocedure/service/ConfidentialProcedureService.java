@@ -68,7 +68,6 @@ public class ConfidentialProcedureService {
 
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        // Check duplicate theo procedureCode (nhất quán với Company/Department)
         if (req.getDepartmentId() != null &&
                 repository.existsByDepartment_IdAndProcedureCode(req.getDepartmentId(), code)) {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
@@ -84,7 +83,7 @@ public class ConfidentialProcedureService {
         }
 
         ConfidentialProcedure entity = new ConfidentialProcedure();
-        entity.setProcedureCode(code); // ← THÊM
+        entity.setProcedureCode(code);
         entity.setProcedureName(req.getProcedureName());
         entity.setStatus(req.getStatus());
         entity.setPlanYear(req.getPlanYear());
@@ -94,6 +93,7 @@ public class ConfidentialProcedureService {
         entity.setVersion(1);
         entity.setDepartment(department);
         entity.setSection(section);
+        entity.setIssuedDate(req.getIssuedDate()); // ← THÊM
 
         ConfidentialProcedure saved = repository.save(entity);
         saveAccessList(saved, req);
@@ -110,26 +110,22 @@ public class ConfidentialProcedureService {
         ConfidentialProcedure current = fetchById(id);
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        // 1. Check duplicate
         if (req.getDepartmentId() != null &&
                 repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
                         req.getDepartmentId(), code, id)) {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
-        // 2. Validate department trước
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
-        // 3. Validate section trước
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
-        // 4. Update
-        current.setProcedureCode(code); // ← THÊM
+        current.setProcedureCode(code);
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
@@ -137,6 +133,7 @@ public class ConfidentialProcedureService {
         current.setNote(req.getNote());
         current.setDepartment(department);
         current.setSection(section);
+        current.setIssuedDate(req.getIssuedDate()); // ← THÊM
 
         current.getAccessList().clear();
         ConfidentialProcedure saved = repository.save(current);
@@ -154,29 +151,24 @@ public class ConfidentialProcedureService {
         ConfidentialProcedure current = fetchById(id);
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        // 1. Check duplicate
         if (req.getDepartmentId() != null &&
                 repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
                         req.getDepartmentId(), code, id)) {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
-        // 2. Validate department trước
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
-        // 3. Validate section trước
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
         }
 
-        // 4. Mọi thứ OK → mới lưu history
         saveHistory(current, "REVISE");
 
-        // 5. Update + tăng version
-        current.setProcedureCode(code); // ← THÊM
+        current.setProcedureCode(code);
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
@@ -185,6 +177,7 @@ public class ConfidentialProcedureService {
         current.setDepartment(department);
         current.setSection(section);
         current.setVersion(current.getVersion() + 1);
+        current.setIssuedDate(req.getIssuedDate()); // ← THÊM
 
         current.getAccessList().clear();
         ConfidentialProcedure saved = repository.save(current);
@@ -322,7 +315,7 @@ public class ConfidentialProcedureService {
             });
         }
 
-        accessRepository.saveAll(accesses); // ← dùng saveAll thay vì save từng dòng
+        accessRepository.saveAll(accesses);
     }
 
     // =====================================================
@@ -332,7 +325,6 @@ public class ConfidentialProcedureService {
         String currentUser = SecurityUtil.getCurrentUserLogin()
                 .orElseThrow(() -> new IdInvalidException("Không xác định được người dùng"));
 
-        // Fix: lấy userId từ email thay vì so sánh string với Long
         User user = userRepository.findByEmail(currentUser);
         if (user == null) {
             throw new IdInvalidException("Người dùng không tồn tại");
@@ -362,7 +354,6 @@ public class ConfidentialProcedureService {
                 throw new IdInvalidException("Người dùng không tồn tại");
             }
 
-            // SUPER_ADMIN xem tất cả
             if (user.getRole() != null && "SUPER_ADMIN".equals(user.getRole().getName())) {
                 return cb.conjunction();
             }
@@ -386,12 +377,13 @@ public class ConfidentialProcedureService {
         ConfidentialProcedureHistory history = new ConfidentialProcedureHistory();
         history.setProcedure(e);
         history.setVersion(e.getVersion());
-        history.setProcedureCode(e.getProcedureCode()); // ← THÊM
+        history.setProcedureCode(e.getProcedureCode());
         history.setProcedureName(e.getProcedureName());
         history.setStatus(e.getStatus());
         history.setPlanYear(e.getPlanYear());
         history.setFileUrls(e.getFileUrls());
         history.setNote(e.getNote());
+        history.setIssuedDate(e.getIssuedDate()); // ← THÊM
         history.setDepartmentName(e.getDepartment() != null ? e.getDepartment().getName() : null);
         history.setSectionName(e.getSection() != null ? e.getSection().getName() : null);
         history.setAction(action);
@@ -444,7 +436,7 @@ public class ConfidentialProcedureService {
             dto.setSectionName(e.getSection().getName());
         }
 
-        dto.setProcedureCode(e.getProcedureCode()); // ← THÊM
+        dto.setProcedureCode(e.getProcedureCode());
         dto.setProcedureName(e.getProcedureName());
         dto.setStatus(e.getStatus());
         dto.setPlanYear(e.getPlanYear());
@@ -452,6 +444,7 @@ public class ConfidentialProcedureService {
         dto.setNote(e.getNote());
         dto.setActive(e.isActive());
         dto.setVersion(e.getVersion());
+        dto.setIssuedDate(e.getIssuedDate()); // ← THÊM
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());
@@ -478,10 +471,11 @@ public class ConfidentialProcedureService {
         dto.setId(h.getId());
         dto.setProcedureId(h.getProcedure().getId());
         dto.setVersion(h.getVersion());
-        dto.setProcedureCode(h.getProcedureCode()); // ← THÊM
+        dto.setProcedureCode(h.getProcedureCode());
         dto.setProcedureName(h.getProcedureName());
         dto.setStatus(h.getStatus());
         dto.setPlanYear(h.getPlanYear());
+        dto.setIssuedDate(h.getIssuedDate()); // ← THÊM
         dto.setFileUrls(fromJsonArray(h.getFileUrls()));
         dto.setNote(h.getNote());
         dto.setDepartmentName(h.getDepartmentName());

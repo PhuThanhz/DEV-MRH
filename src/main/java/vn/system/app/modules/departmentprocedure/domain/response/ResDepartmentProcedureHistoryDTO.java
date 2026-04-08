@@ -13,11 +13,12 @@ public class ResDepartmentProcedureHistoryDTO {
     private Long id;
     private Long procedureId;
     private Integer version;
-    private String procedureCode; // ← THÊM MỚI
+    private String procedureCode;
     private String procedureName;
     private String status;
     private Integer planYear;
-    private List<String> fileUrls; // ← đổi từ String fileUrl
+    private Instant issuedDate; // ← THÊM
+    private List<String> fileUrls;
     private String note;
     private String departmentName;
     private String sectionName;

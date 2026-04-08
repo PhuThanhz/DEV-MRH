@@ -29,6 +29,7 @@ public class ResConfidentialProcedureDTO {
     private String note;
     private boolean active;
     private Integer version;
+    private Instant issuedDate; // ← THÊM
 
     private List<Long> userIds;
     private List<Long> roleIds;
