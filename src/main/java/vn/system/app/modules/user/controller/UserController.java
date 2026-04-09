@@ -73,7 +73,7 @@ public class UserController {
                 user.setResetCodeExpire(Instant.now().plus(10, ChronoUnit.MINUTES));
                 userService.save(user);
 
-                boolean isActivateFlow = !user.isActive();
+                boolean isActivateFlow = user.getPassword() != null && !user.getPassword().isEmpty();
 
                 if (isActivateFlow) {
                         emailService.sendTemplateEmail(
@@ -134,9 +134,6 @@ public class UserController {
                 user.setPassword(passwordEncoder.encode(newPassword));
                 user.setResetCode(null);
                 user.setResetCodeExpire(null);
-                if (!user.isActive()) {
-                        user.setActive(true);
-                }
                 userRepository.save(user);
 
                 return ResponseEntity.ok(Map.of(

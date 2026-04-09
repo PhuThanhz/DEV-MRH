@@ -75,10 +75,9 @@ public class UserService {
 
         if (req.getPassword() != null && !req.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(req.getPassword()));
-            user.setActive(true);
-        } else {
-            user.setActive(false);
         }
+
+        user.setActive(true);
 
         if (req.getActive() != null) {
             user.setActive(req.getActive());
@@ -127,11 +126,7 @@ public class UserService {
             user.setRole(r != null ? r : null);
         }
 
-        if (user.getPassword() == null || user.getPassword().isEmpty()) {
-            user.setActive(false);
-        } else {
-            user.setActive(true);
-        }
+        user.setActive(true); // luôn luôn active
 
         return this.userRepository.save(user);
     }

@@ -54,7 +54,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 throw new PermissionException("Tài khoản đã bị vô hiệu hóa");
             }
             if (user != null) {
-                // ✅ THÊM: cập nhật lastLoginAt nếu quá 10 phút
+
                 Instant now = Instant.now();
                 boolean shouldUpdate = user.getLastLoginAt() == null
                         || user.getLastLoginAt().isBefore(now.minus(10, ChronoUnit.MINUTES));
