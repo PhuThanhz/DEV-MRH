@@ -30,8 +30,8 @@ public class FileService {
 
         // Sanitize tên file — xóa dấu cách và ký tự đặc biệt
         String safeName = originalName
-                .replaceAll("\\s+", "_")
-                .replaceAll("[^a-zA-Z0-9._\\-]", "_");
+                .replaceAll("[\\\\/:*?\"<>|]", "_")
+                .replaceAll("\\s+", "_");
 
         String finalName = System.currentTimeMillis() + "-" + safeName;
 
