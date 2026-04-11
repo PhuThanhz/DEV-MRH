@@ -18,18 +18,24 @@ import vn.system.app.modules.jobtitle.domain.response.ResJobTitleDTO;
 import vn.system.app.modules.jobtitle.repository.JobTitleRepository;
 import vn.system.app.modules.positionlevel.domain.PositionLevel;
 import vn.system.app.modules.positionlevel.repository.PositionLevelRepository;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 @Service
 public class JobTitleService {
 
     private final JobTitleRepository jobTitleRepo;
     private final PositionLevelRepository positionLevelRepo;
+    private final UserPositionRepository userPositionRepo;
 
     public JobTitleService(
             JobTitleRepository jobTitleRepo,
-            PositionLevelRepository positionLevelRepo) {
+            PositionLevelRepository positionLevelRepo,
+            UserPositionRepository userPositionRepo) {
+
         this.jobTitleRepo = jobTitleRepo;
         this.positionLevelRepo = positionLevelRepo;
+        this.userPositionRepo = userPositionRepo;
+
     }
 
     /*
@@ -103,13 +109,24 @@ public class JobTitleService {
         }
 
         if (req.getActive() != null) {
+
+            // nếu đang muốn tắt
+            if (!req.getActive()) {
+                if (userPositionRepo.existsByJobTitleIdAndActiveTrue(jt.getId())) {
+                    throw new IdInvalidException(
+                            "Chức danh đang có nhân viên sử dụng, không thể vô hiệu hóa");
+                }
+            }
+
             jt.setActive(req.getActive());
         }
 
-        if (req.getPositionLevelId() != null) {
-            PositionLevel pl = positionLevelRepo.findById(req.getPositionLevelId())
-                    .orElseThrow(() -> new IdInvalidException("Bậc chức danh không tồn tại"));
-            jt.setPositionLevel(pl);
+        // Không cho phép đổi PositionLevel (tránh đổi company / band)
+        if (req.getPositionLevelId() != null &&
+                !req.getPositionLevelId().equals(jt.getPositionLevel().getId())) {
+
+            throw new IdInvalidException(
+                    "Không được phép đổi bậc/chức danh. Hãy tạo chức danh mới.");
         }
 
         jt = jobTitleRepo.save(jt);
@@ -124,6 +141,13 @@ public class JobTitleService {
     @Transactional
     public void handleDelete(Long id) {
         JobTitle jt = fetchEntityById(id);
+
+        // 👇 THÊM ĐOẠN NÀY
+        if (userPositionRepo.existsByJobTitleIdAndActiveTrue(id)) {
+            throw new IdInvalidException(
+                    "Chức danh đang có nhân viên sử dụng, không thể vô hiệu hóa");
+        }
+
         jt.setActive(false);
         jobTitleRepo.save(jt);
     }
@@ -155,6 +179,8 @@ public class JobTitleService {
     public ResultPaginationDTO fetchAll(
             Specification<JobTitle> spec,
             Pageable pageable) {
+        spec = Specification.where(spec)
+                .and((root, query, cb) -> cb.equal(root.get("active"), true));
 
         Page<JobTitle> page = jobTitleRepo.findAll(spec, pageable);
 

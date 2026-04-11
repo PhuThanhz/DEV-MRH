@@ -29,6 +29,7 @@ public class ResUserDTO {
     // ⭐ THÊM
     private Instant lastLoginAt;
     private String lastLoginIp;
+    private String lastSeenStatus;
 
     @Getter
     @Setter

@@ -61,4 +61,19 @@ public interface UserPositionRepository
                 AND up.active = true
             """)
     List<UserPosition> findActiveFullByUserId(@Param("userId") Long userId);
+
+    @Query("""
+                SELECT CASE WHEN COUNT(up) > 0 THEN true ELSE false END
+                FROM UserPosition up
+                LEFT JOIN up.companyJobTitle cjt
+                LEFT JOIN up.departmentJobTitle djt
+                LEFT JOIN up.sectionJobTitle sjt
+                WHERE up.active = true
+                AND (
+                    cjt.jobTitle.id = :jobTitleId OR
+                    djt.jobTitle.id = :jobTitleId OR
+                    sjt.jobTitle.id = :jobTitleId
+                )
+            """)
+    boolean existsByJobTitleIdAndActiveTrue(@Param("jobTitleId") Long jobTitleId);
 }

@@ -29,6 +29,8 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 import vn.system.app.modules.userinfo.repository.UserInfoRepository;
 import vn.system.app.modules.userposition.domain.UserPosition;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
+import java.time.Duration;
+import java.time.Instant;
 
 @Service
 public class UserService {
@@ -408,6 +410,20 @@ public class UserService {
         res.setCreatedAt(user.getCreatedAt());
         res.setLastLoginAt(user.getLastLoginAt());
         res.setLastLoginIp(user.getLastLoginIp());
+        // ⭐ THÊM VÀO ĐÂY
+        if (user.getLastLoginAt() != null) {
+            long minutes = Duration.between(user.getLastLoginAt(), Instant.now()).toMinutes();
+            if (minutes < 15)
+                res.setLastSeenStatus("Vừa đăng nhập");
+            else if (minutes < 1440)
+                res.setLastSeenStatus("Hôm nay");
+            else if (minutes < 10080)
+                res.setLastSeenStatus("Gần đây");
+            else
+                res.setLastSeenStatus("Lâu rồi");
+        } else {
+            res.setLastSeenStatus("Chưa đăng nhập");
+        }
         // ⭐ Dùng thẳng từ entity đã JOIN FETCH — không query thêm
         UserInfo info = user.getUserInfo();
         if (info != null) {

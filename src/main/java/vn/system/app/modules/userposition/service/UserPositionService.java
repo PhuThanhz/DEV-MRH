@@ -70,6 +70,10 @@ public class UserPositionService {
                 CompanyJobTitle cjt = companyJobTitleRepo.findById(req.getCompanyJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy CompanyJobTitle."));
 
+                if (!cjt.getJobTitle().isActive()) {
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
+                }
+
                 position.setCompanyJobTitle(cjt);
             }
 
@@ -83,6 +87,10 @@ public class UserPositionService {
                 DepartmentJobTitle djt = departmentJobTitleRepo.findById(req.getDepartmentJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy DepartmentJobTitle."));
 
+                if (!djt.getJobTitle().isActive()) {
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
+                }
+
                 position.setDepartmentJobTitle(djt);
             }
 
@@ -95,6 +103,10 @@ public class UserPositionService {
 
                 SectionJobTitle sjt = sectionJobTitleRepo.findById(req.getSectionJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy SectionJobTitle."));
+
+                if (!sjt.getJobTitle().isActive()) {
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
+                }
 
                 position.setSectionJobTitle(sjt);
             }
