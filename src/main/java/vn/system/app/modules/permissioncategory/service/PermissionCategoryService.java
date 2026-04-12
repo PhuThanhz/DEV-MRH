@@ -161,8 +161,13 @@ public class PermissionCategoryService {
         if (entity.getDepartment() != null) {
             res.setDepartmentId(entity.getDepartment().getId());
             res.setDepartmentName(entity.getDepartment().getName());
-        }
 
+            // ✅ map company bên trong luôn
+            if (entity.getDepartment().getCompany() != null) {
+                res.setCompanyId(entity.getDepartment().getCompany().getId());
+                res.setCompanyName(entity.getDepartment().getCompany().getName());
+            }
+        }
         return res;
     }
 }

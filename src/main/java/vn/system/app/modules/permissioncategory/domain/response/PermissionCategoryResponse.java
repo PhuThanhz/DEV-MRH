@@ -14,7 +14,8 @@ public class PermissionCategoryResponse {
     private String name;
 
     private Boolean active;
-
+    private Long companyId;
+    private String companyName;
     private Long departmentId;
     private String departmentName;
 
