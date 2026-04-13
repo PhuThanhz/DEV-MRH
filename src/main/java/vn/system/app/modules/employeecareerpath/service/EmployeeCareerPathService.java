@@ -164,8 +164,8 @@ public class EmployeeCareerPathService {
 
         repo.save(e);
 
-        // ✅ Cập nhật UserPosition DEPARTMENT → chức danh mới
-        updateUserPosition(e.getUser().getId(), nextStep.getCareerPath());
+        // ✅ Truyền thêm currentStep để biết chức danh cũ cần cập nhật
+        updateUserPosition(e.getUser().getId(), currentStep, nextStep.getCareerPath());
 
         return convertToResponse(e, true);
     }
@@ -253,29 +253,36 @@ public class EmployeeCareerPathService {
     // =====================================================
     // HELPER — cập nhật UserPosition khi thăng tiến
     // =====================================================
-    private void updateUserPosition(Long userId, CareerPath newCareerPath) {
+    private void updateUserPosition(Long userId, CareerPathTemplateStep currentStep, CareerPath newCareerPath) {
 
         Long departmentId = newCareerPath.getDepartment().getId();
-        Long jobTitleId = newCareerPath.getJobTitle().getId();
+        Long newJobTitleId = newCareerPath.getJobTitle().getId();
 
-        // Tìm DepartmentJobTitle tương ứng chức danh mới
+        // Tìm DepartmentJobTitle của chức danh MỚI
         DepartmentJobTitle newDjt = departmentJobTitleRepo
-                .findByDepartment_IdAndJobTitle_IdAndActiveTrue(departmentId, jobTitleId)
+                .findByDepartment_IdAndJobTitle_IdAndActiveTrue(departmentId, newJobTitleId)
                 .orElse(null);
 
         if (newDjt == null) {
-            // Không crash — chỉ bỏ qua nếu không tìm thấy mapping
-            // HR có thể cần tạo thêm DepartmentJobTitle thủ công
             return;
         }
 
-        // Tìm UserPosition DEPARTMENT active của nhân viên
+        // Tìm DepartmentJobTitle của chức danh CŨ (bước hiện tại)
+        Long oldJobTitleId = currentStep.getCareerPath().getJobTitle().getId();
+        DepartmentJobTitle oldDjt = departmentJobTitleRepo
+                .findByDepartment_IdAndJobTitle_IdAndActiveTrue(departmentId, oldJobTitleId)
+                .orElse(null);
+
+        if (oldDjt == null) {
+            return;
+        }
+
+        // ✅ Tìm đúng UserPosition của chức danh CŨ — không bị nhầm với chức danh khác
         UserPosition userPosition = userPositionRepo
-                .findByUser_IdAndSourceAndActiveTrue(userId, "DEPARTMENT")
+                .findByUser_IdAndDepartmentJobTitle_IdAndActiveTrue(userId, oldDjt.getId())
                 .orElse(null);
 
         if (userPosition == null) {
-            // Không có UserPosition DEPARTMENT → bỏ qua
             return;
         }
 
@@ -306,18 +313,15 @@ public class EmployeeCareerPathService {
         ResEmployeeCareerPathDTO r = new ResEmployeeCareerPathDTO();
         r.setId(e.getId());
 
-        // User
         ResEmployeeCareerPathDTO.UserInfo userInfo = new ResEmployeeCareerPathDTO.UserInfo();
         userInfo.setId(e.getUser().getId());
         userInfo.setName(e.getUser().getName());
         userInfo.setEmail(e.getUser().getEmail());
-        // ← THÊM 3 DÒNG NÀY
         if (e.getUser().getUserInfo() != null) {
             userInfo.setEmployeeCode(e.getUser().getUserInfo().getEmployeeCode());
         }
         r.setUser(userInfo);
 
-        // Template
         CareerPathTemplate template = e.getTemplate();
         ResEmployeeCareerPathDTO.TemplateInfo templateInfo = new ResEmployeeCareerPathDTO.TemplateInfo();
         templateInfo.setId(template.getId());
@@ -332,7 +336,6 @@ public class EmployeeCareerPathService {
         r.setTotalSteps(steps.size());
         r.setCurrentStepOrder(e.getCurrentStepOrder());
 
-        // Build promotedAt map: fromStepOrder → promotedAt
         Map<Integer, LocalDate> promotedAtMap = Map.of();
         if (e.getHistories() != null) {
             promotedAtMap = e.getHistories().stream()
@@ -344,7 +347,6 @@ public class EmployeeCareerPathService {
         }
         final Map<Integer, LocalDate> promotedAtMapFinal = promotedAtMap;
 
-        // Build allSteps
         List<ResEmployeeCareerPathDTO.StepProgress> allSteps = new ArrayList<>();
         for (CareerPathTemplateStep s : steps) {
             ResEmployeeCareerPathDTO.StepProgress sp = new ResEmployeeCareerPathDTO.StepProgress();
@@ -382,7 +384,6 @@ public class EmployeeCareerPathService {
         }
         r.setAllSteps(allSteps);
 
-        // Current step shortcut
         steps.stream()
                 .filter(s -> s.getStepOrder().equals(e.getCurrentStepOrder()))
                 .findFirst()
@@ -396,14 +397,12 @@ public class EmployeeCareerPathService {
                     }
                 });
 
-        // Next step shortcut
         CareerPathTemplateStep nextStep = templateService.fetchNextStep(
                 template.getId(), e.getCurrentStepOrder());
         if (nextStep != null) {
             r.setNextStep(toStepInfo(nextStep));
         }
 
-        // Số ngày ở bước hiện tại
         r.setStepStartedAt(e.getStepStartedAt());
         if (e.getStepStartedAt() != null) {
             r.setDaysInCurrentStep(

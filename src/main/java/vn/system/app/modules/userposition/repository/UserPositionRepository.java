@@ -19,6 +19,10 @@ public interface UserPositionRepository
 
     boolean existsByUser_IdAndDepartmentJobTitle_IdAndActiveTrue(Long userId, Long departmentJobTitleId);
 
+    // Thêm dòng này vào sau existsByUser_IdAndDepartmentJobTitle_IdAndActiveTrue
+    Optional<UserPosition> findByUser_IdAndDepartmentJobTitle_IdAndActiveTrue(
+            Long userId, Long departmentJobTitleId);
+
     boolean existsByUser_IdAndSectionJobTitle_IdAndActiveTrue(Long userId, Long sectionJobTitleId);
 
     Optional<UserPosition> findByUser_IdAndSourceAndActiveTrue(Long userId, String source);
