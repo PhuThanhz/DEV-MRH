@@ -165,7 +165,7 @@ public class UserPositionService {
     // GET COMPANY IDs BY USER (dùng cho scope filter)
     // =====================================================
     public Set<Long> getCompanyIdsByUser(Long userId) {
-        return repo.findByUser_IdAndActiveTrue(userId)
+        return repo.findActiveFullByUserId(userId) // ← XONG
                 .stream()
                 .map(pos -> switch (pos.getSource().toUpperCase()) {
                     case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();

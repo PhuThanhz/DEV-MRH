@@ -5,33 +5,41 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import vn.system.app.modules.employeecareerpath.domain.EmployeeCareerPath;
 
 @Repository
 public interface EmployeeCareerPathRepository
-        extends JpaRepository<EmployeeCareerPath, Long> {
+    extends JpaRepository<EmployeeCareerPath, Long> {
 
-    Optional<EmployeeCareerPath> findByUser_IdAndActiveTrue(Long userId);
+  Optional<EmployeeCareerPath> findByUser_IdAndActiveTrue(Long userId);
 
-    boolean existsByUser_IdAndActiveTrue(Long userId);
+  boolean existsByUser_IdAndActiveTrue(Long userId);
 
-    // Lấy theo phòng ban qua template.department
-    List<EmployeeCareerPath> findByTemplate_Department_IdAndActiveTrue(Long departmentId);
+  // Lấy theo phòng ban qua template.department
+  List<EmployeeCareerPath> findByTemplate_Department_IdAndActiveTrue(Long departmentId);
 
-    // [FIX 2] Thêm JOIN FETCH tránh N+1 query khi truy cập template.steps
-    @Query("""
-                SELECT DISTINCT e FROM EmployeeCareerPath e
-                JOIN FETCH e.template t
-                JOIN FETCH t.steps
-                LEFT JOIN FETCH e.histories
-                WHERE e.active = true
-                  AND e.progressStatus = 0
-                  AND e.stepStartedAt IS NOT NULL
-            """)
-    List<EmployeeCareerPath> findAllInProgress();
+  // [FIX 2] Thêm JOIN FETCH tránh N+1 query khi truy cập template.steps
+  @Query("""
+          SELECT DISTINCT e FROM EmployeeCareerPath e
+          JOIN FETCH e.template t
+          JOIN FETCH t.steps
+          LEFT JOIN FETCH e.histories
+          WHERE e.active = true
+            AND e.progressStatus = 0
+            AND e.stepStartedAt IS NOT NULL
+      """)
+  List<EmployeeCareerPath> findAllInProgress();
 
-    // Lấy tất cả lộ trình của 1 user (kể cả inactive — xem lịch sử)
-    List<EmployeeCareerPath> findByUser_IdOrderByCreatedAtDesc(Long userId);
+  // Lấy tất cả lộ trình của 1 user (kể cả inactive — xem lịch sử)
+  List<EmployeeCareerPath> findByUser_IdOrderByCreatedAtDesc(Long userId);
+
+  @Query("""
+          SELECT e.user.id FROM EmployeeCareerPath e
+          WHERE e.active = true
+          AND e.template.department.id = :departmentId
+      """)
+  List<Long> findAssignedUserIdsByDepartmentId(@Param("departmentId") Long departmentId);
 }

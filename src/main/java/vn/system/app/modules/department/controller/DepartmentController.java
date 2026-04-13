@@ -1,5 +1,7 @@
 package vn.system.app.modules.department.controller;
 
+import java.util.List;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -17,15 +19,21 @@ import vn.system.app.modules.department.domain.request.CreateDepartmentRequest;
 import vn.system.app.modules.department.domain.request.UpdateDepartmentRequest;
 import vn.system.app.modules.department.domain.response.DepartmentResponse;
 import vn.system.app.modules.department.service.DepartmentService;
+import vn.system.app.modules.user.domain.response.ResUserDTO;
+import vn.system.app.modules.user.service.UserService;
 
 @RestController
 @RequestMapping("/api/v1")
 public class DepartmentController {
 
     private final DepartmentService departmentService;
+    private final UserService userService;
 
-    public DepartmentController(DepartmentService departmentService) {
+    public DepartmentController(
+            DepartmentService departmentService,
+            UserService userService) {
         this.departmentService = departmentService;
+        this.userService = userService;
     }
 
     /* ================= CREATE ================= */
@@ -33,12 +41,8 @@ public class DepartmentController {
     @ApiMessage("Tạo phòng ban mới")
     public ResponseEntity<DepartmentResponse> createDepartment(
             @Valid @RequestBody CreateDepartmentRequest req) {
-
         DepartmentResponse res = departmentService.handleCreateDepartment(req);
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(res);
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
     /* ================= UPDATE ================= */
@@ -47,9 +51,7 @@ public class DepartmentController {
     public ResponseEntity<DepartmentResponse> updateDepartment(
             @PathVariable Long id,
             @RequestBody UpdateDepartmentRequest req) {
-
         DepartmentResponse res = departmentService.handleUpdateDepartment(id, req);
-
         return ResponseEntity.ok(res);
     }
 
@@ -57,9 +59,7 @@ public class DepartmentController {
     @DeleteMapping("/departments/{id}")
     @ApiMessage("Xoá phòng ban")
     public ResponseEntity<Void> deleteDepartment(@PathVariable Long id) {
-
         departmentService.handleDeleteDepartment(id);
-
         return ResponseEntity.ok().build();
     }
 
@@ -67,9 +67,7 @@ public class DepartmentController {
     @GetMapping("/departments/{id}")
     @ApiMessage("Chi tiết phòng ban")
     public ResponseEntity<DepartmentResponse> fetchDepartmentById(@PathVariable Long id) {
-
         DepartmentResponse res = departmentService.fetchDepartmentById(id);
-
         return ResponseEntity.ok(res);
     }
 
@@ -79,11 +77,8 @@ public class DepartmentController {
     public ResponseEntity<ResultPaginationDTO> fetchAllDepartments(
             @Filter Specification<Department> spec,
             Pageable pageable) {
-
         spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
-
-        return ResponseEntity.ok(
-                departmentService.fetchAllDepartments(spec, pageable));
+        return ResponseEntity.ok(departmentService.fetchAllDepartments(spec, pageable));
     }
 
     /* ================= ACTIVE ================= */
@@ -98,8 +93,14 @@ public class DepartmentController {
     @GetMapping("/departments/by-company/{companyId}")
     @ApiMessage("Danh sách phòng ban theo công ty")
     public ResponseEntity<?> getDepartmentsByCompany(@PathVariable Long companyId) {
+        return ResponseEntity.ok(departmentService.fetchDepartmentsByCompany(companyId));
+    }
 
-        return ResponseEntity.ok(
-                departmentService.fetchDepartmentsByCompany(companyId));
+    /* ================= USERS UNASSIGNED CAREER PATH ================= */
+    @GetMapping("/departments/{departmentId}/users/unassigned-career-path")
+    @ApiMessage("Danh sách nhân viên chưa có lộ trình trong phòng ban")
+    public ResponseEntity<List<ResUserDTO>> getUsersUnassignedCareerPath(
+            @PathVariable Long departmentId) {
+        return ResponseEntity.ok(userService.getUsersUnassignedCareerPath(departmentId));
     }
 }

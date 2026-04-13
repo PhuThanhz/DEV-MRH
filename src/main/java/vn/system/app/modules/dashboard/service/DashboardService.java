@@ -23,157 +23,163 @@ import vn.system.app.modules.departmentjobtitle.repository.DepartmentJobTitleRep
 @Service
 public class DashboardService {
 
-    private final CompanyRepository companyRepository;
-    private final DepartmentRepository departmentRepository;
-    private final SectionRepository sectionRepository;
+        private final CompanyRepository companyRepository;
+        private final DepartmentRepository departmentRepository;
+        private final SectionRepository sectionRepository;
 
-    private final JobPositionChartRepository chartRepository;
-    private final DepartmentObjectiveRepository objectiveRepository;
-    private final DepartmentProcedureRepository departmentProcedureRepository;
-    private final PermissionCategoryRepository permissionCategoryRepository;
-    private final CareerPathRepository careerPathRepository;
-    private final SalaryGradeRepository salaryGradeRepository;
-    private final DepartmentJobTitleRepository departmentJobTitleRepository;
+        private final JobPositionChartRepository chartRepository;
+        private final DepartmentObjectiveRepository objectiveRepository;
+        private final DepartmentProcedureRepository departmentProcedureRepository;
+        private final PermissionCategoryRepository permissionCategoryRepository;
+        private final CareerPathRepository careerPathRepository;
+        private final SalaryGradeRepository salaryGradeRepository;
+        private final DepartmentJobTitleRepository departmentJobTitleRepository;
 
-    public DashboardService(
-            CompanyRepository companyRepository,
-            DepartmentRepository departmentRepository,
-            SectionRepository sectionRepository,
-            JobPositionChartRepository chartRepository,
-            DepartmentObjectiveRepository objectiveRepository,
-            DepartmentProcedureRepository departmentProcedureRepository,
-            PermissionCategoryRepository permissionCategoryRepository,
-            CareerPathRepository careerPathRepository,
-            SalaryGradeRepository salaryGradeRepository,
-            DepartmentJobTitleRepository departmentJobTitleRepository) {
+        public DashboardService(
+                        CompanyRepository companyRepository,
+                        DepartmentRepository departmentRepository,
+                        SectionRepository sectionRepository,
+                        JobPositionChartRepository chartRepository,
+                        DepartmentObjectiveRepository objectiveRepository,
+                        DepartmentProcedureRepository departmentProcedureRepository,
+                        PermissionCategoryRepository permissionCategoryRepository,
+                        CareerPathRepository careerPathRepository,
+                        SalaryGradeRepository salaryGradeRepository,
+                        DepartmentJobTitleRepository departmentJobTitleRepository) {
 
-        this.companyRepository = companyRepository;
-        this.departmentRepository = departmentRepository;
-        this.sectionRepository = sectionRepository;
-        this.chartRepository = chartRepository;
-        this.objectiveRepository = objectiveRepository;
-        this.departmentProcedureRepository = departmentProcedureRepository;
-        this.permissionCategoryRepository = permissionCategoryRepository;
-        this.careerPathRepository = careerPathRepository;
-        this.salaryGradeRepository = salaryGradeRepository;
-        this.departmentJobTitleRepository = departmentJobTitleRepository;
-    }
-
-    /*
-     * ====================================================
-     * DASHBOARD SUMMARY (KPI)
-     * ====================================================
-     */
-    public DashboardSummaryDTO getSummary() {
-
-        UserScopeContext.UserScope scope = UserScopeContext.get();
-
-        long totalCompany;
-        long totalDepartment;
-        long totalSection;
-
-        if (scope == null || scope.isSuperAdmin()) {
-            totalCompany = companyRepository.count();
-            totalDepartment = departmentRepository.count();
-            totalSection = sectionRepository.count();
-        } else {
-            var companyIds = scope.companyIds();
-            if (companyIds.isEmpty()) {
-                return new DashboardSummaryDTO(0, 0, 0);
-            }
-            totalCompany = companyIds.size();
-            totalDepartment = departmentRepository.countByCompany_IdIn(companyIds);
-            totalSection = sectionRepository.countByDepartment_Company_IdIn(companyIds);
+                this.companyRepository = companyRepository;
+                this.departmentRepository = departmentRepository;
+                this.sectionRepository = sectionRepository;
+                this.chartRepository = chartRepository;
+                this.objectiveRepository = objectiveRepository;
+                this.departmentProcedureRepository = departmentProcedureRepository;
+                this.permissionCategoryRepository = permissionCategoryRepository;
+                this.careerPathRepository = careerPathRepository;
+                this.salaryGradeRepository = salaryGradeRepository;
+                this.departmentJobTitleRepository = departmentJobTitleRepository;
         }
 
-        return new DashboardSummaryDTO(totalCompany, totalDepartment, totalSection);
-    }
+        /*
+         * ====================================================
+         * DASHBOARD SUMMARY (KPI)
+         * ====================================================
+         */
+        public DashboardSummaryDTO getSummary() {
 
-    /*
-     * ====================================================
-     * DEPARTMENT COMPLETENESS
-     * ====================================================
-     */
-    public List<DepartmentCompletenessDTO> getDepartmentCompleteness() {
+                UserScopeContext.UserScope scope = UserScopeContext.get();
 
-        UserScopeContext.UserScope scope = UserScopeContext.get();
+                long totalCompany;
+                long totalDepartment;
+                long totalSection;
 
-        List<Department> departments;
+                if (scope == null || scope.isSuperAdmin()) {
+                        totalCompany = companyRepository.count();
+                        totalDepartment = departmentRepository.count();
+                        totalSection = sectionRepository.count();
+                } else {
+                        var companyIds = scope.companyIds();
+                        if (companyIds.isEmpty()) {
+                                return new DashboardSummaryDTO(0, 0, 0);
+                        }
+                        totalCompany = companyIds.size();
+                        totalDepartment = departmentRepository.countByCompany_IdIn(companyIds);
+                        totalSection = sectionRepository.countByDepartment_Company_IdIn(companyIds);
+                }
 
-        if (scope == null || scope.isSuperAdmin()) {
-            departments = departmentRepository.findAll();
-        } else {
-            var companyIds = scope.companyIds();
-            if (companyIds.isEmpty()) {
-                return List.of();
-            }
-            departments = departmentRepository.findByCompany_IdIn(companyIds);
+                return new DashboardSummaryDTO(totalCompany, totalDepartment, totalSection);
         }
 
-        return departments.stream()
-                .map(this::buildCompleteness)
-                .collect(Collectors.toList());
-    }
+        /*
+         * ====================================================
+         * DEPARTMENT COMPLETENESS
+         * ====================================================
+         */
+        public List<DepartmentCompletenessDTO> getDepartmentCompleteness() {
 
-    private DepartmentCompletenessDTO buildCompleteness(Department dept) {
+                UserScopeContext.UserScope scope = UserScopeContext.get();
+                // THÊM LOG
+                System.out.println(">>> SCOPE = " + scope);
+                if (scope != null) {
+                        System.out.println(">>> isSuperAdmin = " + scope.isSuperAdmin());
+                        System.out.println(">>> companyIds = " + scope.companyIds());
+                }
+                List<Department> departments;
 
-        Long deptId = dept.getId();
+                if (scope == null || scope.isSuperAdmin()) {
+                        departments = departmentRepository.findAll();
+                } else {
+                        var companyIds = scope.companyIds();
+                        if (companyIds.isEmpty()) {
+                                return List.of();
+                        }
+                        departments = departmentRepository.findByCompany_IdIn(companyIds);
+                }
+                System.out.println(">>> departments.size() = " + departments.size());
 
-        boolean orgChart = !chartRepository
-                .findAll()
-                .stream()
-                .filter(c -> deptId.equals(c.getDepartmentId()))
-                .toList()
-                .isEmpty();
+                return departments.stream()
+                                .map(this::buildCompleteness)
+                                .collect(Collectors.toList());
+        }
 
-        boolean objectives = !objectiveRepository
-                .findByDepartmentId(deptId)
-                .isEmpty();
+        private DepartmentCompletenessDTO buildCompleteness(Department dept) {
 
-        boolean departmentProcedure = !departmentProcedureRepository
-                .findByDepartment_Id(deptId)
-                .isEmpty();
+                Long deptId = dept.getId();
 
-        boolean permissions = !permissionCategoryRepository
-                .findByDepartmentId(deptId)
-                .isEmpty();
+                boolean orgChart = !chartRepository
+                                .findAll()
+                                .stream()
+                                .filter(c -> deptId.equals(c.getDepartmentId()))
+                                .toList()
+                                .isEmpty();
 
-        boolean careerPath = !careerPathRepository
-                .findByDepartment_IdAndActiveTrue(deptId)
-                .isEmpty();
+                boolean objectives = !objectiveRepository
+                                .findByDepartmentId(deptId)
+                                .isEmpty();
 
-        boolean salaryGrade = !salaryGradeRepository
-                .findAll()
-                .stream()
-                .filter(sg -> "DEPARTMENT".equals(sg.getContextType())
-                        && deptId.equals(sg.getContextId())
-                        && sg.isActive())
-                .toList()
-                .isEmpty();
+                boolean departmentProcedure = !departmentProcedureRepository
+                                .findByDepartment_Id(deptId)
+                                .isEmpty();
 
-        boolean jobTitleMap = !departmentJobTitleRepository
-                .findByDepartment_IdAndActiveTrue(deptId)
-                .isEmpty();
+                boolean permissions = !permissionCategoryRepository
+                                .findByDepartmentId(deptId)
+                                .isEmpty();
 
-        int score = (orgChart ? 1 : 0)
-                + (objectives ? 1 : 0)
-                + (departmentProcedure ? 1 : 0)
-                + (permissions ? 1 : 0)
-                + (careerPath ? 1 : 0)
-                + (salaryGrade ? 1 : 0)
-                + (jobTitleMap ? 1 : 0);
+                boolean careerPath = !careerPathRepository
+                                .findByDepartment_IdAndActiveTrue(deptId)
+                                .isEmpty();
 
-        return new DepartmentCompletenessDTO(
-                deptId,
-                dept.getName(),
-                dept.getCompany().getName(), // ← THÊM
-                orgChart,
-                objectives,
-                departmentProcedure,
-                permissions,
-                careerPath,
-                salaryGrade,
-                jobTitleMap,
-                score);
-    }
+                boolean salaryGrade = !salaryGradeRepository
+                                .findAll()
+                                .stream()
+                                .filter(sg -> "DEPARTMENT".equals(sg.getContextType())
+                                                && deptId.equals(sg.getContextId())
+                                                && sg.isActive())
+                                .toList()
+                                .isEmpty();
+
+                boolean jobTitleMap = !departmentJobTitleRepository
+                                .findByDepartment_IdAndActiveTrue(deptId)
+                                .isEmpty();
+
+                int score = (orgChart ? 1 : 0)
+                                + (objectives ? 1 : 0)
+                                + (departmentProcedure ? 1 : 0)
+                                + (permissions ? 1 : 0)
+                                + (careerPath ? 1 : 0)
+                                + (salaryGrade ? 1 : 0)
+                                + (jobTitleMap ? 1 : 0);
+
+                return new DepartmentCompletenessDTO(
+                                deptId,
+                                dept.getName(),
+                                dept.getCompany().getName(), // ← THÊM
+                                orgChart,
+                                objectives,
+                                departmentProcedure,
+                                permissions,
+                                careerPath,
+                                salaryGrade,
+                                jobTitleMap,
+                                score);
+        }
 }

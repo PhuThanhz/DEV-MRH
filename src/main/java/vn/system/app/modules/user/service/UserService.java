@@ -13,9 +13,9 @@ import vn.system.app.common.util.UserScopeContext;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.email.service.EmailService;
+import vn.system.app.modules.employeecareerpath.repository.EmployeeCareerPathRepository;
 import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.role.service.RoleService;
 import vn.system.app.modules.user.domain.User;
@@ -37,7 +37,8 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserInfoRepository userInfoRepository;
-    private final UserPositionRepository userPositionRepository; // ✅ THÊM
+    private final UserPositionRepository userPositionRepository;
+    private final EmployeeCareerPathRepository employeeCareerPathRepository; // ← THÊM
     private final RoleService roleService;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
@@ -45,13 +46,15 @@ public class UserService {
     public UserService(
             UserRepository userRepository,
             UserInfoRepository userInfoRepository,
-            UserPositionRepository userPositionRepository, // ✅ THÊM
+            UserPositionRepository userPositionRepository,
+            EmployeeCareerPathRepository employeeCareerPathRepository, // ← THÊM
             RoleService roleService,
             EmailService emailService,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.userInfoRepository = userInfoRepository;
-        this.userPositionRepository = userPositionRepository; // ✅ THÊM
+        this.userPositionRepository = userPositionRepository;
+        this.employeeCareerPathRepository = employeeCareerPathRepository; // ← THÊM
         this.roleService = roleService;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
@@ -128,7 +131,7 @@ public class UserService {
             user.setRole(r != null ? r : null);
         }
 
-        user.setActive(true); // luôn luôn active
+        user.setActive(true);
 
         return this.userRepository.save(user);
     }
@@ -165,12 +168,10 @@ public class UserService {
     // ======================================================
     public ResultPaginationDTO fetchAllUser(Specification<User> spec, Pageable pageable) {
 
-        // ── ADMIN_SUB_2: filter user theo company ──────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
 
             if (scope.companyIds().isEmpty()) {
-                // Không thuộc công ty nào → trả về rỗng
                 ResultPaginationDTO rs = new ResultPaginationDTO();
                 ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
                 mt.setPage(pageable.getPageNumber() + 1);
@@ -182,8 +183,6 @@ public class UserService {
                 return rs;
             }
 
-            // Filter: chỉ lấy user thuộc company của admin này
-            // User không có company trực tiếp → đi qua UserPosition
             Specification<User> scopeSpec = (root, query, cb) -> {
 
                 var sub = query.subquery(Long.class);
@@ -213,7 +212,6 @@ public class UserService {
 
             spec = Specification.where(spec).and(scopeSpec);
         }
-        // ── HẾT FILTER ────────────────────────────────────────
 
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
 
@@ -245,12 +243,10 @@ public class UserService {
             throw new IdInvalidException("User với id = " + req.getId() + " không tồn tại");
         }
 
-        // update name
         if (req.getName() != null) {
             currentUser.setName(req.getName());
         }
 
-        // update active
         if (req.getActive() != null) {
             currentUser.setActive(req.getActive());
 
@@ -259,14 +255,13 @@ public class UserService {
             }
         }
 
-        // ⭐ QUAN TRỌNG NHẤT — update role
         if (req.getRoleId() != null) {
             Role r = this.roleService.fetchById(req.getRoleId());
             currentUser.setRole(r);
         }
 
         User saved = this.userRepository.save(currentUser);
-        // ================= USER INFO =================
+
         UserInfo userInfo = userInfoRepository.findByUser_Id(currentUser.getId())
                 .orElse(null);
 
@@ -274,7 +269,7 @@ public class UserService {
             userInfo = new UserInfo();
             userInfo.setUser(currentUser);
         }
-        // update field
+
         userInfo.setEmployeeCode(req.getEmployeeCode());
         userInfo.setPhone(req.getPhone());
         userInfo.setDateOfBirth(req.getDateOfBirth());
@@ -284,7 +279,7 @@ public class UserService {
         userInfo.setContractExpireDate(req.getContractExpireDate());
 
         userInfoRepository.save(userInfo);
-        // load lại để lấy userInfo
+
         User fullUser = this.userRepository.findWithUserInfoById(saved.getId());
 
         return fullUser;
@@ -410,7 +405,7 @@ public class UserService {
         res.setCreatedAt(user.getCreatedAt());
         res.setLastLoginAt(user.getLastLoginAt());
         res.setLastLoginIp(user.getLastLoginIp());
-        // ⭐ THÊM VÀO ĐÂY
+
         if (user.getLastLoginAt() != null) {
             long minutes = Duration.between(user.getLastLoginAt(), Instant.now()).toMinutes();
             if (minutes < 15)
@@ -424,7 +419,7 @@ public class UserService {
         } else {
             res.setLastSeenStatus("Chưa đăng nhập");
         }
-        // ⭐ Dùng thẳng từ entity đã JOIN FETCH — không query thêm
+
         UserInfo info = user.getUserInfo();
         if (info != null) {
             ResUserDTO.UserInfoBasic userInfoBasic = new ResUserDTO.UserInfoBasic();
@@ -437,7 +432,7 @@ public class UserService {
             userInfoBasic.setContractExpireDate(info.getContractExpireDate());
             res.setUserInfo(userInfoBasic);
         }
-        // ✅ THÊM ĐOẠN NÀY VÀO CUỐI convertToResUserDTO, TRƯỚC return res;
+
         List<UserPosition> posList = userPositionRepository
                 .findByUser_IdAndActiveTrue(user.getId());
 
@@ -472,14 +467,13 @@ public class UserService {
 
             res.setPositions(positionBasics);
         }
-        // ✅ HẾT PHẦN THÊM
+
         return res;
     }
 
     // ======================================================
     // CHANGE PASSWORD
     // ======================================================
-    // ⭐ Giữ lại PasswordEncoder trong tham số — AuthController đang truyền vào
     public void changePassword(String oldPassword, String newPassword, PasswordEncoder passwordEncoder) {
 
         User currentUser = getCurrentUser();
@@ -494,5 +488,29 @@ public class UserService {
 
         currentUser.setPassword(passwordEncoder.encode(newPassword));
         this.userRepository.save(currentUser);
+    }
+
+    // ======================================================
+    // GET USERS UNASSIGNED CAREER PATH BY DEPARTMENT
+    // ======================================================
+    public List<ResUserDTO> getUsersUnassignedCareerPath(Long departmentId) {
+        System.out.println(">>> departmentId = " + departmentId); // ← THÊM
+
+        List<Long> userIds = userPositionRepository.findUserIdsByDepartmentId(departmentId);
+        System.out.println(">>> userIds = " + userIds); // ← THÊM
+
+        if (userIds.isEmpty())
+            return List.of();
+
+        List<Long> assignedIds = employeeCareerPathRepository
+                .findAssignedUserIdsByDepartmentId(departmentId);
+        System.out.println(">>> assignedIds = " + assignedIds); // ← THÊM
+
+        return userIds.stream()
+                .filter(id -> !assignedIds.contains(id))
+                .map(userRepository::findById)
+                .filter(Optional::isPresent)
+                .map(opt -> convertToResUserDTO(opt.get()))
+                .collect(Collectors.toList());
     }
 }

@@ -76,4 +76,18 @@ public interface UserPositionRepository
                 )
             """)
     boolean existsByJobTitleIdAndActiveTrue(@Param("jobTitleId") Long jobTitleId);
+
+    @Query("""
+                SELECT DISTINCT up.user.id FROM UserPosition up
+                LEFT JOIN up.departmentJobTitle djt
+                LEFT JOIN up.sectionJobTitle sjt
+                LEFT JOIN sjt.section s
+                WHERE up.active = true
+                AND (
+                    (up.source = 'DEPARTMENT' AND djt.department.id = :departmentId)
+                    OR
+                    (up.source = 'SECTION' AND s.department.id = :departmentId)
+                )
+            """)
+    List<Long> findUserIdsByDepartmentId(@Param("departmentId") Long departmentId);
 }
