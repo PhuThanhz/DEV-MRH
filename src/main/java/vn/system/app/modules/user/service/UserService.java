@@ -38,7 +38,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserInfoRepository userInfoRepository;
     private final UserPositionRepository userPositionRepository;
-    private final EmployeeCareerPathRepository employeeCareerPathRepository; // ← THÊM
+    private final EmployeeCareerPathRepository employeeCareerPathRepository;
     private final RoleService roleService;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
@@ -47,14 +47,14 @@ public class UserService {
             UserRepository userRepository,
             UserInfoRepository userInfoRepository,
             UserPositionRepository userPositionRepository,
-            EmployeeCareerPathRepository employeeCareerPathRepository, // ← THÊM
+            EmployeeCareerPathRepository employeeCareerPathRepository,
             RoleService roleService,
             EmailService emailService,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.userInfoRepository = userInfoRepository;
         this.userPositionRepository = userPositionRepository;
-        this.employeeCareerPathRepository = employeeCareerPathRepository; // ← THÊM
+        this.employeeCareerPathRepository = employeeCareerPathRepository;
         this.roleService = roleService;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
@@ -171,7 +171,11 @@ public class UserService {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
 
-            if (scope.companyIds().isEmpty()) {
+            if (scope.isAdminLevel()) {
+                // ADMIN_SUB_1 → thấy toàn bộ, không filter
+
+            } else if (scope.companyIds().isEmpty()) {
+                // Không có công ty nào → trả về rỗng
                 ResultPaginationDTO rs = new ResultPaginationDTO();
                 ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
                 mt.setPage(pageable.getPageNumber() + 1);
@@ -181,36 +185,37 @@ public class UserService {
                 rs.setMeta(mt);
                 rs.setResult(List.of());
                 return rs;
+
+            } else {
+                // ADMIN_SUB_2 + Employee → filter theo companyIds
+                Specification<User> scopeSpec = (root, query, cb) -> {
+                    var sub = query.subquery(Long.class);
+                    var posRoot = sub.from(UserPosition.class);
+
+                    sub.select(posRoot.get("user").get("id"))
+                            .where(cb.and(
+                                    cb.isTrue(posRoot.get("active")),
+                                    cb.or(
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "COMPANY"),
+                                                    posRoot.get("companyJobTitle").get("company").get("id")
+                                                            .in(scope.companyIds())),
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                    posRoot.get("departmentJobTitle").get("department").get("company")
+                                                            .get("id")
+                                                            .in(scope.companyIds())),
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "SECTION"),
+                                                    posRoot.get("sectionJobTitle").get("section").get("department")
+                                                            .get("company").get("id")
+                                                            .in(scope.companyIds())))));
+
+                    return root.get("id").in(sub);
+                };
+
+                spec = Specification.where(spec).and(scopeSpec);
             }
-
-            Specification<User> scopeSpec = (root, query, cb) -> {
-
-                var sub = query.subquery(Long.class);
-                var posRoot = sub.from(UserPosition.class);
-
-                sub.select(posRoot.get("user").get("id"))
-                        .where(cb.and(
-                                cb.isTrue(posRoot.get("active")),
-                                cb.or(
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "COMPANY"),
-                                                posRoot.get("companyJobTitle").get("company").get("id")
-                                                        .in(scope.companyIds())),
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                posRoot.get("departmentJobTitle").get("department").get("company")
-                                                        .get("id")
-                                                        .in(scope.companyIds())),
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "SECTION"),
-                                                posRoot.get("sectionJobTitle").get("section").get("department")
-                                                        .get("company").get("id")
-                                                        .in(scope.companyIds())))));
-
-                return root.get("id").in(sub);
-            };
-
-            spec = Specification.where(spec).and(scopeSpec);
         }
 
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
@@ -494,17 +499,17 @@ public class UserService {
     // GET USERS UNASSIGNED CAREER PATH BY DEPARTMENT
     // ======================================================
     public List<ResUserDTO> getUsersUnassignedCareerPath(Long departmentId) {
-        System.out.println(">>> departmentId = " + departmentId); // ← THÊM
+        System.out.println(">>> departmentId = " + departmentId);
 
         List<Long> userIds = userPositionRepository.findUserIdsByDepartmentId(departmentId);
-        System.out.println(">>> userIds = " + userIds); // ← THÊM
+        System.out.println(">>> userIds = " + userIds);
 
         if (userIds.isEmpty())
             return List.of();
 
         List<Long> assignedIds = employeeCareerPathRepository
                 .findAssignedUserIdsByDepartmentId(departmentId);
-        System.out.println(">>> assignedIds = " + assignedIds); // ← THÊM
+        System.out.println(">>> assignedIds = " + assignedIds);
 
         return userIds.stream()
                 .filter(id -> !assignedIds.contains(id))

@@ -73,7 +73,7 @@ public class UserController {
                 user.setResetCodeExpire(Instant.now().plus(10, ChronoUnit.MINUTES));
                 userService.save(user);
 
-                boolean isActivateFlow = user.getPassword() != null && !user.getPassword().isEmpty();
+                boolean isActivateFlow = user.getPassword() == null || user.getPassword().isEmpty();
 
                 if (isActivateFlow) {
                         emailService.sendTemplateEmail(

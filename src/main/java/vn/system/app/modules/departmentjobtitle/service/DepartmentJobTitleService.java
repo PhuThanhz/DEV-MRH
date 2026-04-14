@@ -28,8 +28,6 @@ import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.service.JobTitleService;
 import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
 import vn.system.app.modules.sectionjobtitle.repository.SectionJobTitleRepository;
-import vn.system.app.common.util.ScopeSpec;
-import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentJobTitleService {
@@ -74,13 +72,11 @@ public class DepartmentJobTitleService {
         Long jobId = jobTitle.getId();
         Long companyId = department.getCompany().getId();
 
-        // block nếu đang active ở company
         if (companyRepo.existsByCompany_IdAndJobTitle_IdAndActiveTrue(companyId, jobId)) {
             throw new IdInvalidException(
                     "Chức danh đã được gán ở cấp công ty, không thể gán ở phòng ban.");
         }
 
-        // block nếu đang active ở section
         if (sectionRepo.existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(deptId, jobId)) {
             throw new IdInvalidException(
                     "Chức danh đang được gán ở bộ phận, không thể gán trực tiếp vào phòng ban.");
@@ -233,38 +229,25 @@ public class DepartmentJobTitleService {
         Long companyId = department.getCompany().getId();
 
         List<SectionJobTitle> sectionList = sectionRepo.findBySection_Department_IdAndActiveTrue(departmentId);
-
         List<DepartmentJobTitle> departmentList = repository.findByDepartment_IdAndActiveTrue(departmentId);
-
         List<CompanyJobTitle> companyList = companyRepo.findByCompany_IdAndActiveTrue(companyId);
 
         Map<Long, ResDepartmentJobTitleDTO> resultMap = new LinkedHashMap<>();
 
-        // SECTION
         for (SectionJobTitle sjt : sectionList) {
-
-            // ❗ CHẶN JobTitle đã bị tắt
             if (!sjt.getJobTitle().isActive())
                 continue;
-
             Long jobId = sjt.getJobTitle().getId();
-
             ResDepartmentJobTitleDTO dto = convertToResDTO(
                     buildVirtualDepartmentJobTitle(department, sjt.getJobTitle()));
-
             dto.setSource("SECTION");
             resultMap.put(jobId, dto);
         }
 
-        // DEPARTMENT
         for (DepartmentJobTitle djt : departmentList) {
-
-            // ❗ CHẶN JobTitle đã bị tắt
             if (!djt.getJobTitle().isActive())
                 continue;
-
             Long jobId = djt.getJobTitle().getId();
-
             if (!resultMap.containsKey(jobId)) {
                 ResDepartmentJobTitleDTO dto = convertToResDTO(djt);
                 dto.setSource("DEPARTMENT");
@@ -272,15 +255,10 @@ public class DepartmentJobTitleService {
             }
         }
 
-        // COMPANY (virtual)
         for (CompanyJobTitle cjt : companyList) {
-
-            // ❗ CHẶN JobTitle đã bị tắt
             if (!cjt.getJobTitle().isActive())
                 continue;
-
             Long jobId = cjt.getJobTitle().getId();
-
             if (!resultMap.containsKey(jobId)) {
                 ResDepartmentJobTitleDTO dto = convertToResDTO(
                         buildVirtualDepartmentJobTitle(department, cjt.getJobTitle()));
@@ -331,12 +309,22 @@ public class DepartmentJobTitleService {
     public ResultPaginationDTO fetchAll(
             Specification<DepartmentJobTitle> spec,
             Pageable pageable) {
-        // ── ADMIN_SUB_2 filter ────────────────────────────────
+
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
-            Specification<DepartmentJobTitle> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
-            spec = Specification.where(spec).and(scopeSpec);
+            if (scope.isAdminLevel()) {
+                // ADMIN_SUB_1 → thấy toàn bộ, không filter
+            } else if (scope.isCompanyLevel()) {
+                // ADMIN_SUB_2 → filter theo công ty được gán
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byCompanyScope("department.company.id"));
+            } else {
+                // Employee → filter theo phòng ban được gán
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byDepartmentScope("department.id"));
+            }
         }
+
         Page<DepartmentJobTitle> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -419,7 +407,7 @@ public class DepartmentJobTitleService {
         ResDepartmentJobTitleDTO.JobTitleInfo jt = new ResDepartmentJobTitleDTO.JobTitleInfo();
         jt.setId(e.getJobTitle().getId());
         jt.setNameVi(e.getJobTitle().getNameVi());
-        jt.setNameEn(e.getJobTitle().getNameEn()); // ⭐ THÊM DÒNG NÀY ⭐
+        jt.setNameEn(e.getJobTitle().getNameEn());
 
         if (e.getJobTitle().getPositionLevel() != null) {
             var pl = e.getJobTitle().getPositionLevel();

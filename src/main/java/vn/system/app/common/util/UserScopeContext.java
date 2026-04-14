@@ -21,6 +21,10 @@ public class UserScopeContext {
     public record UserScope(
             Long userId,
             Set<Long> companyIds,
-            boolean isSuperAdmin) {
+            Set<Long> departmentIds, // ← dùng cho filter theo phòng ban
+            boolean isSuperAdmin,
+            boolean isAdminLevel, // ← true nếu được thấy toàn bộ (SUPER_ADMIN, ADMIN_SUB_1)
+            boolean isCompanyLevel // ← THÊM: true nếu là ADMIN_SUB_2 (thấy toàn bộ công ty được gán)
+    ) {
     }
 }

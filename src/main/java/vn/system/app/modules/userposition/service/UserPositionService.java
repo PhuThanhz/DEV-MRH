@@ -165,13 +165,28 @@ public class UserPositionService {
     // GET COMPANY IDs BY USER (dùng cho scope filter)
     // =====================================================
     public Set<Long> getCompanyIdsByUser(Long userId) {
-        return repo.findActiveFullByUserId(userId) // ← XONG
+        return repo.findActiveFullByUserId(userId)
                 .stream()
                 .map(pos -> switch (pos.getSource().toUpperCase()) {
                     case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();
                     case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getCompany().getId();
                     case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
                     default -> null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    // =====================================================
+    // GET DEPARTMENT IDs BY USER (dùng cho scope filter) ← THÊM
+    // =====================================================
+    public Set<Long> getDepartmentIdsByUser(Long userId) {
+        return repo.findActiveFullByUserId(userId)
+                .stream()
+                .map(pos -> switch (pos.getSource().toUpperCase()) {
+                    case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getId();
+                    case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getId();
+                    default -> null; // COMPANY không có department
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
@@ -197,7 +212,6 @@ public class UserPositionService {
         userInfo.setEmail(p.getUser().getEmail());
         res.setUser(userInfo);
 
-        // ===== Lấy JobTitle + context theo source =====
         switch (p.getSource().toUpperCase()) {
 
             case "COMPANY" -> {

@@ -38,7 +38,6 @@ public class DepartmentService {
 
     @Transactional
     public DepartmentResponse handleCreateDepartment(CreateDepartmentRequest req) {
-        // ✅ chỉ check trùng trong cùng công ty
         if (departmentRepository.existsByCodeAndCompany_Id(req.getCode(), req.getCompanyId())) {
             throw new IdInvalidException("Mã phòng ban đã tồn tại trong công ty này");
         }
@@ -124,8 +123,19 @@ public class DepartmentService {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
-            Specification<Department> scopeSpec = ScopeSpec.byCompanyScope("company.id");
-            spec = Specification.where(spec).and(scopeSpec);
+            if (scope.isAdminLevel()) {
+                // SUPER_ADMIN, ADMIN_SUB_1 → thấy toàn bộ, không filter
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byCompanyScope("company.id"));
+            } else if (scope.isCompanyLevel()) {
+                // ADMIN_SUB_2 → thấy toàn bộ phòng ban trong công ty được gán
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byCompanyScope("company.id"));
+            } else {
+                // Employee, Manager, ... → chỉ thấy phòng ban của mình
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byDepartmentScope("id"));
+            }
         }
 
         Page<Department> page = departmentRepository.findAll(spec, pageable);

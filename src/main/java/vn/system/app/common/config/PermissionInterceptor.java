@@ -29,6 +29,15 @@ public class PermissionInterceptor implements HandlerInterceptor {
     @Autowired
     UserPositionService userPositionService;
 
+    // ADMIN_SUB_2 → thấy toàn bộ phòng ban trong công ty được gán qua UserPosition
+    private static final List<String> FULL_COMPANY_ROLES = List.of(
+            "SUPER_ADMIN",
+            "ADMIN_SUB_1");
+
+    // ADMIN_SUB_2 → admin cấp công ty, filter theo companyIds từ UserPosition
+    private static final List<String> COMPANY_LEVEL_ROLES = List.of(
+            "ADMIN_SUB_2");
+
     @Override
     @Transactional
     public boolean preHandle(
@@ -44,30 +53,31 @@ public class PermissionInterceptor implements HandlerInterceptor {
         System.out.println(">>> httpMethod= " + httpMethod);
         System.out.println(">>> requestURI= " + requestURI);
 
-        String email = SecurityUtil.getCurrentUserLogin().isPresent() == true
+        String email = SecurityUtil.getCurrentUserLogin().isPresent()
                 ? SecurityUtil.getCurrentUserLogin().get()
                 : "";
 
         if (email != null && !email.isEmpty()) {
             User user = this.userService.handleGetUserByUsername(email);
+
             if (user != null && !user.isActive()) {
                 throw new PermissionException("Tài khoản đã bị vô hiệu hóa");
             }
+
             if (user != null) {
 
+                // ── Cập nhật lastLoginAt + IP (tối đa mỗi 10 phút) ──────
                 Instant now = Instant.now();
                 boolean shouldUpdate = user.getLastLoginAt() == null
                         || user.getLastLoginAt().isBefore(now.minus(10, ChronoUnit.MINUTES));
 
                 if (shouldUpdate) {
                     String ip = request.getHeader("X-Forwarded-For");
-
                     if (ip != null && !ip.isBlank()) {
                         ip = ip.split(",")[0].trim();
                     } else {
                         ip = request.getHeader("X-Real-IP");
                     }
-
                     if (ip == null || ip.isBlank()) {
                         ip = request.getRemoteAddr();
                     }
@@ -75,40 +85,54 @@ public class PermissionInterceptor implements HandlerInterceptor {
                     user.setLastLoginIp(ip);
                     userService.save(user);
                 }
-                // ── SET SCOPE vào ThreadLocal ──────────────────────────────
-                boolean isSuperAdmin = user.getRole() != null
-                        && "SUPER_ADMIN".equals(user.getRole().getName());
 
-                // ← THÊM: role được xem hết data như SUPER_ADMIN
-                boolean isFullViewRole = user.getRole() != null
-                        && List.of("SUPER_ADMIN", "ADMIN_SUB_1") // ← đổi "ADMIN_SUB_1" thành tên role đúng trong DB
-                                .contains(user.getRole().getName());
+                // ── SET SCOPE vào ThreadLocal ────────────────────────────
+                String roleName = user.getRole() != null ? user.getRole().getName() : "";
 
-                // ← ĐỔI: dùng isFullViewRole thay vì isSuperAdmin
-                Set<Long> companyIds = isFullViewRole
+                boolean isSuperAdmin = "SUPER_ADMIN".equals(roleName);
+
+                // isAdminLevel = true → SUPER_ADMIN, ADMIN_SUB_1: thấy toàn bộ, không filter
+                boolean isAdminLevel = FULL_COMPANY_ROLES.contains(roleName);
+
+                // isCompanyLevel = true → ADMIN_SUB_2: thấy toàn bộ công ty được gán
+                boolean isCompanyLevel = COMPANY_LEVEL_ROLES.contains(roleName);
+
+                // companyIds: chỉ cần lấy nếu không phải admin toàn hệ thống
+                Set<Long> companyIds = isAdminLevel
                         ? Set.of()
                         : userPositionService.getCompanyIdsByUser(user.getId());
 
-                // ← ĐỔI: truyền isFullViewRole thay vì isSuperAdmin
+                // departmentIds: ADMIN_SUB_2 không cần filter theo phòng ban
+                Set<Long> departmentIds = (isAdminLevel || isCompanyLevel)
+                        ? Set.of()
+                        : userPositionService.getDepartmentIdsByUser(user.getId());
+
                 UserScopeContext.set(new UserScopeContext.UserScope(
-                        user.getId(), companyIds, isFullViewRole));
-                // ───────────────────────────────────────────────────────────
+                        user.getId(),
+                        companyIds,
+                        departmentIds,
+                        isSuperAdmin,
+                        isAdminLevel,
+                        isCompanyLevel)); // ← THÊM
+                // ─────────────────────────────────────────────────────────
 
                 Role role = user.getRole();
                 if (role != null) {
 
-                    // SUPER_ADMIN bỏ qua check permission — KHÔNG ĐỔI
-                    if ("SUPER_ADMIN".equals(role.getName())) {
+                    // SUPER_ADMIN bỏ qua check permission
+                    if (isSuperAdmin) {
                         return true;
                     }
 
                     List<Permission> permissions = role.getPermissions();
-                    boolean isAllow = permissions.stream().anyMatch(item -> item.getApiPath().equals(path)
-                            && item.getMethod().equals(httpMethod));
+                    boolean isAllow = permissions.stream().anyMatch(
+                            item -> item.getApiPath().equals(path)
+                                    && item.getMethod().equals(httpMethod));
 
-                    if (isAllow == false) {
+                    if (!isAllow) {
                         throw new PermissionException("Bạn không có quyền truy cập endpoint này.");
                     }
+
                 } else {
                     throw new PermissionException("Bạn không có quyền truy cập endpoint này.");
                 }
