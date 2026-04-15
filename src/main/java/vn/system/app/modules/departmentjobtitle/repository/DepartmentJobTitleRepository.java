@@ -33,11 +33,13 @@ public interface DepartmentJobTitleRepository
 
         List<DepartmentJobTitle> findByJobTitle_IdAndActiveTrue(Long jobTitleId);
 
-        // ✅ THÊM — dùng khi promote: tìm DepartmentJobTitle theo phòng ban + chức danh
-        // + active
         Optional<DepartmentJobTitle> findByDepartment_IdAndJobTitle_IdAndActiveTrue(
                         Long departmentId, Long jobTitleId);
 
         List<DepartmentJobTitle> findByDepartment_IdIn(List<Long> departmentIds);
 
+        // ✅ THÊM — dùng cho fetchJobTitlesByLevel: lấy JobTitle đã gán vào phòng ban
+        // theo level code
+        List<DepartmentJobTitle> findByDepartment_IdAndJobTitle_PositionLevel_CodeAndActiveTrue(
+                        Long departmentId, String positionLevelCode);
 }

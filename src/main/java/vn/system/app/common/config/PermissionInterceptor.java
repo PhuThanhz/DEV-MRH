@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 
@@ -29,7 +30,9 @@ public class PermissionInterceptor implements HandlerInterceptor {
     @Autowired
     UserPositionService userPositionService;
 
-    // ADMIN_SUB_2 → thấy toàn bộ phòng ban trong công ty được gán qua UserPosition
+    private static final AntPathMatcher antPathMatcher = new AntPathMatcher();
+
+    // SUPER_ADMIN, ADMIN_SUB_1 → thấy toàn bộ, không filter
     private static final List<String> FULL_COMPANY_ROLES = List.of(
             "SUPER_ADMIN",
             "ADMIN_SUB_1");
@@ -48,10 +51,6 @@ public class PermissionInterceptor implements HandlerInterceptor {
         String path = (String) request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
         String requestURI = request.getRequestURI();
         String httpMethod = request.getMethod();
-        System.out.println(">>> RUN preHandle");
-        System.out.println(">>> path= " + path);
-        System.out.println(">>> httpMethod= " + httpMethod);
-        System.out.println(">>> requestURI= " + requestURI);
 
         String email = SecurityUtil.getCurrentUserLogin().isPresent()
                 ? SecurityUtil.getCurrentUserLogin().get()
@@ -113,7 +112,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
                         departmentIds,
                         isSuperAdmin,
                         isAdminLevel,
-                        isCompanyLevel)); // ← THÊM
+                        isCompanyLevel));
                 // ─────────────────────────────────────────────────────────
 
                 Role role = user.getRole();
@@ -125,9 +124,22 @@ public class PermissionInterceptor implements HandlerInterceptor {
                     }
 
                     List<Permission> permissions = role.getPermissions();
-                    boolean isAllow = permissions.stream().anyMatch(
-                            item -> item.getApiPath().equals(path)
-                                    && item.getMethod().equals(httpMethod));
+                    boolean isAllow = permissions.stream().anyMatch(item -> {
+                        boolean methodMatch = item.getMethod().equalsIgnoreCase(httpMethod);
+                        boolean pathMatch = false;
+
+                        try {
+                            pathMatch = antPathMatcher.match(item.getApiPath(), requestURI);
+                        } catch (Exception e) {
+                            // ignore lỗi pattern không hợp lệ
+                        }
+
+                        if (!pathMatch) {
+                            pathMatch = item.getApiPath().equals(path);
+                        }
+
+                        return methodMatch && pathMatch;
+                    });
 
                     if (!isAllow) {
                         throw new PermissionException("Bạn không có quyền truy cập endpoint này.");
