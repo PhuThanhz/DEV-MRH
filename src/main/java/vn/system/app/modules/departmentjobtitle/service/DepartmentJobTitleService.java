@@ -23,6 +23,7 @@ import vn.system.app.modules.department.service.DepartmentService;
 import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
 import vn.system.app.modules.departmentjobtitle.domain.request.ReqDepartmentJobTitleDTO;
 import vn.system.app.modules.departmentjobtitle.domain.response.ResDepartmentJobTitleDTO;
+import vn.system.app.modules.departmentjobtitle.domain.response.ResJobTitleAssignStatusDTO;
 import vn.system.app.modules.departmentjobtitle.repository.DepartmentJobTitleRepository;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.service.JobTitleService;
@@ -52,7 +53,6 @@ public class DepartmentJobTitleService {
         this.departmentService = departmentService;
     }
 
-    // ⭐ Thêm method mới để PermissionMatrixService hoạt động
     public List<DepartmentJobTitle> fetchEntitiesByIds(List<Long> ids) {
         return repository.findAllById(ids);
     }
@@ -232,6 +232,22 @@ public class DepartmentJobTitleService {
         List<DepartmentJobTitle> departmentList = repository.findByDepartment_IdAndActiveTrue(departmentId);
         List<CompanyJobTitle> companyList = companyRepo.findByCompany_IdAndActiveTrue(companyId);
 
+        List<DepartmentJobTitle> allDeptJobs = repository.findAll()
+                .stream()
+                .filter(DepartmentJobTitle::isActive)
+                .collect(Collectors.toList());
+
+        Map<Long, List<String>> jobUsedInDepartments = new HashMap<>();
+        for (DepartmentJobTitle djt : allDeptJobs) {
+            Long jobId = djt.getJobTitle().getId();
+            Long deptId = djt.getDepartment().getId();
+            if (!deptId.equals(departmentId)) {
+                jobUsedInDepartments
+                        .computeIfAbsent(jobId, k -> new ArrayList<>())
+                        .add(djt.getDepartment().getName());
+            }
+        }
+
         Map<Long, ResDepartmentJobTitleDTO> resultMap = new LinkedHashMap<>();
 
         for (SectionJobTitle sjt : sectionList) {
@@ -241,6 +257,8 @@ public class DepartmentJobTitleService {
             ResDepartmentJobTitleDTO dto = convertToResDTO(
                     buildVirtualDepartmentJobTitle(department, sjt.getJobTitle()));
             dto.setSource("SECTION");
+            dto.setUsedInDepartments(
+                    jobUsedInDepartments.getOrDefault(jobId, Collections.emptyList()));
             resultMap.put(jobId, dto);
         }
 
@@ -251,6 +269,8 @@ public class DepartmentJobTitleService {
             if (!resultMap.containsKey(jobId)) {
                 ResDepartmentJobTitleDTO dto = convertToResDTO(djt);
                 dto.setSource("DEPARTMENT");
+                dto.setUsedInDepartments(
+                        jobUsedInDepartments.getOrDefault(jobId, Collections.emptyList()));
                 resultMap.put(jobId, dto);
             }
         }
@@ -263,6 +283,8 @@ public class DepartmentJobTitleService {
                 ResDepartmentJobTitleDTO dto = convertToResDTO(
                         buildVirtualDepartmentJobTitle(department, cjt.getJobTitle()));
                 dto.setSource("COMPANY");
+                dto.setUsedInDepartments(
+                        jobUsedInDepartments.getOrDefault(jobId, Collections.emptyList()));
                 resultMap.put(jobId, dto);
             }
         }
@@ -315,11 +337,9 @@ public class DepartmentJobTitleService {
             if (scope.isAdminLevel()) {
                 // ADMIN_SUB_1 → thấy toàn bộ, không filter
             } else if (scope.isCompanyLevel()) {
-                // ADMIN_SUB_2 → filter theo công ty được gán
                 spec = Specification.where(spec)
                         .and(ScopeSpec.byCompanyScope("department.company.id"));
             } else {
-                // Employee → filter theo phòng ban được gán
                 spec = Specification.where(spec)
                         .and(ScopeSpec.byDepartmentScope("department.id"));
             }
@@ -386,6 +406,177 @@ public class DepartmentJobTitleService {
                 .stream()
                 .filter(DepartmentJobTitle::isActive)
                 .collect(Collectors.toList());
+    }
+
+    /*
+     * =====================================================
+     * FETCH JOB TITLES WITH ASSIGN STATUS — CÓ FILTER + PAGINATION
+     * =====================================================
+     */
+    @Transactional(readOnly = true)
+    public ResultPaginationDTO fetchJobTitlesWithAssignStatus(
+            Long departmentId,
+            String search,
+            String status,
+            String band,
+            Integer level,
+            Pageable pageable) {
+
+        Department department = departmentService.fetchEntityById(departmentId);
+        Long companyId = department.getCompany().getId();
+
+        // 1. Lấy toàn bộ JobTitle active của công ty
+        List<JobTitle> allJobTitles = jobTitleService.findAllActiveByCompany(companyId);
+
+        // 2. assignedIds — gán trực tiếp ở phòng ban này
+        Set<Long> assignedIds = new HashSet<>(
+                repository.findActiveJobTitleIdsByDepartment(departmentId));
+
+        // 3. sectionAssignedIds — gán qua section của phòng ban này
+        Set<Long> sectionAssignedIds = sectionRepo
+                .findBySection_Department_IdAndActiveTrue(departmentId)
+                .stream()
+                .map(s -> s.getJobTitle().getId())
+                .collect(Collectors.toSet());
+
+        // 4. companyAssignedIds — gán ở cấp công ty
+        Set<Long> companyAssignedIds = companyRepo
+                .findByCompany_IdAndActiveTrue(companyId)
+                .stream()
+                .map(c -> c.getJobTitle().getId())
+                .collect(Collectors.toSet());
+
+        // 5. usedInDepartments map — chỉ lấy các phòng ban khác trong cùng company
+        // dùng query mới trong repo (tránh findAll toàn bảng)
+        List<DepartmentJobTitle> othersActive = repository.findAllActiveByCompanyIdExcludingDepartment(companyId,
+                departmentId);
+
+        Map<Long, List<String>> jobUsedInDepartments = new HashMap<>();
+        for (DepartmentJobTitle djt : othersActive) {
+            jobUsedInDepartments
+                    .computeIfAbsent(djt.getJobTitle().getId(), k -> new ArrayList<>())
+                    .add(djt.getDepartment().getName());
+        }
+
+        // 6. Map sang DTO + tính assignSource + canAssign
+        List<ResJobTitleAssignStatusDTO> dtoList = allJobTitles.stream()
+                .map(jt -> {
+                    ResJobTitleAssignStatusDTO dto = new ResJobTitleAssignStatusDTO();
+                    dto.setId(jt.getId());
+                    dto.setNameVi(jt.getNameVi());
+                    dto.setNameEn(jt.getNameEn());
+
+                    if (jt.getPositionLevel() != null) {
+                        var pl = jt.getPositionLevel();
+                        dto.setPositionCode(pl.getCode());
+                        dto.setBand(pl.getCode().replaceAll("[0-9]", ""));
+                        dto.setLevel(Integer.parseInt(pl.getCode().replaceAll("[^0-9]", "")));
+                        dto.setBandOrder(pl.getBandOrder());
+                        dto.setLevelNumber(dto.getLevel());
+                    }
+
+                    boolean isAssigned = assignedIds.contains(jt.getId());
+                    dto.setAssigned(isAssigned);
+
+                    // assignSource: ưu tiên COMPANY > SECTION > DEPARTMENT > null
+                    String assignSource = null;
+                    if (companyAssignedIds.contains(jt.getId())) {
+                        assignSource = "COMPANY";
+                    } else if (sectionAssignedIds.contains(jt.getId())) {
+                        assignSource = "SECTION";
+                    } else if (isAssigned) {
+                        assignSource = "DEPARTMENT";
+                    }
+                    dto.setAssignSource(assignSource);
+
+                    dto.setUsedInDepartments(
+                            jobUsedInDepartments.getOrDefault(jt.getId(), Collections.emptyList()));
+
+                    // canAssign: chưa gán ở phòng này + không phải từ COMPANY/SECTION
+                    boolean canAssign = !isAssigned
+                            && !"COMPANY".equals(assignSource)
+                            && !"SECTION".equals(assignSource);
+                    dto.setCanAssign(canAssign);
+
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        // 7. Filter: search (nameVi / nameEn / positionCode)
+        if (search != null && !search.isBlank()) {
+            String keyword = search.trim().toLowerCase();
+            dtoList = dtoList.stream()
+                    .filter(d -> (d.getNameVi() != null && d.getNameVi().toLowerCase().contains(keyword))
+                            || (d.getNameEn() != null && d.getNameEn().toLowerCase().contains(keyword))
+                            || (d.getPositionCode() != null && d.getPositionCode().toLowerCase().contains(keyword)))
+                    .collect(Collectors.toList());
+        }
+
+        // 8. Filter: status (AVAILABLE / ASSIGNED / USED)
+        if (status != null && !status.isBlank()) {
+            dtoList = switch (status.toUpperCase()) {
+                case "ASSIGNED" -> dtoList.stream()
+                        .filter(ResJobTitleAssignStatusDTO::isAssigned)
+                        .collect(Collectors.toList());
+                case "AVAILABLE" -> dtoList.stream()
+                        .filter(d -> !d.isAssigned())
+                        .collect(Collectors.toList());
+                case "USED" -> dtoList.stream()
+                        .filter(d -> d.getUsedInDepartments() != null
+                                && !d.getUsedInDepartments().isEmpty())
+                        .collect(Collectors.toList());
+                default -> dtoList;
+            };
+        }
+
+        // 9. Filter: band (prefix của positionCode, ví dụ: A, B, C)
+        if (band != null && !band.isBlank()) {
+            String bandUpper = band.trim().toUpperCase();
+            dtoList = dtoList.stream()
+                    .filter(d -> bandUpper.equals(d.getBand()))
+                    .collect(Collectors.toList());
+        }
+
+        // 10. Filter: level (số trong positionCode)
+        if (level != null) {
+            dtoList = dtoList.stream()
+                    .filter(d -> level.equals(d.getLevel()))
+                    .collect(Collectors.toList());
+        }
+
+        // 11. Sort: bandOrder ASC, levelNumber ASC
+        dtoList.sort(Comparator
+                .comparing((ResJobTitleAssignStatusDTO d) -> d.getBandOrder() != null
+                        ? d.getBandOrder()
+                        : Integer.MAX_VALUE)
+                .thenComparing(d -> d.getLevelNumber() != null
+                        ? d.getLevelNumber()
+                        : Integer.MAX_VALUE));
+
+        // 12. Pagination thủ công (in-memory)
+        long total = dtoList.size();
+        int pageNumber = pageable.getPageNumber(); // 0-based
+        int pageSize = pageable.getPageSize();
+        int fromIndex = pageNumber * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, (int) total);
+
+        List<ResJobTitleAssignStatusDTO> pagedResult = (fromIndex >= total)
+                ? Collections.emptyList()
+                : dtoList.subList(fromIndex, toIndex);
+
+        // 13. Build ResultPaginationDTO
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+
+        meta.setPage(pageNumber + 1); // trả về 1-based cho frontend
+        meta.setPageSize(pageSize);
+        meta.setTotal(total);
+        meta.setPages((int) Math.ceil((double) total / pageSize));
+
+        rs.setMeta(meta);
+        rs.setResult(pagedResult);
+
+        return rs;
     }
 
     /*

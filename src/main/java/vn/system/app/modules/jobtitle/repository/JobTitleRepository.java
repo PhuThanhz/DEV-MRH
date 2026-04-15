@@ -14,20 +14,14 @@ public interface JobTitleRepository
 
     boolean existsByNameVi(String nameVi);
 
-    // ★ Thêm mới: để lấy tất cả chức danh đang active (phục vụ
-    // CompanyJobTitleService)
     List<JobTitle> findByActiveTrue();
 
-    // PHỤC VỤ LỘ TRÌNH THĂNG TIẾN (CAO → THẤP)
     List<JobTitle> findAllByOrderByPositionLevel_BandOrderDesc();
 
-    // ★ CREATE: kiểm tra trùng nameVi + cùng bậc (positionLevel)
-    // Dùng trong handleCreate — khác công ty nhưng khác bậc → cho phép
     boolean existsByNameViAndPositionLevel_Id(String nameVi, Long positionLevelId);
 
-    // ★ UPDATE: kiểm tra trùng nameVi + cùng bậc, nhưng bỏ qua chính record đang
-    // sửa
-    // Dùng trong handleUpdate — tránh báo lỗi khi user chỉ sửa field khác mà không
-    // đổi tên
     boolean existsByNameViAndPositionLevel_IdAndIdNot(String nameVi, Long positionLevelId, Long id);
+
+    // ✅ THÊM — lấy JobTitle active theo company (qua PositionLevel)
+    List<JobTitle> findByPositionLevel_Company_IdAndActiveTrue(Long companyId);
 }

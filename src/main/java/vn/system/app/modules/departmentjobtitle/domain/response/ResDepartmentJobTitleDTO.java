@@ -1,6 +1,8 @@
 package vn.system.app.modules.departmentjobtitle.domain.response;
 
 import java.time.Instant;
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,8 +18,11 @@ public class ResDepartmentJobTitleDTO {
     private String createdBy;
     private String updatedBy;
 
-    // >>> THÊM FIELD NÀY <<<
+    // source: COMPANY | SECTION | DEPARTMENT
     private String source;
+
+    // 🔥 THÊM MỚI: danh sách phòng ban đang dùng jobTitle này
+    private List<String> usedInDepartments;
 
     private JobTitleInfo jobTitle;
     private DepartmentInfo department;
@@ -27,7 +32,7 @@ public class ResDepartmentJobTitleDTO {
     public static class JobTitleInfo {
         private Long id;
         private String nameVi;
-        private String nameEn; // ⭐ THÊM DÒNG NÀY
+        private String nameEn;
 
         private String positionCode;
         private String band;
@@ -43,4 +48,5 @@ public class ResDepartmentJobTitleDTO {
         private Long id;
         private String name;
     }
+
 }

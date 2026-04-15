@@ -18,6 +18,7 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
 import vn.system.app.modules.departmentjobtitle.domain.request.ReqDepartmentJobTitleDTO;
 import vn.system.app.modules.departmentjobtitle.domain.response.ResDepartmentJobTitleDTO;
+import vn.system.app.modules.departmentjobtitle.domain.response.ResJobTitleAssignStatusDTO;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleQueryService;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleScopeService;
@@ -117,7 +118,6 @@ public class DepartmentJobTitleController {
      * GET DEPARTMENT JOB TITLES (DIRECT)
      * =====================================================
      */
-
     @GetMapping("/departments/{departmentId}/job-titles")
     @ApiMessage("Danh sách chức danh gán trực tiếp ở phòng ban")
     public ResponseEntity<List<ResDepartmentJobTitleDTO>> fetchJobTitlesByDepartment(
@@ -134,7 +134,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * 🔰 API CŨ — COMPANY + DEPARTMENT + SECTION
+     * API CŨ — COMPANY + DEPARTMENT + SECTION
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/company-job-titles")
@@ -149,7 +149,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * 🔰 API MỚI — DEPARTMENT + SECTION ONLY
+     * API MỚI — DEPARTMENT + SECTION ONLY
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/job-titles/mixed")
@@ -163,7 +163,7 @@ public class DepartmentJobTitleController {
 
     /*
      * =====================================================
-     * 🔰 API MỚI NHẤT — THEO PHẠM VI QUYỀN USER (COMPANY / DEPT / SECTION)
+     * API MỚI NHẤT — THEO PHẠM VI QUYỀN USER
      * =====================================================
      */
     @GetMapping("/departments/{departmentId}/job-titles/scope")
@@ -173,5 +173,26 @@ public class DepartmentJobTitleController {
 
         return ResponseEntity.ok(
                 scopeService.fetchByScope(departmentId));
+    }
+
+    /*
+     * =====================================================
+     * 🔰 DANH SÁCH CHỨC DANH KÈM TRẠNG THÁI GÁN — CÓ FILTER + PAGINATION
+     * =====================================================
+     */
+    @GetMapping("/departments/{departmentId}/job-titles/assign-status")
+    @ApiMessage("Danh sách chức danh kèm trạng thái gán vào phòng ban")
+    public ResponseEntity<ResultPaginationDTO> fetchJobTitlesWithAssignStatus(
+            @PathVariable Long departmentId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String band,
+            @RequestParam(required = false) Integer level,
+            Pageable pageable)
+            throws IdInvalidException {
+
+        return ResponseEntity.ok(
+                this.service.fetchJobTitlesWithAssignStatus(
+                        departmentId, search, status, band, level, pageable));
     }
 }

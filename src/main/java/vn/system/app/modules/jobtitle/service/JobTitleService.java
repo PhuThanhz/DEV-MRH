@@ -35,7 +35,6 @@ public class JobTitleService {
         this.jobTitleRepo = jobTitleRepo;
         this.positionLevelRepo = positionLevelRepo;
         this.userPositionRepo = userPositionRepo;
-
     }
 
     /*
@@ -50,12 +49,9 @@ public class JobTitleService {
             throw new IdInvalidException("Tên chức danh (tiếng Việt) không được để trống");
         }
 
-        // Fetch PositionLevel trước để có thông tin company
         PositionLevel pl = positionLevelRepo.findById(req.getPositionLevelId())
                 .orElseThrow(() -> new IdInvalidException("Bậc chức danh không tồn tại"));
 
-        // Validate unique: cùng nameVi + cùng positionLevel (tức là cùng bậc trong cùng
-        // công ty)
         if (jobTitleRepo.existsByNameViAndPositionLevel_Id(
                 req.getNameVi().trim(), req.getPositionLevelId())) {
             throw new IdInvalidException(
@@ -82,18 +78,14 @@ public class JobTitleService {
 
         JobTitle jt = fetchEntityById(req.getId());
 
-        // Xác định positionLevelId sẽ dùng sau update (có thể giữ nguyên hoặc đổi mới)
         Long targetPositionLevelId = req.getPositionLevelId() != null
                 ? req.getPositionLevelId()
                 : jt.getPositionLevel().getId();
 
-        // Xác định nameVi sẽ dùng sau update
         String targetNameVi = req.getNameVi() != null
                 ? req.getNameVi().trim()
                 : jt.getNameVi();
 
-        // Validate unique: trùng nameVi + positionLevel nhưng khác id (không tính chính
-        // nó)
         if (jobTitleRepo.existsByNameViAndPositionLevel_IdAndIdNot(
                 targetNameVi, targetPositionLevelId, req.getId())) {
             throw new IdInvalidException(
@@ -109,22 +101,17 @@ public class JobTitleService {
         }
 
         if (req.getActive() != null) {
-
-            // nếu đang muốn tắt
             if (!req.getActive()) {
                 if (userPositionRepo.existsByJobTitleIdAndActiveTrue(jt.getId())) {
                     throw new IdInvalidException(
                             "Chức danh đang có nhân viên sử dụng, không thể vô hiệu hóa");
                 }
             }
-
             jt.setActive(req.getActive());
         }
 
-        // Không cho phép đổi PositionLevel (tránh đổi company / band)
         if (req.getPositionLevelId() != null &&
                 !req.getPositionLevelId().equals(jt.getPositionLevel().getId())) {
-
             throw new IdInvalidException(
                     "Không được phép đổi bậc/chức danh. Hãy tạo chức danh mới.");
         }
@@ -142,7 +129,6 @@ public class JobTitleService {
     public void handleDelete(Long id) {
         JobTitle jt = fetchEntityById(id);
 
-        // 👇 THÊM ĐOẠN NÀY
         if (userPositionRepo.existsByJobTitleIdAndActiveTrue(id)) {
             throw new IdInvalidException(
                     "Chức danh đang có nhân viên sử dụng, không thể vô hiệu hóa");
@@ -173,12 +159,13 @@ public class JobTitleService {
 
     /*
      * ==========================================
-     * GET ALL
+     * GET ALL (PAGINATION)
      * ==========================================
      */
     public ResultPaginationDTO fetchAll(
             Specification<JobTitle> spec,
             Pageable pageable) {
+
         spec = Specification.where(spec)
                 .and((root, query, cb) -> cb.equal(root.get("active"), true));
 
@@ -210,6 +197,16 @@ public class JobTitleService {
     @Transactional(readOnly = true)
     public List<JobTitle> findAllActive() {
         return jobTitleRepo.findByActiveTrue();
+    }
+
+    /*
+     * ==========================================
+     * FIND ALL ACTIVE BY COMPANY
+     * ==========================================
+     */
+    @Transactional(readOnly = true)
+    public List<JobTitle> findAllActiveByCompany(Long companyId) {
+        return jobTitleRepo.findByPositionLevel_Company_IdAndActiveTrue(companyId);
     }
 
     /*
