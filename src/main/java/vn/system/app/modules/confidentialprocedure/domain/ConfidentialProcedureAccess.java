@@ -3,6 +3,7 @@ package vn.system.app.modules.confidentialprocedure.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.Instant;
 
 @Entity
 @Table(name = "confidential_procedure_access")
@@ -29,4 +30,10 @@ public class ConfidentialProcedureAccess {
     // "USER" hoặc "ROLE"
     @Column(nullable = false)
     private String accessType;
+    // ===== THÊM MỚI (KHÔNG ẢNH HƯỞNG LOGIC CŨ) =====
+    @Column(name = "assigned_by")
+    private Long assignedBy;
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
 }

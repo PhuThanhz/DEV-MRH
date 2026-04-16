@@ -297,11 +297,19 @@ public class ConfidentialProcedureService {
         List<ConfidentialProcedureAccess> accesses = new ArrayList<>();
 
         if (req.getUserIds() != null) {
+
+            Long currentUserId = getCurrentUserId(); // 🔥 THÊM DÒNG NÀY
+
             req.getUserIds().forEach(userId -> {
                 ConfidentialProcedureAccess access = new ConfidentialProcedureAccess();
                 access.setProcedure(procedure);
                 access.setUserId(userId);
                 access.setAccessType("USER");
+
+                // 🔥 THÊM 2 DÒNG NÀY
+                access.setAssignedBy(currentUserId);
+                access.setAssignedAt(Instant.now());
+
                 accesses.add(access);
             });
         }
@@ -316,6 +324,7 @@ public class ConfidentialProcedureService {
         }
 
         accessRepository.saveAll(accesses);
+
     }
 
     // =====================================================
@@ -451,6 +460,20 @@ public class ConfidentialProcedureService {
         dto.setUpdatedBy(e.getUpdatedBy());
 
         List<ConfidentialProcedureAccess> accessList = e.getAccessList();
+        List<String> assignedByList = accessList.stream()
+                .filter(a -> "USER".equals(a.getAccessType()))
+                .map(a -> {
+                    if (a.getAssignedBy() == null)
+                        return null;
+                    return userRepository.findById(a.getAssignedBy())
+                            .map(User::getName)
+                            .orElse(null);
+                })
+                .filter(x -> x != null)
+                .distinct()
+                .collect(Collectors.toList());
+
+        dto.setAssignedByList(assignedByList);
         dto.setUserIds(accessList.stream()
                 .filter(a -> "USER".equals(a.getAccessType()))
                 .map(ConfidentialProcedureAccess::getUserId)
@@ -484,5 +507,16 @@ public class ConfidentialProcedureService {
         dto.setChangedAt(h.getChangedAt());
         dto.setChangedBy(h.getChangedBy());
         return dto;
+    }
+
+    private Long getCurrentUserId() {
+        String email = SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("Không xác định user"));
+
+        User user = userRepository.findByEmail(email);
+        if (user == null) {
+            throw new IdInvalidException("User không tồn tại");
+        }
+        return user.getId();
     }
 }

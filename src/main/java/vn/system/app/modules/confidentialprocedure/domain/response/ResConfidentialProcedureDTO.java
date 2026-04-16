@@ -34,6 +34,8 @@ public class ResConfidentialProcedureDTO {
     private List<Long> userIds;
     private List<Long> roleIds;
 
+    private List<String> assignedByList;
+
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
