@@ -65,7 +65,6 @@ public class JdFlowController {
         @GetMapping("/jd-flow/approvers")
         @ApiMessage("Fetch JD Approvers")
         public ResponseEntity<List<ResJdApproverDTO>> fetchApprovers() {
-
                 return ResponseEntity.ok(
                                 jdFlowService.fetchApprovers());
         }
@@ -79,7 +78,6 @@ public class JdFlowController {
         @ApiMessage("Timeline duyệt JD")
         public ResponseEntity<List<ResJdFlowLogDTO>> fetchLogs(
                         @PathVariable Long jdId) {
-
                 return ResponseEntity.ok(
                                 jdFlowLogService.fetchLogs(jdId));
         }
@@ -140,6 +138,21 @@ public class JdFlowController {
 
         /*
          * ==========================================
+         * RECALL JD — Thu hồi JD đang chờ duyệt
+         * ==========================================
+         */
+        @PostMapping("/jd-flow/recall/{jdId}")
+        @ApiMessage("Thu hồi JD thành công")
+        public ResponseEntity<ResJdFlowDTO> recallFlow(@PathVariable Long jdId) {
+
+                jdFlowService.recallFlow(jdId);
+
+                return ResponseEntity.ok(
+                                jdFlowService.fetchFlowByJd(jdId));
+        }
+
+        /*
+         * ==========================================
          * ISSUE JD
          * ==========================================
          */
@@ -162,7 +175,6 @@ public class JdFlowController {
         @GetMapping("/jd-flow/issuers")
         @ApiMessage("Fetch JD Issuers")
         public ResponseEntity<List<ResJdApproverDTO>> fetchIssuers() {
-
                 return ResponseEntity.ok(
                                 jdFlowService.fetchIssuers());
         }

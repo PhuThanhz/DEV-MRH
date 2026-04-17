@@ -122,13 +122,19 @@ public class JobDescriptionService {
             throw new RuntimeException("JD đang duyệt, không thể chỉnh sửa");
         }
 
-        current.setCode(req.getCode());
         current.setReportTo(req.getReportTo());
         current.setBelongsTo(req.getBelongsTo());
         current.setCollaborateWith(req.getCollaborateWith());
         current.setEffectiveDate(req.getEffectiveDate());
 
-        return repository.save(current);
+        current = repository.save(current); // ← đổi return thành gán
+
+        // ✅ THÊM 3 DÒNG NÀY
+        requirementService.update(current.getId(), req.getRequirements());
+        taskService.updateFromDTO(current, req.getTasks());
+        positionService.updateFromDTO(current, req.getPositions());
+
+        return current; // ← đổi chỗ này thôi
     }
 
     /*

@@ -7,6 +7,8 @@ import lombok.Setter;
 @Setter
 public class ReqTaskDTO {
 
+    private Long id; // ← THÊM
+
     private Integer orderNo;
 
     private String title;

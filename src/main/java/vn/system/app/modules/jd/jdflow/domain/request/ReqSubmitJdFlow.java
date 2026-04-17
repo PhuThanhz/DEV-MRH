@@ -11,7 +11,7 @@ public class ReqSubmitJdFlow {
     @NotNull(message = "jdId không được để trống")
     private Long jdId;
 
-    @NotNull(message = "nextUserId không được để trống")
+    // Bỏ @NotNull — backend tự xử lý null khi RETURNED
     private Long nextUserId;
 
 }

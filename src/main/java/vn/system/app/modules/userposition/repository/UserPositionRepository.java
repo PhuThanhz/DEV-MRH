@@ -15,18 +15,31 @@ public interface UserPositionRepository
 
     List<UserPosition> findByUser_IdAndActiveTrue(Long userId);
 
+    // ── COMPANY ──────────────────────────────────────────────────────────────
     boolean existsByUser_IdAndCompanyJobTitle_IdAndActiveTrue(Long userId, Long companyJobTitleId);
 
+    Optional<UserPosition> findByUser_IdAndCompanyJobTitle_IdAndActiveFalse(
+            Long userId, Long companyJobTitleId);
+
+    // ── DEPARTMENT ────────────────────────────────────────────────────────────
     boolean existsByUser_IdAndDepartmentJobTitle_IdAndActiveTrue(Long userId, Long departmentJobTitleId);
 
-    // Thêm dòng này vào sau existsByUser_IdAndDepartmentJobTitle_IdAndActiveTrue
     Optional<UserPosition> findByUser_IdAndDepartmentJobTitle_IdAndActiveTrue(
             Long userId, Long departmentJobTitleId);
 
+    Optional<UserPosition> findByUser_IdAndDepartmentJobTitle_IdAndActiveFalse(
+            Long userId, Long departmentJobTitleId);
+
+    // ── SECTION ───────────────────────────────────────────────────────────────
     boolean existsByUser_IdAndSectionJobTitle_IdAndActiveTrue(Long userId, Long sectionJobTitleId);
 
+    Optional<UserPosition> findByUser_IdAndSectionJobTitle_IdAndActiveFalse(
+            Long userId, Long sectionJobTitleId);
+
+    // ── MISC ──────────────────────────────────────────────────────────────────
     Optional<UserPosition> findByUser_IdAndSourceAndActiveTrue(Long userId, String source);
 
+    // ── QUERIES ───────────────────────────────────────────────────────────────
     @Query("""
                 SELECT up FROM UserPosition up
                 LEFT JOIN up.companyJobTitle cjt

@@ -46,6 +46,52 @@ public class JobDescriptionTaskService {
     }
 
     /*
+     * UPDATE FROM JD
+     */
+    @Transactional
+    public void updateFromDTO(JobDescription jd, List<ReqTaskDTO> tasks) {
+
+        if (tasks == null || tasks.isEmpty())
+            return;
+
+        // Xóa các task không còn trong danh sách mới
+        List<Long> keepIds = tasks.stream()
+                .map(ReqTaskDTO::getId)
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+
+        List<JobDescriptionTask> existing = repository.findByJobDescription_IdOrderByOrderNo(jd.getId());
+
+        for (JobDescriptionTask old : existing) {
+            if (!keepIds.contains(old.getId())) {
+                repository.delete(old);
+            }
+        }
+
+        // Update hoặc tạo mới từng task
+        for (ReqTaskDTO req : tasks) {
+
+            JobDescriptionTask entity;
+
+            if (req.getId() != null) {
+                // Có id → update record cũ
+                entity = repository.findById(req.getId())
+                        .orElse(new JobDescriptionTask());
+            } else {
+                // Không có id → tạo mới
+                entity = new JobDescriptionTask();
+            }
+
+            entity.setJobDescription(jd);
+            entity.setOrderNo(req.getOrderNo());
+            entity.setTitle(req.getTitle());
+            entity.setContent(req.getContent());
+
+            repository.save(entity);
+        }
+    }
+
+    /*
      * GET BY JD
      */
     public List<ResTaskDTO> getByJobDescription(Long jdId) {
@@ -71,7 +117,6 @@ public class JobDescriptionTaskService {
      */
     @Transactional
     public void delete(Long id) {
-
         repository.deleteById(id);
     }
 
@@ -81,6 +126,7 @@ public class JobDescriptionTaskService {
     public JobDescriptionTask fetchEntity(Long id) {
 
         return repository.findById(id)
-                .orElseThrow(() -> new IdInvalidException("JobDescriptionTask không tồn tại id = " + id));
+                .orElseThrow(() -> new IdInvalidException(
+                        "JobDescriptionTask không tồn tại id = " + id));
     }
 }

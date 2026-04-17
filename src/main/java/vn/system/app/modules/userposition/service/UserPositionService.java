@@ -46,7 +46,7 @@ public class UserPositionService {
     }
 
     // =====================================================
-    // CREATE
+    // CREATE (hoặc reactivate nếu đã tồn tại record cũ)
     // =====================================================
     @Transactional
     public ResUserPositionDTO handleCreate(Long userId, ReqCreateUserPositionDTO req) {
@@ -54,27 +54,35 @@ public class UserPositionService {
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy user ID = " + userId));
 
-        UserPosition position = new UserPosition();
-        position.setUser(user);
-        position.setSource(req.getSource());
-
         switch (req.getSource().toUpperCase()) {
 
             case "COMPANY" -> {
                 if (req.getCompanyJobTitleId() == null)
                     throw new IdInvalidException("companyJobTitleId không được để trống.");
 
+                // Đã active rồi → báo lỗi
                 if (repo.existsByUser_IdAndCompanyJobTitle_IdAndActiveTrue(userId, req.getCompanyJobTitleId()))
                     throw new IdInvalidException("Chức danh này đã được gán cho user ở cấp công ty.");
 
                 CompanyJobTitle cjt = companyJobTitleRepo.findById(req.getCompanyJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy CompanyJobTitle."));
 
-                if (!cjt.getJobTitle().isActive()) {
-                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
-                }
+                if (!cjt.getJobTitle().isActive())
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán.");
 
-                position.setCompanyJobTitle(cjt);
+                // Tìm record cũ đã bị soft-delete → reactivate, không tạo mới
+                UserPosition position = repo
+                        .findByUser_IdAndCompanyJobTitle_IdAndActiveFalse(userId, req.getCompanyJobTitleId())
+                        .orElseGet(() -> {
+                            UserPosition p = new UserPosition();
+                            p.setUser(user);
+                            p.setSource(req.getSource());
+                            p.setCompanyJobTitle(cjt);
+                            return p;
+                        });
+
+                position.setActive(true);
+                return convertToResDTO(repo.save(position));
             }
 
             case "DEPARTMENT" -> {
@@ -87,11 +95,21 @@ public class UserPositionService {
                 DepartmentJobTitle djt = departmentJobTitleRepo.findById(req.getDepartmentJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy DepartmentJobTitle."));
 
-                if (!djt.getJobTitle().isActive()) {
-                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
-                }
+                if (!djt.getJobTitle().isActive())
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán.");
 
-                position.setDepartmentJobTitle(djt);
+                UserPosition position = repo
+                        .findByUser_IdAndDepartmentJobTitle_IdAndActiveFalse(userId, req.getDepartmentJobTitleId())
+                        .orElseGet(() -> {
+                            UserPosition p = new UserPosition();
+                            p.setUser(user);
+                            p.setSource(req.getSource());
+                            p.setDepartmentJobTitle(djt);
+                            return p;
+                        });
+
+                position.setActive(true);
+                return convertToResDTO(repo.save(position));
             }
 
             case "SECTION" -> {
@@ -104,19 +122,26 @@ public class UserPositionService {
                 SectionJobTitle sjt = sectionJobTitleRepo.findById(req.getSectionJobTitleId())
                         .orElseThrow(() -> new IdInvalidException("Không tìm thấy SectionJobTitle."));
 
-                if (!sjt.getJobTitle().isActive()) {
-                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán");
-                }
+                if (!sjt.getJobTitle().isActive())
+                    throw new IdInvalidException("Chức danh đã ngừng hoạt động, không thể gán.");
 
-                position.setSectionJobTitle(sjt);
+                UserPosition position = repo
+                        .findByUser_IdAndSectionJobTitle_IdAndActiveFalse(userId, req.getSectionJobTitleId())
+                        .orElseGet(() -> {
+                            UserPosition p = new UserPosition();
+                            p.setUser(user);
+                            p.setSource(req.getSource());
+                            p.setSectionJobTitle(sjt);
+                            return p;
+                        });
+
+                position.setActive(true);
+                return convertToResDTO(repo.save(position));
             }
 
             default ->
                 throw new IdInvalidException("Source không hợp lệ. Chỉ chấp nhận: COMPANY, DEPARTMENT, SECTION.");
         }
-
-        position = repo.save(position);
-        return convertToResDTO(position);
     }
 
     // =====================================================
@@ -162,7 +187,7 @@ public class UserPositionService {
     }
 
     // =====================================================
-    // GET COMPANY IDs BY USER (dùng cho scope filter)
+    // GET COMPANY IDs BY USER
     // =====================================================
     public Set<Long> getCompanyIdsByUser(Long userId) {
         return repo.findActiveFullByUserId(userId)
@@ -178,7 +203,7 @@ public class UserPositionService {
     }
 
     // =====================================================
-    // GET DEPARTMENT IDs BY USER (dùng cho scope filter) ← THÊM
+    // GET DEPARTMENT IDs BY USER
     // =====================================================
     public Set<Long> getDepartmentIdsByUser(Long userId) {
         return repo.findActiveFullByUserId(userId)
@@ -186,7 +211,7 @@ public class UserPositionService {
                 .map(pos -> switch (pos.getSource().toUpperCase()) {
                     case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getId();
                     case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getId();
-                    default -> null; // COMPANY không có department
+                    default -> null;
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());

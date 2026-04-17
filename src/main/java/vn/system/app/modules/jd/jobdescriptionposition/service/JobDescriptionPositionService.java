@@ -55,15 +55,25 @@ public class JobDescriptionPositionService {
 
                 entity.setNode(node);
 
-                /*
-                 * CACHE NODE DATA
-                 */
                 entity.setNodeName(node.getName());
                 entity.setLevelCode(node.getLevel());
             }
 
             repository.save(entity);
         }
+    }
+
+    /*
+     * UPDATE FROM JD (xóa cũ → tạo lại vì position không có id riêng ở frontend)
+     */
+    @Transactional
+    public void updateFromDTO(JobDescription jd, List<ReqPositionDTO> positions) {
+
+        // Xóa toàn bộ position cũ của JD này
+        repository.deleteByJobDescription_Id(jd.getId());
+
+        // Tạo lại từ danh sách mới
+        createFromDTO(jd, positions);
     }
 
     /*
@@ -96,7 +106,6 @@ public class JobDescriptionPositionService {
      */
     @Transactional
     public void delete(Long id) {
-
         repository.deleteById(id);
     }
 

@@ -13,4 +13,5 @@ public interface JobDescriptionPositionRepository
 
     List<JobDescriptionPosition> findByJobDescription_Id(Long jobDescriptionId);
 
+    void deleteByJobDescription_Id(Long jobDescriptionId); // ← THÊM
 }
