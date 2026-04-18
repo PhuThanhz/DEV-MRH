@@ -9,9 +9,9 @@ import jakarta.validation.Valid;
 
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.jd.jdflow.domain.request.ReqApproveJdFlow;
+import vn.system.app.modules.jd.jdflow.domain.request.ReqIssueJdFlow;
 import vn.system.app.modules.jd.jdflow.domain.request.ReqRejectJdFlow;
 import vn.system.app.modules.jd.jdflow.domain.request.ReqSubmitJdFlow;
-import vn.system.app.modules.jd.jdflow.domain.request.ReqIssueJdFlow;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdApproverDTO;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdFlowDTO;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdFlowLogDTO;
@@ -22,6 +22,7 @@ import vn.system.app.modules.jd.jdflow.service.JdFlowLogService;
 @RestController
 @RequestMapping("/api/v1")
 public class JdFlowController {
+
         private final JdFlowService jdFlowService;
         private final JdFlowLogService jdFlowLogService;
 
@@ -41,8 +42,7 @@ public class JdFlowController {
         @GetMapping("/jd-flow/{jdId}")
         @ApiMessage("Fetch JD Flow")
         public ResponseEntity<ResJdFlowDTO> getFlow(@PathVariable Long jdId) {
-                return ResponseEntity.ok(
-                                jdFlowService.fetchFlowByJd(jdId));
+                return ResponseEntity.ok(jdFlowService.fetchFlowByJd(jdId));
         }
 
         /*
@@ -53,8 +53,7 @@ public class JdFlowController {
         @GetMapping("/jd-flow/inbox")
         @ApiMessage("JD đang chờ tôi duyệt")
         public ResponseEntity<List<ResJdInboxDTO>> fetchInbox() {
-                return ResponseEntity.ok(
-                                jdFlowService.fetchInbox());
+                return ResponseEntity.ok(jdFlowService.fetchInbox());
         }
 
         /*
@@ -65,8 +64,18 @@ public class JdFlowController {
         @GetMapping("/jd-flow/approvers")
         @ApiMessage("Fetch JD Approvers")
         public ResponseEntity<List<ResJdApproverDTO>> fetchApprovers() {
-                return ResponseEntity.ok(
-                                jdFlowService.fetchApprovers());
+                return ResponseEntity.ok(jdFlowService.fetchApprovers());
+        }
+
+        /*
+         * ==========================================
+         * FETCH JD ISSUERS
+         * ==========================================
+         */
+        @GetMapping("/jd-flow/issuers")
+        @ApiMessage("Fetch JD Issuers")
+        public ResponseEntity<List<ResJdApproverDTO>> fetchIssuers() {
+                return ResponseEntity.ok(jdFlowService.fetchIssuers());
         }
 
         /*
@@ -76,15 +85,16 @@ public class JdFlowController {
          */
         @GetMapping("/jd-flow/logs/{jdId}")
         @ApiMessage("Timeline duyệt JD")
-        public ResponseEntity<List<ResJdFlowLogDTO>> fetchLogs(
-                        @PathVariable Long jdId) {
-                return ResponseEntity.ok(
-                                jdFlowLogService.fetchLogs(jdId));
+        public ResponseEntity<List<ResJdFlowLogDTO>> fetchLogs(@PathVariable Long jdId) {
+                return ResponseEntity.ok(jdFlowLogService.fetchLogs(jdId));
         }
 
         /*
          * ==========================================
-         * SUBMIT JD
+         * SUBMIT JD / GỬI LẠI DUYỆT
+         * Hỗ trợ 2 nút:
+         * - returnToPrevious = false: Gửi lại cho người vừa từ chối
+         * - returnToPrevious = true : Gửi về người trước đó + mang theo lý do
          * ==========================================
          */
         @PostMapping("/jd-flow/submit")
@@ -92,9 +102,16 @@ public class JdFlowController {
         public ResponseEntity<ResJdFlowDTO> submitFlow(
                         @Valid @RequestBody ReqSubmitJdFlow req) {
 
+                Boolean returnToPrevious = req.getReturnToPrevious() != null
+                                ? req.getReturnToPrevious()
+                                : false;
+
+                // Gọi service với comment (cho phép null)
                 jdFlowService.submitFlow(
                                 req.getJdId(),
-                                req.getNextUserId());
+                                req.getNextUserId(),
+                                returnToPrevious,
+                                req.getComment()); // ← Thêm tham số này
 
                 return ResponseEntity.ok(
                                 jdFlowService.fetchFlowByJd(req.getJdId()));
@@ -138,21 +155,6 @@ public class JdFlowController {
 
         /*
          * ==========================================
-         * RECALL JD — Thu hồi JD đang chờ duyệt
-         * ==========================================
-         */
-        @PostMapping("/jd-flow/recall/{jdId}")
-        @ApiMessage("Thu hồi JD thành công")
-        public ResponseEntity<ResJdFlowDTO> recallFlow(@PathVariable Long jdId) {
-
-                jdFlowService.recallFlow(jdId);
-
-                return ResponseEntity.ok(
-                                jdFlowService.fetchFlowByJd(jdId));
-        }
-
-        /*
-         * ==========================================
          * ISSUE JD
          * ==========================================
          */
@@ -165,17 +167,5 @@ public class JdFlowController {
 
                 return ResponseEntity.ok(
                                 jdFlowService.fetchFlowByJd(req.getJdId()));
-        }
-
-        /*
-         * ==========================================
-         * FETCH JD ISSUERS
-         * ==========================================
-         */
-        @GetMapping("/jd-flow/issuers")
-        @ApiMessage("Fetch JD Issuers")
-        public ResponseEntity<List<ResJdApproverDTO>> fetchIssuers() {
-                return ResponseEntity.ok(
-                                jdFlowService.fetchIssuers());
         }
 }

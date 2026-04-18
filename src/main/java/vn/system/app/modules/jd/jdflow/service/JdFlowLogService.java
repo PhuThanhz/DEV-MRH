@@ -60,7 +60,7 @@ public class JdFlowLogService {
 
         /*
          * ==========================================
-         * FIND NGƯỜI GỬI GẦN NHẤT (DÙNG CHO INBOX)
+         * FIND NGƯỜI GỬI GẦN NHẤT (DÙNG CHO INBOX & REJECT)
          * ==========================================
          */
         public User findLastSender(Long jdId) {
@@ -73,51 +73,34 @@ public class JdFlowLogService {
                                 .orElse(null);
         }
 
-        /*
+        /**
          * ==========================================
-         * FIND PREVIOUS APPROVER (DÙNG CHO REJECT)
-         * ==========================================
-         */
-        public User findPreviousApprover(Long jdId, Long rejectUserId) {
-                List<JdFlowLog> logs = repository.findByJobDescriptionIdOrderByCreatedAtDesc(jdId);
-                return logs.stream()
-                                .filter(log -> ("APPROVE".equals(log.getAction())
-                                                || "SUBMIT".equals(log.getAction())
-                                                || "SUBMIT_TO_FINAL".equals(log.getAction()))
-                                                && log.getToUser() != null
-                                                && log.getToUser().getId().equals(rejectUserId))
-                                .map(JdFlowLog::getFromUser)
-                                .findFirst()
-                                .orElse(null);
-        }
-
-        /*
-         * ==========================================
-         * FIND NGƯỜI TỪ CHỐI GẦN NHẤT (DÙNG ĐỂ GỬI LẠI DUYỆT TỰ ĐỘNG)
+         * METHOD MỚI: TÌM NGƯỜI GỬI TRƯỚC ĐÓ TRƯỚC KHI BỊ TỪ CHỐI
+         * Dùng khi User2 bị User3 từ chối → muốn gửi lại cho User1
+         * 
+         * Logic: Tìm người đã gửi cho User2 (người trước User2 trong chuỗi)
          * ==========================================
          */
-        public User findLastRejector(Long jdId) {
+        public User findLastSenderBeforeReject(Long jdId) {
                 List<JdFlowLog> logs = repository
-                                .findByJobDescriptionIdOrderByCreatedAtDesc(jdId);
+                                .findByJobDescriptionIdOrderByCreatedAtAsc(jdId);
 
-                // Debug tạm thời (có thể xóa sau khi test ổn)
-                logs.stream()
-                                .filter(log -> "REJECT".equals(log.getAction()))
-                                .findFirst()
-                                .ifPresent(log -> {
-                                        System.out.println("[DEBUG] Last REJECT for JD " + jdId
-                                                        + " by: " + (log.getFromUser() != null
-                                                                        ? log.getFromUser().getName() + " (ID="
-                                                                                        + log.getFromUser().getId()
-                                                                                        + ")"
-                                                                        : "null"));
-                                });
+                User senderBeforeCurrent = null;
 
-                return logs.stream()
-                                .filter(log -> "REJECT".equals(log.getAction()) && log.getFromUser() != null)
-                                .map(JdFlowLog::getFromUser)
-                                .findFirst()
-                                .orElse(null);
+                for (JdFlowLog log : logs) {
+                        // Gặp REJECT đầu tiên thì dừng và trả về người gửi trước đó
+                        if ("REJECT".equals(log.getAction())) {
+                                break;
+                        }
+
+                        // Chỉ cập nhật khi là hành động chuyển duyệt (SUBMIT hoặc APPROVE)
+                        if (log.getFromUser() != null
+                                        && ("SUBMIT".equals(log.getAction()) || "APPROVE".equals(log.getAction()))) {
+                                senderBeforeCurrent = log.getFromUser();
+                        }
+                }
+
+                return senderBeforeCurrent;
         }
 
         /*

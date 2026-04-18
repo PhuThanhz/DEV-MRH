@@ -72,7 +72,8 @@ public class DashboardService {
                 long totalDepartment;
                 long totalSection;
 
-                if (scope == null || scope.isSuperAdmin()) {
+                // SUPER_ADMIN và ADMIN_SUB_1 đều thấy toàn bộ hệ thống
+                if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
                         totalCompany = companyRepository.count();
                         totalDepartment = departmentRepository.count();
                         totalSection = sectionRepository.count();
@@ -97,15 +98,11 @@ public class DashboardService {
         public List<DepartmentCompletenessDTO> getDepartmentCompleteness() {
 
                 UserScopeContext.UserScope scope = UserScopeContext.get();
-                // THÊM LOG
-                System.out.println(">>> SCOPE = " + scope);
-                if (scope != null) {
-                        System.out.println(">>> isSuperAdmin = " + scope.isSuperAdmin());
-                        System.out.println(">>> companyIds = " + scope.companyIds());
-                }
+
                 List<Department> departments;
 
-                if (scope == null || scope.isSuperAdmin()) {
+                // SUPER_ADMIN và ADMIN_SUB_1 đều thấy toàn bộ hệ thống
+                if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
                         departments = departmentRepository.findAll();
                 } else {
                         var companyIds = scope.companyIds();
@@ -114,7 +111,6 @@ public class DashboardService {
                         }
                         departments = departmentRepository.findByCompany_IdIn(companyIds);
                 }
-                System.out.println(">>> departments.size() = " + departments.size());
 
                 return departments.stream()
                                 .map(this::buildCompleteness)
@@ -172,7 +168,7 @@ public class DashboardService {
                 return new DepartmentCompletenessDTO(
                                 deptId,
                                 dept.getName(),
-                                dept.getCompany().getName(), // ← THÊM
+                                dept.getCompany().getName(),
                                 orgChart,
                                 objectives,
                                 departmentProcedure,

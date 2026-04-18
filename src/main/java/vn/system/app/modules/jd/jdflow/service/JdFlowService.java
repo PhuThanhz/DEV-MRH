@@ -60,11 +60,13 @@ public class JdFlowService {
     /*
      * ==========================================
      * SUBMIT JD / GỬI LẠI DUYỆT
-     * Khi bị RETURNED → tự động gửi lại cho người vừa từ chối
+     * Khi JD bị REJECTED → hỗ trợ 2 nút:
+     * 1. Gửi lại cho người vừa từ chối → returnToPrevious = false
+     * 2. Gửi về người trước đó + mang lý do → returnToPrevious = true
      * ==========================================
      */
     @Transactional
-    public JdFlow submitFlow(Long jdId, Long nextUserId) {
+    public JdFlow submitFlow(Long jdId, Long nextUserId, Boolean returnToPrevious, String comment) {
 
         JobDescription jd = jobDescriptionRepository.findById(jdId)
                 .orElseThrow(() -> new RuntimeException("JD không tồn tại"));
@@ -78,24 +80,43 @@ public class JdFlowService {
         if ("PUBLISHED".equals(jd.getStatus()))
             throw new RuntimeException("JD đã ban hành, không thể gửi duyệt");
 
-        // ================== XỬ LÝ GỬI LẠI SAU RETURNED ==================
-        if ("RETURNED".equals(jd.getStatus())) {
-            // Lấy người vừa từ chối
-            User lastRejector = logService.findLastRejector(jdId);
+        String finalComment = comment;
 
-            if (lastRejector == null) {
-                throw new RuntimeException("Không tìm thấy người từ chối gần nhất");
+        // ================== XỬ LÝ GỬI LẠI SAU KHI BỊ REJECTED ==================
+        if ("REJECTED".equals(jd.getStatus())) {
+
+            User targetUser;
+
+            if (Boolean.TRUE.equals(returnToPrevious)) {
+                // === NÚT "GỬI VỀ NGƯỜI TRƯỚC ĐÓ" ===
+                targetUser = logService.findLastSenderBeforeReject(jdId);
+                if (targetUser == null)
+                    throw new RuntimeException("Không tìm thấy người duyệt trước đó");
+
+                // Tự động thêm lý do từ chối để người trước biết "đường xưa"
+                if (finalComment == null || finalComment.trim().isEmpty()) {
+                    JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jdId);
+                    if (rejectInfo != null && rejectInfo.getComment() != null
+                            && !rejectInfo.getComment().trim().isEmpty()) {
+                        finalComment = "[GỬI VỀ NGƯỜI TRƯỚC] " + rejectInfo.getComment();
+                    } else {
+                        finalComment = "[GỬI VỀ NGƯỜI TRƯỚC] Người duyệt sau từ chối và yêu cầu xem xét lại";
+                    }
+                }
+            } else {
+                // === NÚT "GỬI LẠI CHO NGƯỜI TỪ CHỐI" ===
+                targetUser = logService.findLastSender(jdId);
+                if (targetUser == null)
+                    throw new RuntimeException("Không tìm thấy người từ chối gần nhất");
             }
 
-            // Bảo vệ: Không cho phép người vừa từ chối gửi lại cho chính mình
-            if (lastRejector.getId().equals(fromUser.getId())) {
-                throw new RuntimeException("Bạn không thể gửi lại JD cho chính mình sau khi từ chối");
-            }
+            // Không cho phép gửi lại cho chính mình
+            if (targetUser.getId().equals(fromUser.getId()))
+                throw new RuntimeException("Bạn không thể gửi lại JD cho chính mình sau khi bị từ chối");
 
-            // Nếu frontend không truyền nextUserId → tự động gán người vừa từ chối
-            if (nextUserId == null) {
-                nextUserId = lastRejector.getId();
-            }
+            // Nếu frontend không truyền nextUserId → tự động gán
+            if (nextUserId == null)
+                nextUserId = targetUser.getId();
         }
 
         if (nextUserId == null)
@@ -104,18 +125,15 @@ public class JdFlowService {
         User toUser = userRepository.findById(nextUserId)
                 .orElseThrow(() -> new RuntimeException("User không tồn tại"));
 
-        // Kiểm tra không được gửi cho chính mình
         if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể gửi JD duyệt cho chính mình");
 
-        // Chỉ cho phép gửi đến người có quyền DUYỆT — không cho phép gửi thẳng đến
-        // issuer
         if (!permissionService.hasApprovePermission(toUser)
                 && !permissionService.hasApproveFinalPermission(toUser))
             throw new RuntimeException("Người nhận không có quyền duyệt JD");
 
-        // Reset status khi gửi lại từ REJECTED hoặc RETURNED
-        if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus()))
+        // Reset status khi gửi lại từ REJECTED
+        if ("REJECTED".equals(jd.getStatus()))
             jd.setStatus("DRAFT");
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
@@ -132,10 +150,11 @@ public class JdFlowService {
         jobDescriptionRepository.save(jd);
         jdFlowRepository.save(flow);
 
+        // Lưu log với comment (đặc biệt quan trọng khi gửi về trước)
         if (permissionService.hasApproveFinalPermission(toUser)) {
-            logService.saveLog(jd, fromUser, toUser, "SUBMIT_TO_FINAL", null);
+            logService.saveLog(jd, fromUser, toUser, "SUBMIT_TO_FINAL", finalComment);
         } else {
-            logService.saveLog(jd, fromUser, toUser, "SUBMIT", null);
+            logService.saveLog(jd, fromUser, toUser, "SUBMIT", finalComment);
         }
 
         return flow;
@@ -166,7 +185,6 @@ public class JdFlowService {
         if (fromUser == null || !fromUser.getId().equals(flow.getCurrentUser().getId()))
             throw new RuntimeException("Bạn không phải người đang duyệt JD này");
 
-        // ======= DUYỆT CUỐI (APPROVE_FINAL) =======
         if (permissionService.hasApproveFinalPermission(fromUser)) {
 
             if (nextUserId == null)
@@ -178,7 +196,6 @@ public class JdFlowService {
             if (!permissionService.hasIssuePermission(issuer))
                 throw new RuntimeException("User không có quyền ban hành JD");
 
-            // Không cho phép tự chỉ định mình làm người ban hành
             if (fromUser.getId().equals(issuer.getId()))
                 throw new RuntimeException("Không thể tự chỉ định mình là người ban hành");
 
@@ -197,7 +214,6 @@ public class JdFlowService {
             return flow;
         }
 
-        // ======= DUYỆT TRUNG GIAN (APPROVE) =======
         if (nextUserId == null)
             throw new RuntimeException("Phải chọn người duyệt tiếp theo");
 
@@ -212,7 +228,6 @@ public class JdFlowService {
             throw new RuntimeException("User tiếp theo không có quyền duyệt JD");
 
         JobDescription jd = flow.getJobDescription();
-        // FIX: cập nhật jd.status khi approve trung gian — trước đây bị thiếu
         jd.setStatus("IN_REVIEW");
 
         flow.setFromUser(fromUser);
@@ -230,9 +245,6 @@ public class JdFlowService {
     /*
      * ==========================================
      * REJECT JD
-     * - Người đang cầm JD (IN_REVIEW hoặc RETURNED) có thể từ chối
-     * - Nếu còn approver trước đó → RETURNED về họ
-     * - Nếu không còn → REJECTED về người tạo
      * ==========================================
      */
     @Transactional
@@ -243,9 +255,6 @@ public class JdFlowService {
         if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
 
-        // FIX: cho phép reject cả khi RETURNED (approver trung gian muốn trả ngược về
-        // trước)
-        // Chỉ chặn 2 trạng thái cuối không thể thay đổi
         if ("ISSUED".equals(flow.getStatus()) || "REJECTED".equals(flow.getStatus()))
             throw new RuntimeException("JD không thể từ chối ở trạng thái này");
 
@@ -254,73 +263,28 @@ public class JdFlowService {
 
         if (rejectUser == null || !rejectUser.getId().equals(flow.getCurrentUser().getId()))
             throw new RuntimeException("Bạn không phải người đang xử lý JD này");
-        // THÊM VÀO ĐÂY 👇
+
         User submitUser = logService.findSubmitUser(jdId);
         if (submitUser != null && rejectUser.getId().equals(submitUser.getId()))
             throw new RuntimeException("Người tạo JD không có quyền từ chối");
 
+        User previousSender = logService.findLastSender(jdId);
+        if (previousSender == null)
+            throw new RuntimeException("Không tìm thấy người gửi JD gần nhất");
+
+        if (previousSender.getId().equals(rejectUser.getId()))
+            throw new RuntimeException("Không thể từ chối và trả về chính mình");
+
         JobDescription jd = flow.getJobDescription();
 
-        User previousUser = logService.findPreviousApprover(jdId, rejectUser.getId());
-
-        if (previousUser != null) {
-            // Trả về approver trước đó → RETURNED
-            flow.setCurrentUser(previousUser);
-            flow.setStatus("RETURNED");
-            jd.setStatus("RETURNED");
-        } else {
-            // Không còn approver trước → trả về người tạo, REJECTED
-            flow.setCurrentUser(flow.getFromUser());
-            flow.setStatus("REJECTED");
-            jd.setStatus("REJECTED");
-        }
+        flow.setCurrentUser(previousSender);
+        flow.setStatus("REJECTED");
+        jd.setStatus("REJECTED");
 
         jobDescriptionRepository.save(jd);
         jdFlowRepository.save(flow);
 
-        logService.saveLog(jd, rejectUser, flow.getCurrentUser(), "REJECT", comment);
-
-        return flow;
-    }
-
-    /*
-     * ==========================================
-     * RECALL JD — Thu hồi JD đang chờ duyệt
-     * Chỉ người vừa gửi mới được thu hồi, và JD phải đang IN_REVIEW
-     * ==========================================
-     */
-    @Transactional
-    public JdFlow recallFlow(Long jdId) {
-
-        JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
-
-        if (flow == null)
-            throw new RuntimeException("JD Flow không tồn tại");
-
-        if (!"IN_REVIEW".equals(flow.getStatus()))
-            throw new RuntimeException("Chỉ có thể thu hồi khi JD đang chờ duyệt");
-
-        String email = SecurityUtil.getCurrentUserLogin().orElse("");
-        User caller = userRepository.findByEmail(email);
-
-        if (caller == null)
-            throw new RuntimeException("Không xác định được người dùng hiện tại");
-
-        // Chỉ người vừa gửi gần nhất mới được thu hồi
-        User lastSender = logService.findLastSender(jdId);
-        if (lastSender == null || !lastSender.getId().equals(caller.getId()))
-            throw new RuntimeException("Bạn không phải người vừa gửi JD này, không thể thu hồi");
-
-        JobDescription jd = flow.getJobDescription();
-
-        flow.setCurrentUser(caller);
-        flow.setStatus("RETURNED");
-        jd.setStatus("RETURNED");
-
-        jobDescriptionRepository.save(jd);
-        jdFlowRepository.save(flow);
-
-        logService.saveLog(jd, caller, caller, "RECALL", null);
+        logService.saveLog(jd, rejectUser, previousSender, "REJECT", comment);
 
         return flow;
     }
@@ -373,7 +337,6 @@ public class JdFlowService {
     /*
      * ==========================================
      * JD CHỜ TÔI XỬ LÝ (INBOX)
-     * FIX: thêm REJECTED để người tạo thấy JD bị từ chối trong inbox
      * ==========================================
      */
     public List<ResJdInboxDTO> fetchInbox() {
@@ -387,8 +350,7 @@ public class JdFlowService {
         List<JdFlow> flows = jdFlowRepository
                 .findByCurrentUserIdAndStatusIn(
                         user.getId(),
-                        // FIX: thêm REJECTED — người tạo JD bị từ chối cuối cùng cũng thấy trong inbox
-                        List.of("IN_REVIEW", "APPROVED", "RETURNED", "REJECTED"));
+                        List.of("IN_REVIEW", "APPROVED", "REJECTED"));
 
         return flows.stream().map(flow -> {
 
@@ -424,7 +386,7 @@ public class JdFlowService {
                 dto.setFromUser(from);
             }
 
-            if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus())) {
+            if ("REJECTED".equals(jd.getStatus())) {
                 JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jd.getId());
                 if (rejectInfo != null) {
                     dto.setRejectComment(rejectInfo.getComment());
@@ -433,6 +395,13 @@ public class JdFlowService {
                     dto.setRejectorDepartment(rejectInfo.getRejectorDepartment());
                     dto.setRejectorPositionCode(rejectInfo.getRejectorPositionCode());
                 }
+                // ── THÊM VÀO ĐÂY ──
+                User senderBefore = logService.findLastSenderBeforeReject(jd.getId());
+                User submitUser = logService.findSubmitUser(jd.getId());
+                dto.setCanReturnToPrevious(
+                        senderBefore != null &&
+                                submitUser != null &&
+                                !senderBefore.getId().equals(submitUser.getId()));
             }
 
             return dto;

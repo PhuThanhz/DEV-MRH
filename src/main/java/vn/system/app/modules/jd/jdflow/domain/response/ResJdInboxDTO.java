@@ -22,6 +22,7 @@ public class ResJdInboxDTO {
     private String rejectorPosition;
     private String rejectorDepartment;
     private String rejectorPositionCode; // ← THÊM
+    private boolean canReturnToPrevious;
 
     @Data
     public static class UserSimple {
