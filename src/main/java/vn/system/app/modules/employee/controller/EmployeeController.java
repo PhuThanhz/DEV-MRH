@@ -59,7 +59,7 @@ public class EmployeeController {
     // ===========================================================
     @DeleteMapping("/employees/{id}")
     @ApiMessage("Delete an employee")
-    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") String id) {
 
         employeeService.delete(id);
         return ResponseEntity.ok().build();
@@ -71,7 +71,7 @@ public class EmployeeController {
     @GetMapping("/employees/{id}")
     @ApiMessage("Fetch employee by id")
     public ResponseEntity<ResEmployeeDTO> getById(
-            @PathVariable("id") Long id) {
+            @PathVariable("id") String id) {
 
         ResEmployeeDTO res = employeeService.getById(id);
         return ResponseEntity.ok(res);

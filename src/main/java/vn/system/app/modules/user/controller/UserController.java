@@ -164,7 +164,7 @@ public class UserController {
         // ===========================================================
         @DeleteMapping("/users/{id}")
         @ApiMessage("Delete a user")
-        public ResponseEntity<Void> deleteUser(@PathVariable("id") long id) {
+        public ResponseEntity<Void> deleteUser(@PathVariable("id") String id) {
                 this.userService.handleDeleteUser(id);
                 return ResponseEntity.ok().build();
         }
@@ -174,7 +174,7 @@ public class UserController {
         // ===========================================================
         @GetMapping("/users/{id}")
         @ApiMessage("fetch user by id")
-        public ResponseEntity<ResUserDTO> getUserById(@PathVariable("id") long id) {
+        public ResponseEntity<ResUserDTO> getUserById(@PathVariable("id") String id) {
                 User user = this.userService.fetchUserById(id);
                 if (user == null) {
                         throw new IdInvalidException("User với id = " + id + " không tồn tại");

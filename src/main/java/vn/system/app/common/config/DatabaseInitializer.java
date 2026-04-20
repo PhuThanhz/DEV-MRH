@@ -61,6 +61,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             adminUser.setEmail("admin@gmail.com");
             adminUser.setName("I'm super admin");
             adminUser.setPassword(this.passwordEncoder.encode("123456"));
+            adminUser.setActive(true); // ✅ FIX CHÍNH Ở ĐÂY
 
             Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
             if (adminRole != null) {

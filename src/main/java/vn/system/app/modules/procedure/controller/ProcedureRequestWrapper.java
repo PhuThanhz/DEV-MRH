@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,26 +23,24 @@ public class ProcedureRequestWrapper {
 
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
     private List<String> fileUrls;
     private String note;
 
-    @NotNull(message = "Phòng ban không được để trống")
     private Long departmentId;
+    private List<Long> departmentIds;
 
     private Long sectionId;
-
-    private List<Long> userIds;
+    private List<String> userIds;
     private List<Long> roleIds;
 
-    // ===== Convert sang CompanyProcedureRequest =====
     public CompanyProcedureRequest toCompanyRequest() {
         CompanyProcedureRequest req = new CompanyProcedureRequest();
         req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
-        req.setIssuedDate(this.issuedDate); // ← THÊM
+        req.setIssuedDate(this.issuedDate);
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
         req.setDepartmentId(this.departmentId);
@@ -51,29 +48,27 @@ public class ProcedureRequestWrapper {
         return req;
     }
 
-    // ===== Convert sang DepartmentProcedureRequest =====
     public DepartmentProcedureRequest toDepartmentRequest() {
         DepartmentProcedureRequest req = new DepartmentProcedureRequest();
         req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
-        req.setIssuedDate(this.issuedDate); // ← THÊM
+        req.setIssuedDate(this.issuedDate);
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
-        req.setDepartmentId(this.departmentId);
+        req.setDepartmentIds(this.departmentIds);
         req.setSectionId(this.sectionId);
         return req;
     }
 
-    // ===== Convert sang ConfidentialProcedureRequest =====
     public ConfidentialProcedureRequest toConfidentialRequest() {
         ConfidentialProcedureRequest req = new ConfidentialProcedureRequest();
         req.setProcedureCode(this.procedureCode);
         req.setProcedureName(this.procedureName);
         req.setStatus(this.status);
         req.setPlanYear(this.planYear);
-        req.setIssuedDate(this.issuedDate); // ← THÊM
+        req.setIssuedDate(this.issuedDate);
         req.setFileUrls(this.fileUrls);
         req.setNote(this.note);
         req.setDepartmentId(this.departmentId);

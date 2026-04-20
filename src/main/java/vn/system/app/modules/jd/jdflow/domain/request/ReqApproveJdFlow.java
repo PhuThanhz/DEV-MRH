@@ -23,6 +23,6 @@ public class ReqApproveJdFlow {
      * - Nếu có giá trị → chuyển duyệt tiếp
      * - Nếu null → duyệt cuối và chuyển cho người ban hành
      */
-    private Long nextUserId;
+    private String nextUserId;
 
 }

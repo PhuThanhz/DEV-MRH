@@ -79,7 +79,7 @@ public class EmployeeCareerPathController {
     @GetMapping("/user/{userId}")
     @ApiMessage("Lấy lộ trình thăng tiến của nhân viên")
     public ResponseEntity<ResEmployeeCareerPathDTO> getByUser(
-            @PathVariable Long userId) {
+            @PathVariable String userId) {
         return ResponseEntity.ok(service.fetchByUserId(userId));
     }
 
@@ -106,7 +106,7 @@ public class EmployeeCareerPathController {
     @GetMapping("/history/{userId}")
     @ApiMessage("Lịch sử thăng tiến của nhân viên")
     public ResponseEntity<List<ResEmployeeCareerPathHistoryDTO>> getHistory(
-            @PathVariable Long userId) {
+            @PathVariable String userId) {
         return ResponseEntity.ok(service.fetchHistory(userId));
     }
 }

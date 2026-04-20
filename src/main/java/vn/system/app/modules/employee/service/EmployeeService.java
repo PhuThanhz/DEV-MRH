@@ -127,7 +127,7 @@ public class EmployeeService {
     // ======================================================
     // DELETE EMPLOYEE
     // ======================================================
-    public void delete(Long id) {
+    public void delete(String id) {
         if (!userRepository.existsById(id)) {
             throw new IdInvalidException("User không tồn tại");
         }
@@ -137,7 +137,7 @@ public class EmployeeService {
     // ======================================================
     // GET BY ID
     // ======================================================
-    public ResEmployeeDTO getById(Long id) {
+    public ResEmployeeDTO getById(String id) {
 
         User user = userRepository.findWithUserInfoById(id);
 

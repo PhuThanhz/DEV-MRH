@@ -31,7 +31,7 @@ public class ResUserInfoDTO {
     @Getter
     @Setter
     public static class UserBasic {
-        private Long id;
+        private String id;
         private String name;
         private String email;
     }

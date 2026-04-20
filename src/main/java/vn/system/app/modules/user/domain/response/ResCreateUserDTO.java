@@ -10,7 +10,8 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 @Setter
 public class ResCreateUserDTO {
 
-    private long id;
+    private String id; // 🔥 đổi từ long -> String (UUID)
+
     private String name;
     private String email;
     private boolean active;

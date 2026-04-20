@@ -12,7 +12,7 @@ public class ReqSubmitJdFlow {
     private Long jdId;
 
     // Bỏ @NotNull — backend tự xử lý null khi REJECTED
-    private Long nextUserId;
+    private String nextUserId;
 
     /**
      * Trường mới để phân biệt 2 hành vi khi gửi lại JD bị từ chối:

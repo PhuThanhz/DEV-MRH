@@ -198,7 +198,7 @@ public class EmployeeCareerPathService {
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy lộ trình nhân viên"));
     }
 
-    public ResEmployeeCareerPathDTO fetchByUserId(Long userId) {
+    public ResEmployeeCareerPathDTO fetchByUserId(String userId) {
         EmployeeCareerPath e = repo.findByUser_IdAndActiveTrue(userId)
                 .orElseThrow(() -> new IdInvalidException("Nhân viên chưa có lộ trình thăng tiến"));
         return convertToResponse(e, true);
@@ -242,7 +242,7 @@ public class EmployeeCareerPathService {
                 .toList();
     }
 
-    public List<ResEmployeeCareerPathHistoryDTO> fetchHistory(Long userId) {
+    public List<ResEmployeeCareerPathHistoryDTO> fetchHistory(String userId) {
         return historyRepo
                 .findByEmployeeCareerPath_User_IdOrderByPromotedAtDesc(userId)
                 .stream()
@@ -253,7 +253,7 @@ public class EmployeeCareerPathService {
     // =====================================================
     // HELPER — cập nhật UserPosition khi thăng tiến
     // =====================================================
-    private void updateUserPosition(Long userId, CareerPathTemplateStep currentStep, CareerPath newCareerPath) {
+    private void updateUserPosition(String userId, CareerPathTemplateStep currentStep, CareerPath newCareerPath) {
 
         Long departmentId = newCareerPath.getDepartment().getId();
         Long newJobTitleId = newCareerPath.getJobTitle().getId();

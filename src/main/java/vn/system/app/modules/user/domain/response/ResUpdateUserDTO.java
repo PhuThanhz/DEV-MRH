@@ -10,7 +10,7 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 @Setter
 public class ResUpdateUserDTO {
 
-    private long id;
+    private String id; // 🔥 đổi từ long -> String (UUID)
     private String name;
     private boolean active;
     private Instant updatedAt;

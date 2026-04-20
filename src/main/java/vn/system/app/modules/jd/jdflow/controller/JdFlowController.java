@@ -61,10 +61,12 @@ public class JdFlowController {
          * FETCH JD APPROVERS
          * ==========================================
          */
+        // Thành:
         @GetMapping("/jd-flow/approvers")
         @ApiMessage("Fetch JD Approvers")
-        public ResponseEntity<List<ResJdApproverDTO>> fetchApprovers() {
-                return ResponseEntity.ok(jdFlowService.fetchApprovers());
+        public ResponseEntity<List<ResJdApproverDTO>> fetchApprovers(
+                        @RequestParam(required = false) Long jdId) {
+                return ResponseEntity.ok(jdFlowService.fetchApprovers(jdId));
         }
 
         /*
@@ -74,8 +76,9 @@ public class JdFlowController {
          */
         @GetMapping("/jd-flow/issuers")
         @ApiMessage("Fetch JD Issuers")
-        public ResponseEntity<List<ResJdApproverDTO>> fetchIssuers() {
-                return ResponseEntity.ok(jdFlowService.fetchIssuers());
+        public ResponseEntity<List<ResJdApproverDTO>> fetchIssuers(
+                        @RequestParam(required = false) Long jdId) {
+                return ResponseEntity.ok(jdFlowService.fetchIssuers(jdId));
         }
 
         /*

@@ -1,5 +1,7 @@
 package vn.system.app.modules.user.repository;
 
+import java.util.Optional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -11,7 +13,11 @@ import org.springframework.stereotype.Repository;
 import vn.system.app.modules.user.domain.User;
 
 @Repository
-public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
+public interface UserRepository extends JpaRepository<User, String>, JpaSpecificationExecutor<User> {
+
+    // =========================
+    // BASIC QUERY
+    // =========================
 
     User findByEmail(String email);
 
@@ -19,10 +25,27 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     User findByRefreshTokenAndEmail(String token, String email);
 
-    // ⭐ Override findAll để JOIN FETCH userInfo + role trong 1 query duy nhất
+    // =========================
+    // FETCH JOIN USING ENTITY GRAPH
+    // =========================
+
+    /**
+     * Load user kèm userInfo + role trong 1 query duy nhất
+     */
+    @Override
     @EntityGraph(attributePaths = { "userInfo", "role" })
     Page<User> findAll(Specification<User> spec, Pageable pageable);
 
+    /**
+     * Load 1 user kèm userInfo + role
+     */
     @EntityGraph(attributePaths = { "userInfo", "role" })
-    User findWithUserInfoById(Long id);
+    User findWithUserInfoById(String id);
+
+    /**
+     * Load 1 user kèm role — dùng trong convertShareLogToDTO
+     * Tránh LazyInitializationException khi gọi u.getRole().getName()
+     */
+    @EntityGraph(attributePaths = { "role" })
+    Optional<User> findWithRoleById(String id);
 }

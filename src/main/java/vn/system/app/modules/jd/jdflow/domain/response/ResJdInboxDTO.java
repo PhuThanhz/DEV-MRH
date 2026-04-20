@@ -23,10 +23,11 @@ public class ResJdInboxDTO {
     private String rejectorDepartment;
     private String rejectorPositionCode; // ← THÊM
     private boolean canReturnToPrevious;
+    private boolean creator;
 
     @Data
     public static class UserSimple {
-        private Long id;
+        private String id;
         private String name;
     }
 }

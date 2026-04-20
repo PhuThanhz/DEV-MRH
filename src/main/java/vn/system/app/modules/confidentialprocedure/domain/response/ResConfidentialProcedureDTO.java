@@ -12,6 +12,7 @@ public class ResConfidentialProcedureDTO {
 
     private Long id;
 
+    private Long companyId; // ← THÊM
     private String companyCode;
     private String companyName;
 
@@ -30,8 +31,9 @@ public class ResConfidentialProcedureDTO {
     private boolean active;
     private Integer version;
     private Instant issuedDate; // ← THÊM
+    private String createdByName; // ← THÊM
 
-    private List<Long> userIds;
+    private List<String> userIds;
     private List<Long> roleIds;
 
     private List<String> assignedByList;

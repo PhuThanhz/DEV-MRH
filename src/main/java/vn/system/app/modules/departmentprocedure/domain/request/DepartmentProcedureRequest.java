@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,15 +20,16 @@ public class DepartmentProcedureRequest {
 
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
 
     private List<String> fileUrls;
 
     private String note;
     private boolean active;
 
-    @NotNull(message = "Phòng ban không được để trống")
-    private Long departmentId;
+    // ✅ Đổi từ 1 departmentId sang nhiều departmentIds
+    @NotEmpty(message = "Phải chọn ít nhất 1 phòng ban")
+    private List<Long> departmentIds;
 
     private Long sectionId;
 }

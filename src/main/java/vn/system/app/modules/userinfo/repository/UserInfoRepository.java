@@ -10,9 +10,9 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 @Repository
 public interface UserInfoRepository extends JpaRepository<UserInfo, Long> {
 
-    Optional<UserInfo> findByUser_Id(Long userId);
+    Optional<UserInfo> findByUser_Id(String id);
 
-    boolean existsByUser_Id(Long userId);
+    boolean existsByUser_Id(String userId);
 
     boolean existsByEmployeeCode(String employeeCode);
 }

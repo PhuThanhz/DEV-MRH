@@ -14,9 +14,9 @@ import vn.system.app.modules.employeecareerpath.domain.EmployeeCareerPath;
 public interface EmployeeCareerPathRepository
     extends JpaRepository<EmployeeCareerPath, Long> {
 
-  Optional<EmployeeCareerPath> findByUser_IdAndActiveTrue(Long userId);
+  Optional<EmployeeCareerPath> findByUser_IdAndActiveTrue(String userId);
 
-  boolean existsByUser_IdAndActiveTrue(Long userId);
+  boolean existsByUser_IdAndActiveTrue(String userId);
 
   // Lấy theo phòng ban qua template.department
   List<EmployeeCareerPath> findByTemplate_Department_IdAndActiveTrue(Long departmentId);
@@ -34,12 +34,12 @@ public interface EmployeeCareerPathRepository
   List<EmployeeCareerPath> findAllInProgress();
 
   // Lấy tất cả lộ trình của 1 user (kể cả inactive — xem lịch sử)
-  List<EmployeeCareerPath> findByUser_IdOrderByCreatedAtDesc(Long userId);
+  List<EmployeeCareerPath> findByUser_IdOrderByCreatedAtDesc(String userId);
 
   @Query("""
           SELECT e.user.id FROM EmployeeCareerPath e
           WHERE e.active = true
           AND e.template.department.id = :departmentId
       """)
-  List<Long> findAssignedUserIdsByDepartmentId(@Param("departmentId") Long departmentId);
+  List<String> findAssignedUserIdsByDepartmentId(@Param("departmentId") Long departmentId);
 }

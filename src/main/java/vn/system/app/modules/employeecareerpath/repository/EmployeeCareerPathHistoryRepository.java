@@ -11,7 +11,7 @@ import vn.system.app.modules.employeecareerpath.domain.EmployeeCareerPathHistory
 public interface EmployeeCareerPathHistoryRepository
         extends JpaRepository<EmployeeCareerPathHistory, Long> {
 
-    List<EmployeeCareerPathHistory> findByEmployeeCareerPath_User_IdOrderByPromotedAtDesc(Long userId);
+    List<EmployeeCareerPathHistory> findByEmployeeCareerPath_User_IdOrderByPromotedAtDesc(String userId);
 
     List<EmployeeCareerPathHistory> findByEmployeeCareerPath_IdOrderByPromotedAtDesc(Long employeeCareerPathId);
 }

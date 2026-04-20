@@ -26,7 +26,7 @@ public class UserInfoController {
     @PostMapping("/{userId}/info")
     @ApiMessage("Tạo thông tin cá nhân cho user")
     public ResponseEntity<ResUserInfoDTO> create(
-            @PathVariable Long userId,
+            @PathVariable String userId,
             @Valid @RequestBody ReqUserInfoDTO req) {
 
         ResUserInfoDTO res = userInfoService.handleCreate(userId, req);
@@ -39,7 +39,7 @@ public class UserInfoController {
     @PutMapping("/{userId}/info")
     @ApiMessage("Cập nhật thông tin cá nhân của user")
     public ResponseEntity<ResUserInfoDTO> update(
-            @PathVariable Long userId,
+            @PathVariable String userId,
             @Valid @RequestBody ReqUserInfoDTO req) {
 
         ResUserInfoDTO res = userInfoService.handleUpdate(userId, req);
@@ -52,7 +52,7 @@ public class UserInfoController {
     @GetMapping("/{userId}/info")
     @ApiMessage("Lấy thông tin cá nhân của user")
     public ResponseEntity<ResUserInfoDTO> getByUser(
-            @PathVariable Long userId) {
+            @PathVariable String userId) {
 
         ResUserInfoDTO res = userInfoService.fetchByUserId(userId);
         return ResponseEntity.ok(res);

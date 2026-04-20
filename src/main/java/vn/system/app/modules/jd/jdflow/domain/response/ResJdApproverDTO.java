@@ -8,7 +8,7 @@ import java.util.List;
 @Setter
 public class ResJdApproverDTO {
 
-    private Long id;
+    private String id;
     private String name;
     private String email;
     private String avatar;
@@ -21,7 +21,7 @@ public class ResJdApproverDTO {
     }
 
     // Constructor cũ — giữ lại để không break code
-    public ResJdApproverDTO(Long id, String name, String email, String avatar, boolean isFinal) {
+    public ResJdApproverDTO(String id, String name, String email, String avatar, boolean isFinal) {
         this.id = id;
         this.name = name;
         this.email = email;

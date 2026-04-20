@@ -146,7 +146,7 @@ public class UserService {
     // ======================================================
     // DELETE USER
     // ======================================================
-    public void handleDeleteUser(long id) {
+    public void handleDeleteUser(String id) {
 
         if (!userRepository.existsById(id)) {
             throw new IdInvalidException("User với id = " + id + " không tồn tại");
@@ -158,7 +158,7 @@ public class UserService {
     // ======================================================
     // FIND USER
     // ======================================================
-    public User fetchUserById(long id) {
+    public User fetchUserById(String id) {
         Optional<User> userOptional = this.userRepository.findById(id);
         return userOptional.orElse(null);
     }
@@ -189,7 +189,7 @@ public class UserService {
             } else {
                 // ADMIN_SUB_2 + Employee → filter theo companyIds
                 Specification<User> scopeSpec = (root, query, cb) -> {
-                    var sub = query.subquery(Long.class);
+                    var sub = query.subquery(String.class);
                     var posRoot = sub.from(UserPosition.class);
 
                     sub.select(posRoot.get("user").get("id"))
@@ -386,7 +386,19 @@ public class UserService {
         res.setName(user.getName());
         res.setActive(user.isActive());
         res.setUpdatedAt(user.getUpdatedAt());
-
+        // ← THÊM ĐOẠN NÀY
+        UserInfo info = user.getUserInfo();
+        if (info != null) {
+            ResUpdateUserDTO.UserInfoBasic userInfoBasic = new ResUpdateUserDTO.UserInfoBasic();
+            userInfoBasic.setEmployeeCode(info.getEmployeeCode());
+            userInfoBasic.setPhone(info.getPhone());
+            userInfoBasic.setDateOfBirth(info.getDateOfBirth());
+            userInfoBasic.setGender(info.getGender());
+            userInfoBasic.setStartDate(info.getStartDate());
+            userInfoBasic.setContractSignDate(info.getContractSignDate());
+            userInfoBasic.setContractExpireDate(info.getContractExpireDate());
+            res.setUserInfo(userInfoBasic);
+        }
         return res;
     }
 
@@ -499,17 +511,13 @@ public class UserService {
     // GET USERS UNASSIGNED CAREER PATH BY DEPARTMENT
     // ======================================================
     public List<ResUserDTO> getUsersUnassignedCareerPath(Long departmentId) {
-        System.out.println(">>> departmentId = " + departmentId);
 
-        List<Long> userIds = userPositionRepository.findUserIdsByDepartmentId(departmentId);
-        System.out.println(">>> userIds = " + userIds);
+        List<String> userIds = userPositionRepository.findUserIdsByDepartmentId(departmentId);
 
         if (userIds.isEmpty())
             return List.of();
 
-        List<Long> assignedIds = employeeCareerPathRepository
-                .findAssignedUserIdsByDepartmentId(departmentId);
-        System.out.println(">>> assignedIds = " + assignedIds);
+        List<String> assignedIds = employeeCareerPathRepository.findAssignedUserIdsByDepartmentId(departmentId);
 
         return userIds.stream()
                 .filter(id -> !assignedIds.contains(id))

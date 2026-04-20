@@ -49,7 +49,7 @@ public class UserPositionService {
     // CREATE (hoặc reactivate nếu đã tồn tại record cũ)
     // =====================================================
     @Transactional
-    public ResUserPositionDTO handleCreate(Long userId, ReqCreateUserPositionDTO req) {
+    public ResUserPositionDTO handleCreate(String userId, ReqCreateUserPositionDTO req) {
 
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy user ID = " + userId));
@@ -164,7 +164,7 @@ public class UserPositionService {
     // =====================================================
     // GET ALL BY USER
     // =====================================================
-    public List<ResUserPositionDTO> fetchByUser(Long userId) {
+    public List<ResUserPositionDTO> fetchByUser(String userId) {
 
         if (!userRepo.existsById(userId)) {
             throw new IdInvalidException("Không tìm thấy user ID = " + userId);
@@ -189,7 +189,7 @@ public class UserPositionService {
     // =====================================================
     // GET COMPANY IDs BY USER
     // =====================================================
-    public Set<Long> getCompanyIdsByUser(Long userId) {
+    public Set<Long> getCompanyIdsByUser(String userId) {
         return repo.findActiveFullByUserId(userId)
                 .stream()
                 .map(pos -> switch (pos.getSource().toUpperCase()) {
@@ -205,7 +205,7 @@ public class UserPositionService {
     // =====================================================
     // GET DEPARTMENT IDs BY USER
     // =====================================================
-    public Set<Long> getDepartmentIdsByUser(Long userId) {
+    public Set<Long> getDepartmentIdsByUser(String userId) {
         return repo.findActiveFullByUserId(userId)
                 .stream()
                 .map(pos -> switch (pos.getSource().toUpperCase()) {

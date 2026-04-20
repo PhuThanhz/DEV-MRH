@@ -17,10 +17,13 @@ public class ResDepartmentProcedureHistoryDTO {
     private String procedureName;
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
     private List<String> fileUrls;
     private String note;
+
+    // ✅ String đơn giản: "Phòng NS, Phòng KT, Phòng KD"
     private String departmentName;
+
     private String sectionName;
     private Instant changedAt;
     private String changedBy;

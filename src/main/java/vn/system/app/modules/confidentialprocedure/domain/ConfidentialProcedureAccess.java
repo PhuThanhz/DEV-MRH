@@ -21,7 +21,7 @@ public class ConfidentialProcedureAccess {
 
     // Gán theo User (nullable)
     @Column(name = "user_id")
-    private Long userId;
+    private String userId;
 
     // Gán theo Role (nullable)
     @Column(name = "role_id")
@@ -32,7 +32,7 @@ public class ConfidentialProcedureAccess {
     private String accessType;
     // ===== THÊM MỚI (KHÔNG ẢNH HƯỞNG LOGIC CŨ) =====
     @Column(name = "assigned_by")
-    private Long assignedBy;
+    private String assignedBy;
 
     @Column(name = "assigned_at")
     private Instant assignedAt;

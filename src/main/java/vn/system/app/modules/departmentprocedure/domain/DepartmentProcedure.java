@@ -1,6 +1,8 @@
 package vn.system.app.modules.departmentprocedure.domain;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -29,7 +31,7 @@ public class DepartmentProcedure {
     private String procedureName;
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
 
     @Column(columnDefinition = "MEDIUMTEXT")
     private String fileUrls;
@@ -42,10 +44,11 @@ public class DepartmentProcedure {
     @Column(nullable = false)
     private Integer version = 1;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "department_id", nullable = false)
+    // ✅ Đổi từ ManyToOne sang ManyToMany
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "department_procedure_mapping", joinColumns = @JoinColumn(name = "procedure_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))
     @JsonIgnoreProperties({ "departmentProcedures" })
-    private Department department;
+    private List<Department> departments = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id")

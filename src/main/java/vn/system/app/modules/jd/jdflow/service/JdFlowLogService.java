@@ -85,22 +85,40 @@ public class JdFlowLogService {
                 List<JdFlowLog> logs = repository
                                 .findByJobDescriptionIdOrderByCreatedAtAsc(jdId);
 
-                User senderBeforeCurrent = null;
-
-                for (JdFlowLog log : logs) {
-                        // Gặp REJECT đầu tiên thì dừng và trả về người gửi trước đó
-                        if ("REJECT".equals(log.getAction())) {
+                // 1. Tìm vị trí REJECT gần nhất
+                int rejectIndex = -1;
+                for (int i = logs.size() - 1; i >= 0; i--) {
+                        if ("REJECT".equals(logs.get(i).getAction())) {
+                                rejectIndex = i;
                                 break;
-                        }
-
-                        // Chỉ cập nhật khi là hành động chuyển duyệt (SUBMIT hoặc APPROVE)
-                        if (log.getFromUser() != null
-                                        && ("SUBMIT".equals(log.getAction()) || "APPROVE".equals(log.getAction()))) {
-                                senderBeforeCurrent = log.getFromUser();
                         }
                 }
 
-                return senderBeforeCurrent;
+                if (rejectIndex == -1)
+                        return null;
+
+                JdFlowLog rejectLog = logs.get(rejectIndex);
+
+                if (rejectLog.getToUser() == null)
+                        return null;
+
+                String receiverId = rejectLog.getToUser().getId(); // User2
+
+                // 2. Duyệt NGƯỢC để tìm người gửi gần nhất cho User2
+                for (int i = rejectIndex - 1; i >= 0; i--) {
+                        JdFlowLog log = logs.get(i);
+
+                        if (log.getToUser() != null
+                                        && log.getToUser().getId().equals(receiverId)
+                                        && ("SUBMIT".equals(log.getAction())
+                                                        || "APPROVE".equals(log.getAction())
+                                                        || "SUBMIT_TO_FINAL".equals(log.getAction()))) {
+
+                                return log.getFromUser(); // ✅ User1
+                        }
+                }
+
+                return null;
         }
 
         /*
@@ -240,6 +258,23 @@ public class JdFlowLogService {
 
                 return new RejectInfo(log.getComment(), rejector.getName(),
                                 position, department, positionCode);
+        }
+
+        /*
+         * ==========================================
+         * TÌM LOG GỬI VỀ GẦN NHẤT (có comment [TRẢ VỀ])
+         * ==========================================
+         */
+        public JdFlowLog findLatestReturnLog(Long jdId) {
+                List<JdFlowLog> logs = repository
+                                .findByJobDescriptionIdOrderByCreatedAtDesc(jdId);
+                return logs.stream()
+                                .filter(log -> ("SUBMIT".equals(log.getAction())
+                                                || "SUBMIT_TO_FINAL".equals(log.getAction()))
+                                                && log.getComment() != null
+                                                && log.getComment().startsWith("[TRẢ VỀ]"))
+                                .findFirst()
+                                .orElse(null);
         }
 
         /*

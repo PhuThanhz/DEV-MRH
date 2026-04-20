@@ -131,9 +131,8 @@ public class DashboardService {
                 boolean objectives = !objectiveRepository
                                 .findByDepartmentId(deptId)
                                 .isEmpty();
-
                 boolean departmentProcedure = !departmentProcedureRepository
-                                .findByDepartment_Id(deptId)
+                                .findByDepartmentId(deptId) // dùng query @Query mới trong repository
                                 .isEmpty();
 
                 boolean permissions = !permissionCategoryRepository

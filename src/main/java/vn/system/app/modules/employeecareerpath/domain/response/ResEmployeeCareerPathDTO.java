@@ -44,7 +44,7 @@ public class ResEmployeeCareerPathDTO {
     @Getter
     @Setter
     public static class UserInfo {
-        private Long id;
+        private String id;
         private String name;
         private String email;
         private String employeeCode; // ← THÊM

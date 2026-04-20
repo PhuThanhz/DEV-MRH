@@ -30,6 +30,6 @@ public class ConfidentialProcedureRequest {
 
     private Long sectionId;
 
-    private List<Long> userIds;
+    private List<String> userIds;
     private List<Long> roleIds;
 }

@@ -22,8 +22,9 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(length = 36, updatable = false, nullable = false)
+    private String id;
 
     private String name;
 

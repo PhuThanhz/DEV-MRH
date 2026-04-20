@@ -25,13 +25,16 @@ public class DepartmentProcedureHistory {
     private String procedureName;
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
 
     @Column(columnDefinition = "MEDIUMTEXT")
     private String fileUrls;
 
     private String note;
+
+    // ✅ Lưu đơn giản dạng String: "Phòng NS, Phòng KT, Phòng KD"
     private String departmentName;
+
     private String sectionName;
 
     private String action;

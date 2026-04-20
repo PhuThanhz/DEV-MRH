@@ -102,7 +102,7 @@ public class CareerPathController {
     }
 
     // =====================================================
-    // BULK CREATE (MỚI)
+    // BULK CREATE
     // =====================================================
     @PostMapping("/career-paths/bulk")
     @ApiMessage("Tạo hàng loạt lộ trình thăng tiến")
@@ -111,24 +111,23 @@ public class CareerPathController {
 
         HttpStatus status;
         if (result.getTotalCreated() == 0) {
-            status = HttpStatus.CONFLICT; // 409 — toàn bộ bị skip
+            status = HttpStatus.CONFLICT;
         } else if (result.getTotalSkipped() > 0) {
-            status = HttpStatus.MULTI_STATUS; // 207 — một phần skip
+            status = HttpStatus.MULTI_STATUS;
         } else {
-            status = HttpStatus.CREATED; // 201 — tất cả tạo thành công
+            status = HttpStatus.CREATED;
         }
 
         return ResponseEntity.status(status).body(result);
     }
 
     // =====================================================
-    // PREVIEW BULK (MỚI)
+    // PREVIEW BULK
     // =====================================================
     @PostMapping("/career-paths/preview")
     @ApiMessage("Xem trước hàng loạt lộ trình thăng tiến")
     public ResponseEntity<CareerPathPreviewResponse> previewBulk(
-            @RequestBody CareerPathBulkRequest req) {
-
+            @Valid @RequestBody CareerPathBulkRequest req) { // ✅ FIX: thêm @Valid
         return ResponseEntity.ok(
                 service.previewBulkCreate(
                         req.getDepartmentId(),
@@ -136,7 +135,7 @@ public class CareerPathController {
     }
 
     // =====================================================
-    // FETCH JOB TITLES BY LEVEL (MỚI)
+    // FETCH JOB TITLES BY LEVEL
     // =====================================================
     @GetMapping("/departments/{departmentId}/job-titles/by-level/{levelCode}")
     @ApiMessage("Danh sách chức danh theo level trong phòng ban")
@@ -147,7 +146,7 @@ public class CareerPathController {
     }
 
     // =====================================================
-    // COPY CONTENT FROM LEVEL (MỚI)
+    // COPY CONTENT FROM LEVEL
     // =====================================================
     @GetMapping("/departments/{departmentId}/career-paths/copy-from/{levelCode}")
     @ApiMessage("Sao chép nội dung từ level khác")

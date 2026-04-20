@@ -25,7 +25,7 @@ public class UserInfoService {
     // ======================================================
     // CREATE
     // ======================================================
-    public ResUserInfoDTO handleCreate(Long userId, ReqUserInfoDTO req) {
+    public ResUserInfoDTO handleCreate(String userId, ReqUserInfoDTO req) {
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy user ID = " + userId));
@@ -55,7 +55,7 @@ public class UserInfoService {
     // ======================================================
     // UPDATE
     // ======================================================
-    public ResUserInfoDTO handleUpdate(Long userId, ReqUserInfoDTO req) {
+    public ResUserInfoDTO handleUpdate(String userId, ReqUserInfoDTO req) {
 
         if (!userRepository.existsById(userId)) {
             throw new IdInvalidException("Không tìm thấy user ID = " + userId);
@@ -86,7 +86,7 @@ public class UserInfoService {
     // ======================================================
     // GET BY USER
     // ======================================================
-    public ResUserInfoDTO fetchByUserId(Long userId) {
+    public ResUserInfoDTO fetchByUserId(String userId) {
 
         if (!userRepository.existsById(userId)) {
             throw new IdInvalidException("Không tìm thấy user ID = " + userId);

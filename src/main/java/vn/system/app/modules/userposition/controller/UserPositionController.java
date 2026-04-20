@@ -29,7 +29,7 @@ public class UserPositionController {
     @PostMapping("/{userId}/positions")
     @ApiMessage("Gán chức danh cho user")
     public ResponseEntity<ResUserPositionDTO> create(
-            @PathVariable Long userId,
+            @PathVariable String userId,
             @Valid @RequestBody ReqCreateUserPositionDTO req) {
 
         ResUserPositionDTO res = service.handleCreate(userId, req);
@@ -53,7 +53,7 @@ public class UserPositionController {
     @GetMapping("/{userId}/positions")
     @ApiMessage("Danh sách chức danh của user")
     public ResponseEntity<List<ResUserPositionDTO>> getByUser(
-            @PathVariable Long userId) {
+            @PathVariable String userId) {
 
         List<ResUserPositionDTO> res = service.fetchByUser(userId);
         return ResponseEntity.ok(res);

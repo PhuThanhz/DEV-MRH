@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.jd.jdflow.domain.JdFlow;
+import vn.system.app.modules.jd.jdflow.domain.JdFlowLog;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdApproverDTO;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdFlowDTO;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdInboxDTO;
@@ -66,7 +67,7 @@ public class JdFlowService {
      * ==========================================
      */
     @Transactional
-    public JdFlow submitFlow(Long jdId, Long nextUserId, Boolean returnToPrevious, String comment) {
+    public JdFlow submitFlow(Long jdId, String nextUserId, Boolean returnToPrevious, String comment) {
 
         JobDescription jd = jobDescriptionRepository.findById(jdId)
                 .orElseThrow(() -> new RuntimeException("JD không tồn tại"));
@@ -84,28 +85,36 @@ public class JdFlowService {
 
         // ================== XỬ LÝ GỬI LẠI SAU KHI BỊ REJECTED ==================
         if ("REJECTED".equals(jd.getStatus())) {
+            // ✅ CHỈ currentUser mới được gửi lại
+            JdFlow existingFlow = jdFlowRepository.findByJobDescriptionId(jdId);
+            if (existingFlow == null)
+                throw new RuntimeException("JD Flow không tồn tại");
+            if (!fromUser.getId().equals(existingFlow.getCurrentUser().getId()))
+                throw new RuntimeException("Bạn không phải người được trả JD về, không có quyền gửi lại");
 
             User targetUser;
 
             if (Boolean.TRUE.equals(returnToPrevious)) {
-                // === NÚT "GỬI VỀ NGƯỜI TRƯỚC ĐÓ" ===
+                // === GỬI VỀ NGƯỜI TRƯỚC ===
+
+                if (comment == null || comment.trim().isEmpty()) {
+                    throw new RuntimeException("Phải nhập lý do khi gửi về người trước");
+                }
+
                 targetUser = logService.findLastSenderBeforeReject(jdId);
+
                 if (targetUser == null)
                     throw new RuntimeException("Không tìm thấy người duyệt trước đó");
 
-                // Tự động thêm lý do từ chối để người trước biết "đường xưa"
-                if (finalComment == null || finalComment.trim().isEmpty()) {
-                    JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jdId);
-                    if (rejectInfo != null && rejectInfo.getComment() != null
-                            && !rejectInfo.getComment().trim().isEmpty()) {
-                        finalComment = "[GỬI VỀ NGƯỜI TRƯỚC] " + rejectInfo.getComment();
-                    } else {
-                        finalComment = "[GỬI VỀ NGƯỜI TRƯỚC] Người duyệt sau từ chối và yêu cầu xem xét lại";
-                    }
-                }
+                finalComment = "[TRẢ VỀ] " + comment;
+
+                nextUserId = targetUser.getId();
+
             } else {
-                // === NÚT "GỬI LẠI CHO NGƯỜI TỪ CHỐI" ===
+                // === GỬI LẠI CHO NGƯỜI TỪ CHỐI ===
+
                 targetUser = logService.findLastSender(jdId);
+
                 if (targetUser == null)
                     throw new RuntimeException("Không tìm thấy người từ chối gần nhất");
             }
@@ -114,9 +123,8 @@ public class JdFlowService {
             if (targetUser.getId().equals(fromUser.getId()))
                 throw new RuntimeException("Bạn không thể gửi lại JD cho chính mình sau khi bị từ chối");
 
-            // Nếu frontend không truyền nextUserId → tự động gán
-            if (nextUserId == null)
-                nextUserId = targetUser.getId();
+            // 🔥 LUÔN dùng user backend tính
+            nextUserId = targetUser.getId();
         }
 
         if (nextUserId == null)
@@ -128,9 +136,16 @@ public class JdFlowService {
         if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể gửi JD duyệt cho chính mình");
 
-        if (!permissionService.hasApprovePermission(toUser)
-                && !permissionService.hasApproveFinalPermission(toUser))
+        User submitUserCheck = logService.findSubmitUser(jdId);
+        boolean isSendingBackToCreator = Boolean.TRUE.equals(returnToPrevious)
+                && submitUserCheck != null
+                && toUser.getId().equals(submitUserCheck.getId());
+
+        if (!isSendingBackToCreator
+                && !permissionService.hasApprovePermission(toUser)
+                && !permissionService.hasApproveFinalPermission(toUser)) {
             throw new RuntimeException("Người nhận không có quyền duyệt JD");
+        }
 
         // Reset status khi gửi lại từ REJECTED
         if ("REJECTED".equals(jd.getStatus()))
@@ -144,9 +159,18 @@ public class JdFlowService {
 
         flow.setFromUser(fromUser);
         flow.setCurrentUser(toUser);
-        flow.setStatus("IN_REVIEW");
-        jd.setStatus("IN_REVIEW");
 
+        // ✅ Dùng lại submitUserCheck thay vì gọi lại lần 2
+        boolean isReturningToCreator = submitUserCheck != null
+                && toUser.getId().equals(submitUserCheck.getId());
+
+        if (Boolean.TRUE.equals(returnToPrevious) && isReturningToCreator) {
+            flow.setStatus("REJECTED");
+            jd.setStatus("REJECTED");
+        } else {
+            flow.setStatus("IN_REVIEW");
+            jd.setStatus("IN_REVIEW");
+        }
         jobDescriptionRepository.save(jd);
         jdFlowRepository.save(flow);
 
@@ -166,7 +190,7 @@ public class JdFlowService {
      * ==========================================
      */
     @Transactional
-    public JdFlow approveFlow(Long jdId, Long nextUserId) {
+    public JdFlow approveFlow(Long jdId, String nextUserId) {
 
         JdFlow flow = jdFlowRepository.findByJobDescriptionId(jdId);
 
@@ -388,20 +412,43 @@ public class JdFlowService {
 
             if ("REJECTED".equals(jd.getStatus())) {
                 JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jd.getId());
-                if (rejectInfo != null) {
+                User lastSender = logService.findLastSender(jd.getId());
+                JdFlowLog rejectLog = logService.findLatestRejectLog(jd.getId());
+
+                boolean rejectorIsLastSender = lastSender != null
+                        && rejectLog != null
+                        && rejectLog.getFromUser() != null
+                        && lastSender.getId().equals(rejectLog.getFromUser().getId());
+
+                if (rejectInfo != null && rejectorIsLastSender) {
                     dto.setRejectComment(rejectInfo.getComment());
                     dto.setRejectorName(rejectInfo.getRejectorName());
                     dto.setRejectorPosition(rejectInfo.getRejectorPosition());
                     dto.setRejectorDepartment(rejectInfo.getRejectorDepartment());
                     dto.setRejectorPositionCode(rejectInfo.getRejectorPositionCode());
+                } else {
+                    // ✅ Hiện comment [TRẢ VỀ] từ người gửi về
+                    JdFlowLog returnLog = logService.findLatestReturnLog(jd.getId());
+                    if (returnLog != null && returnLog.getComment() != null) {
+                        dto.setRejectComment(returnLog.getComment());
+                        if (returnLog.getFromUser() != null) {
+                            dto.setRejectorName(returnLog.getFromUser().getName());
+                        }
+                    }
                 }
-                // ── THÊM VÀO ĐÂY ──
+
                 User senderBefore = logService.findLastSenderBeforeReject(jd.getId());
                 User submitUser = logService.findSubmitUser(jd.getId());
+                boolean isCreator = submitUser != null
+                        && flow.getCurrentUser() != null
+                        && submitUser.getId().equals(flow.getCurrentUser().getId());
+
+                dto.setCreator(isCreator);
+
                 dto.setCanReturnToPrevious(
-                        senderBefore != null &&
-                                submitUser != null &&
-                                !senderBefore.getId().equals(submitUser.getId()));
+                        !isCreator &&
+                                senderBefore != null &&
+                                !senderBefore.getId().equals(flow.getCurrentUser().getId()));
             }
 
             return dto;
@@ -427,7 +474,22 @@ public class JdFlowService {
                 });
     }
 
-    private List<ResJdApproverDTO.PositionInfo> buildPositions(Long userId) {
+    // ← THÊM VÀO ĐÂY
+    private boolean isUserInCompany(User u, Long companyId) {
+        return userPositionRepository.findByUser_IdAndActiveTrue(u.getId())
+                .stream()
+                .anyMatch(pos -> {
+                    Long cId = switch (pos.getSource().toUpperCase()) {
+                        case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();
+                        case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getCompany().getId();
+                        case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
+                        default -> null;
+                    };
+                    return companyId.equals(cId);
+                });
+    }
+
+    private List<ResJdApproverDTO.PositionInfo> buildPositions(String userId) {
         return userPositionRepository.findByUser_IdAndActiveTrue(userId)
                 .stream()
                 .map(pos -> {
@@ -464,13 +526,22 @@ public class JdFlowService {
                 .collect(Collectors.toList());
     }
 
-    public List<ResJdApproverDTO> fetchApprovers() {
+    // Thành:
+    public List<ResJdApproverDTO> fetchApprovers(Long jdId) {
+        Long companyId = null;
+        if (jdId != null) {
+            JobDescription jd = jobDescriptionRepository.findById(jdId).orElse(null);
+            if (jd != null && jd.getCompany() != null)
+                companyId = jd.getCompany().getId();
+        }
+        final Long finalCompanyId = companyId;
         UserScopeContext.UserScope scope = UserScopeContext.get();
 
         return userRepository.findAll().stream()
                 .filter(u -> isUserInScope(u, scope)
                         && (permissionService.hasApprovePermission(u)
-                                || permissionService.hasApproveFinalPermission(u)))
+                                || permissionService.hasApproveFinalPermission(u))
+                        && (finalCompanyId == null || isUserInCompany(u, finalCompanyId)))
                 .map(u -> {
                     ResJdApproverDTO dto = new ResJdApproverDTO(
                             u.getId(),
@@ -484,12 +555,21 @@ public class JdFlowService {
                 .collect(Collectors.toList());
     }
 
-    public List<ResJdApproverDTO> fetchIssuers() {
+    // Thành:
+    public List<ResJdApproverDTO> fetchIssuers(Long jdId) {
+        Long companyId = null;
+        if (jdId != null) {
+            JobDescription jd = jobDescriptionRepository.findById(jdId).orElse(null);
+            if (jd != null && jd.getCompany() != null)
+                companyId = jd.getCompany().getId();
+        }
+        final Long finalCompanyId = companyId;
         UserScopeContext.UserScope scope = UserScopeContext.get();
 
         return userRepository.findAll().stream()
                 .filter(u -> isUserInScope(u, scope)
-                        && permissionService.hasIssuePermission(u))
+                        && permissionService.hasIssuePermission(u)
+                        && (finalCompanyId == null || isUserInCompany(u, finalCompanyId)))
                 .map(u -> {
                     ResJdApproverDTO dto = new ResJdApproverDTO(
                             u.getId(),

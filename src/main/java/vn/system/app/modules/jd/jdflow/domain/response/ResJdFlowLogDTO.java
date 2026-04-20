@@ -27,10 +27,10 @@ public class ResJdFlowLogDTO {
     @Setter
     public static class UserInfo {
 
-        private Long id;
+        private String id;
         private String name;
 
-        public UserInfo(Long id, String name) {
+        public UserInfo(String id, String name) {
             this.id = id;
             this.name = name;
         }

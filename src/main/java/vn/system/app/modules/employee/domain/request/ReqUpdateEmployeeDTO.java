@@ -12,7 +12,7 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 public class ReqUpdateEmployeeDTO {
 
     @NotNull(message = "Id không được để trống")
-    private Long id;
+    private String id;
 
     // ===== USER =====
     private String name;

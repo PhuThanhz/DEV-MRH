@@ -58,13 +58,17 @@ public class DepartmentProcedureService {
 
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        if (req.getDepartmentId() != null &&
-                repository.existsByDepartment_IdAndProcedureCode(req.getDepartmentId(), code)) {
-            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
+        List<Department> departments = departmentRepository.findAllById(req.getDepartmentIds());
+        if (departments.isEmpty()) {
+            throw new IdInvalidException("Không tìm thấy phòng ban nào");
         }
 
-        Department department = departmentRepository.findById(req.getDepartmentId())
-                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        for (Department dept : departments) {
+            if (repository.existsByDepartmentIdAndProcedureCode(dept.getId(), code)) {
+                throw new IdInvalidException(
+                        "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
+            }
+        }
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -77,12 +81,12 @@ public class DepartmentProcedureService {
         entity.setProcedureName(req.getProcedureName());
         entity.setStatus(req.getStatus());
         entity.setPlanYear(req.getPlanYear());
-        entity.setIssuedDate(req.getIssuedDate()); // ← THÊM
+        entity.setIssuedDate(req.getIssuedDate());
         entity.setFileUrls(toJsonArray(req.getFileUrls()));
         entity.setNote(req.getNote());
         entity.setActive(true);
         entity.setVersion(1);
-        entity.setDepartment(department);
+        entity.setDepartments(departments);
         entity.setSection(section);
 
         return convertToDTO(repository.save(entity));
@@ -97,14 +101,17 @@ public class DepartmentProcedureService {
         DepartmentProcedure current = fetchById(id);
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        if (req.getDepartmentId() != null &&
-                repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
-                        req.getDepartmentId(), code, id)) {
-            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
+        List<Department> departments = departmentRepository.findAllById(req.getDepartmentIds());
+        if (departments.isEmpty()) {
+            throw new IdInvalidException("Không tìm thấy phòng ban nào");
         }
 
-        Department department = departmentRepository.findById(req.getDepartmentId())
-                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        for (Department dept : departments) {
+            if (repository.existsByDepartmentIdAndProcedureCodeAndIdNot(dept.getId(), code, id)) {
+                throw new IdInvalidException(
+                        "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
+            }
+        }
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -118,10 +125,10 @@ public class DepartmentProcedureService {
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
-        current.setIssuedDate(req.getIssuedDate()); // ← THÊM
+        current.setIssuedDate(req.getIssuedDate());
         current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
-        current.setDepartment(department);
+        current.setDepartments(departments);
         current.setSection(section);
 
         return convertToDTO(repository.save(current));
@@ -136,14 +143,17 @@ public class DepartmentProcedureService {
         DepartmentProcedure current = fetchById(id);
         String code = req.getProcedureCode().trim().toUpperCase();
 
-        if (req.getDepartmentId() != null &&
-                repository.existsByDepartment_IdAndProcedureCodeAndIdNot(
-                        req.getDepartmentId(), code, id)) {
-            throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
+        List<Department> departments = departmentRepository.findAllById(req.getDepartmentIds());
+        if (departments.isEmpty()) {
+            throw new IdInvalidException("Không tìm thấy phòng ban nào");
         }
 
-        Department department = departmentRepository.findById(req.getDepartmentId())
-                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        for (Department dept : departments) {
+            if (repository.existsByDepartmentIdAndProcedureCodeAndIdNot(dept.getId(), code, id)) {
+                throw new IdInvalidException(
+                        "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
+            }
+        }
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -157,10 +167,10 @@ public class DepartmentProcedureService {
         current.setProcedureName(req.getProcedureName());
         current.setStatus(req.getStatus());
         current.setPlanYear(req.getPlanYear());
-        current.setIssuedDate(req.getIssuedDate()); // ← THÊM
+        current.setIssuedDate(req.getIssuedDate());
         current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
-        current.setDepartment(department);
+        current.setDepartments(departments);
         current.setSection(section);
         current.setVersion(current.getVersion() + 1);
 
@@ -202,7 +212,7 @@ public class DepartmentProcedureService {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
-            Specification<DepartmentProcedure> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            Specification<DepartmentProcedure> scopeSpec = ScopeSpec.byCompanyScope("departments.company.id");
             spec = Specification.where(spec).and(scopeSpec);
         }
 
@@ -226,7 +236,7 @@ public class DepartmentProcedureService {
     // FETCH BY COMPANY
     // =====================================================
     public List<ResDepartmentProcedureDTO> fetchByCompany(Long companyId) {
-        return repository.findByDepartment_Company_Id(companyId)
+        return repository.findByCompanyId(companyId)
                 .stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
@@ -234,10 +244,7 @@ public class DepartmentProcedureService {
     // FETCH BY DEPARTMENT
     // =====================================================
     public List<ResDepartmentProcedureDTO> fetchByDepartment(Long departmentId) {
-        Specification<DepartmentProcedure> spec = (root, query, cb) -> cb.equal(
-                root.get("department").get("id"), departmentId);
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
-        return repository.findAll(spec)
+        return repository.findByDepartmentId(departmentId)
                 .stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
@@ -247,7 +254,6 @@ public class DepartmentProcedureService {
     public List<ResDepartmentProcedureDTO> fetchBySection(Long sectionId) {
         Specification<DepartmentProcedure> spec = (root, query, cb) -> cb.equal(
                 root.get("section").get("id"), sectionId);
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
         return repository.findAll(spec)
                 .stream().map(this::convertToDTO).collect(Collectors.toList());
     }
@@ -272,10 +278,16 @@ public class DepartmentProcedureService {
         history.setProcedureName(e.getProcedureName());
         history.setStatus(e.getStatus());
         history.setPlanYear(e.getPlanYear());
-        history.setIssuedDate(e.getIssuedDate()); // ← THÊM
+        history.setIssuedDate(e.getIssuedDate());
         history.setFileUrls(e.getFileUrls());
         history.setNote(e.getNote());
-        history.setDepartmentName(e.getDepartment() != null ? e.getDepartment().getName() : null);
+        // ✅ Ghép tên các phòng ban thành 1 string, ngăn cách bởi dấu phẩy
+        history.setDepartmentName(
+                e.getDepartments() != null
+                        ? e.getDepartments().stream()
+                                .map(Department::getName)
+                                .collect(Collectors.joining(", "))
+                        : null);
         history.setSectionName(e.getSection() != null ? e.getSection().getName() : null);
         history.setAction(action);
         history.setChangedAt(Instant.now());
@@ -314,13 +326,22 @@ public class DepartmentProcedureService {
         ResDepartmentProcedureDTO dto = new ResDepartmentProcedureDTO();
         dto.setId(e.getId());
 
-        if (e.getDepartment() != null) {
-            dto.setDepartmentId(e.getDepartment().getId());
-            dto.setDepartmentName(e.getDepartment().getName());
-            if (e.getDepartment().getCompany() != null) {
-                dto.setCompanyCode(e.getDepartment().getCompany().getCode());
-                dto.setCompanyName(e.getDepartment().getCompany().getName());
-            }
+        if (e.getDepartments() != null) {
+            List<ResDepartmentProcedureDTO.DepartmentRef> deptRefs = e.getDepartments()
+                    .stream()
+                    .map(d -> {
+                        ResDepartmentProcedureDTO.DepartmentRef ref = new ResDepartmentProcedureDTO.DepartmentRef();
+                        ref.setId(d.getId());
+                        ref.setName(d.getName());
+                        if (d.getCompany() != null) {
+                            ref.setCompanyId(d.getCompany().getId()); // ✅ THÊM
+                            ref.setCompanyName(d.getCompany().getName());
+                            ref.setCompanyCode(d.getCompany().getCode());
+                        }
+                        return ref;
+                    })
+                    .collect(Collectors.toList());
+            dto.setDepartments(deptRefs);
         }
 
         if (e.getSection() != null) {
@@ -332,7 +353,7 @@ public class DepartmentProcedureService {
         dto.setProcedureName(e.getProcedureName());
         dto.setStatus(e.getStatus());
         dto.setPlanYear(e.getPlanYear());
-        dto.setIssuedDate(e.getIssuedDate()); // ← THÊM
+        dto.setIssuedDate(e.getIssuedDate());
         dto.setFileUrls(fromJsonArray(e.getFileUrls()));
         dto.setNote(e.getNote());
         dto.setActive(e.isActive());
@@ -357,10 +378,10 @@ public class DepartmentProcedureService {
         dto.setProcedureName(h.getProcedureName());
         dto.setStatus(h.getStatus());
         dto.setPlanYear(h.getPlanYear());
-        dto.setIssuedDate(h.getIssuedDate()); // ← THÊM
+        dto.setIssuedDate(h.getIssuedDate());
         dto.setFileUrls(fromJsonArray(h.getFileUrls()));
         dto.setNote(h.getNote());
-        dto.setDepartmentName(h.getDepartmentName());
+        dto.setDepartmentName(h.getDepartmentName()); // ✅ String bình thường
         dto.setSectionName(h.getSectionName());
         dto.setAction(h.getAction());
         dto.setChangedAt(h.getChangedAt());

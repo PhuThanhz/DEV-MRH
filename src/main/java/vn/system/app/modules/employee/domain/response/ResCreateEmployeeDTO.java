@@ -9,7 +9,7 @@ import lombok.Setter;
 @Setter
 public class ResCreateEmployeeDTO {
 
-    private Long id;
+    private String id;
     private String name;
     private String email;
     private Boolean active;

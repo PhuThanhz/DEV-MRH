@@ -19,7 +19,7 @@ public class UserScopeContext {
     }
 
     public record UserScope(
-            Long userId,
+            String userId,
             Set<Long> companyIds,
             Set<Long> departmentIds, // ← dùng cho filter theo phòng ban
             boolean isSuperAdmin,

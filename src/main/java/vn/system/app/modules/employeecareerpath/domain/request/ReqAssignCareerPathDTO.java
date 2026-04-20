@@ -11,7 +11,7 @@ import lombok.Setter;
 public class ReqAssignCareerPathDTO {
 
     @NotNull(message = "Nhân viên không được để trống")
-    private Long userId;
+    private String userId;
 
     @NotNull(message = "Lộ trình không được để trống")
     private Long templateId; // assign vào template nào

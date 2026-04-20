@@ -14,11 +14,12 @@ public class ReqUpdateUserDTO {
 
     // ======= User =======
     @NotNull(message = "User id không được để trống")
-    private Long id;
+    private String id; // ✅ UUID String
 
     private String name;
     private Boolean active;
-    private Long roleId;
+
+    private Long roleId; // ✅ giữ Long vì Role vẫn number
 
     // ======= UserInfo (optional) =======
     private String employeeCode;

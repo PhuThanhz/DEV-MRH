@@ -12,11 +12,8 @@ public class ResDepartmentProcedureDTO {
 
     private Long id;
 
-    private String companyCode;
-    private String companyName;
-
-    private Long departmentId;
-    private String departmentName;
+    // ✅ Đổi từ 1 department sang list
+    private List<DepartmentRef> departments;
 
     private Long sectionId;
     private String sectionName;
@@ -25,7 +22,7 @@ public class ResDepartmentProcedureDTO {
     private String procedureName;
     private String status;
     private Integer planYear;
-    private Instant issuedDate; // ← THÊM
+    private Instant issuedDate;
     private List<String> fileUrls;
     private String note;
     private boolean active;
@@ -35,4 +32,16 @@ public class ResDepartmentProcedureDTO {
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
+
+    // ✅ Inner class chứa thông tin phòng ban
+    @Getter
+    @Setter
+    public static class DepartmentRef {
+        private Long id;
+        private String name;
+        private Long companyId; // ✅ THÊM
+
+        private String companyName;
+        private String companyCode;
+    }
 }

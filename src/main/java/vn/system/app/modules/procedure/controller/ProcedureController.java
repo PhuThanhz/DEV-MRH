@@ -28,7 +28,10 @@ import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentPr
 import vn.system.app.modules.departmentprocedure.service.DepartmentProcedureService;
 
 import vn.system.app.modules.confidentialprocedure.domain.ConfidentialProcedure;
+import vn.system.app.modules.confidentialprocedure.domain.request.ShareRequest;
 import vn.system.app.modules.confidentialprocedure.domain.response.ResConfidentialProcedureDTO;
+import vn.system.app.modules.confidentialprocedure.domain.response.ResShareLogDTO;
+import vn.system.app.modules.confidentialprocedure.domain.response.ResAccessDTO;
 import vn.system.app.modules.confidentialprocedure.service.ConfidentialProcedureService;
 
 @RestController
@@ -171,8 +174,9 @@ public class ProcedureController {
         if (type == ProcedureType.COMPANY) {
             Specification<CompanyProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
             return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
+            // ✅ Sửa thành
         } else if (type == ProcedureType.DEPARTMENT) {
-            Specification<DepartmentProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
+            Specification<DepartmentProcedure> spec = ScopeSpec.byCompanyScope("departments.company.id");
             return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
         } else {
             Specification<ConfidentialProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
@@ -202,7 +206,7 @@ public class ProcedureController {
             @Filter Specification<DepartmentProcedure> spec,
             Pageable pageable) {
 
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        spec = spec.and(ScopeSpec.byCompanyScope("departments.company.id"));
         return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
     }
 
@@ -290,5 +294,66 @@ public class ProcedureController {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
         }
+    }
+
+    // =====================================================
+    // SHARE (CHỈ CONFIDENTIAL)
+    // =====================================================
+    @PostMapping("/{id}/share")
+    @ApiMessage("Chia sẻ quy trình bảo mật")
+    public ResponseEntity<Void> share(
+            @PathVariable Long id,
+            @RequestBody ShareRequest req) {
+        confidentialProcedureService.handleShare(id, req);
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
+    // ACCESS LIST (CHỈ CONFIDENTIAL)
+    // =====================================================
+    @GetMapping("/{id}/access-list")
+    @ApiMessage("Danh sách người có quyền truy cập")
+    public ResponseEntity<List<ResAccessDTO>> getAccessList(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(confidentialProcedureService.handleGetAccessList(id));
+    }
+
+    // =====================================================
+    // REVOKE (CHỈ CONFIDENTIAL)
+    // =====================================================
+    @DeleteMapping("/{id}/access/{userId}")
+    @ApiMessage("Thu hồi quyền truy cập")
+    public ResponseEntity<Void> revoke(
+            @PathVariable Long id,
+            @PathVariable String userId) {
+        confidentialProcedureService.handleRevoke(id, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
+    // SHARE LOG — ĐÃ GỬI
+    // =====================================================
+    @GetMapping("/share-log/sent")
+    @ApiMessage("Lịch sử quy trình đã gửi")
+    public ResponseEntity<List<ResShareLogDTO>> getSentLog() {
+        return ResponseEntity.ok(confidentialProcedureService.handleGetSentLog());
+    }
+
+    // =====================================================
+    // SHARE LOG — ĐÃ NHẬN
+    // =====================================================
+    @GetMapping("/share-log/received")
+    @ApiMessage("Lịch sử quy trình đã nhận")
+    public ResponseEntity<List<ResShareLogDTO>> getReceivedLog() {
+        return ResponseEntity.ok(confidentialProcedureService.handleGetReceivedLog());
+    }
+
+    // =====================================================
+    // SHARE LOG — TẤT CẢ (ADMIN AUDIT)
+    // =====================================================
+    @GetMapping("/share-log/all")
+    @ApiMessage("Toàn bộ lịch sử share/revoke")
+    public ResponseEntity<ResultPaginationDTO> getAllShareLog(Pageable pageable) {
+        return ResponseEntity.ok(confidentialProcedureService.handleGetAllLog(pageable));
     }
 }

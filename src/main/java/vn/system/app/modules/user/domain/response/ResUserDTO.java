@@ -14,7 +14,7 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ResUserDTO {
-    private long id;
+    private String id; // 🔥 đổi từ long -> String (UUID)
     private String email;
     private String name;
     private String avatar;
