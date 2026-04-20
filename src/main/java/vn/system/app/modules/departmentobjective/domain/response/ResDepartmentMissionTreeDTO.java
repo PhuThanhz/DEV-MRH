@@ -1,5 +1,6 @@
 package vn.system.app.modules.departmentobjective.domain.response;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -55,6 +56,14 @@ public class ResDepartmentMissionTreeDTO {
         private Long id;
 
         private String content;
+
+        private String createdBy;
+
+        private String updatedBy;
+
+        private Instant createdAt;
+
+        private Instant updatedAt;
     }
 
     @Getter
@@ -75,6 +84,14 @@ public class ResDepartmentMissionTreeDTO {
         private Long id;
 
         private String content;
+
+        private String createdBy;
+
+        private String updatedBy;
+
+        private Instant createdAt;
+
+        private Instant updatedAt;
     }
 
     @Getter
@@ -84,5 +101,13 @@ public class ResDepartmentMissionTreeDTO {
         private Long id;
 
         private String content;
+
+        private String createdBy;
+
+        private String updatedBy;
+
+        private Instant createdAt;
+
+        private Instant updatedAt;
     }
 }

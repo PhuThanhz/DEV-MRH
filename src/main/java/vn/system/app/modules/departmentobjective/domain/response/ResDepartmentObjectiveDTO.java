@@ -26,6 +26,10 @@ public class ResDepartmentObjectiveDTO {
 
     private Instant updatedAt;
 
+    private String createdBy;
+
+    private String updatedBy;
+
     private DepartmentInfo department;
 
     private CompanyInfo company;

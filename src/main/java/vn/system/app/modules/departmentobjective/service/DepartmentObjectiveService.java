@@ -23,8 +23,6 @@ import vn.system.app.modules.departmentobjective.domain.request.ReqCreateDepartm
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentMissionTreeDTO;
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentObjectiveDTO;
 import vn.system.app.modules.departmentobjective.repository.DepartmentObjectiveRepository;
-import vn.system.app.common.util.ScopeSpec;
-import vn.system.app.common.util.UserScopeContext;
 
 @Service
 public class DepartmentObjectiveService {
@@ -178,12 +176,13 @@ public class DepartmentObjectiveService {
     public ResultPaginationDTO fetchAll(
             Specification<DepartmentObjective> spec,
             Pageable pageable) {
-        // ── ADMIN_SUB_2 filter ────────────────────────────────
+
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin()) {
             Specification<DepartmentObjective> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
             spec = Specification.where(spec).and(scopeSpec);
         }
+
         Page<DepartmentObjective> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -223,6 +222,8 @@ public class DepartmentObjectiveService {
         res.setStatus(e.getStatus());
         res.setCreatedAt(e.getCreatedAt());
         res.setUpdatedAt(e.getUpdatedAt());
+        res.setCreatedBy(e.getCreatedBy()); // ← thêm
+        res.setUpdatedBy(e.getUpdatedBy()); // ← thêm
 
         ResDepartmentObjectiveDTO.DepartmentInfo d = new ResDepartmentObjectiveDTO.DepartmentInfo();
 
@@ -262,9 +263,6 @@ public class DepartmentObjectiveService {
 
         List<DepartmentObjective> list = repository.findByDepartmentId(departmentId);
 
-        /*
-         * TỰ ĐỘNG CHECK CÓ BỘ PHẬN KHÔNG
-         */
         boolean hasSections = sectionService.existsByDepartmentId(departmentId);
 
         ResDepartmentMissionTreeDTO res = new ResDepartmentMissionTreeDTO();
@@ -294,6 +292,10 @@ public class DepartmentObjectiveService {
 
                             o.setId(i.getId());
                             o.setContent(i.getContent());
+                            o.setCreatedBy(i.getCreatedBy()); // ← thêm
+                            o.setUpdatedBy(i.getUpdatedBy()); // ← thêm
+                            o.setCreatedAt(i.getCreatedAt()); // ← thêm
+                            o.setUpdatedAt(i.getUpdatedAt()); // ← thêm
 
                             return o;
 
@@ -305,9 +307,6 @@ public class DepartmentObjectiveService {
          */
         if (hasSections) {
 
-            /*
-             * CÓ BỘ PHẬN → nhóm theo section
-             */
             Map<Section, List<DepartmentObjective>> map = list.stream()
                     .filter(i -> "TASK".equals(i.getType())
                             && i.getSection() != null)
@@ -331,6 +330,10 @@ public class DepartmentObjectiveService {
 
                                     ti.setId(t.getId());
                                     ti.setContent(t.getContent());
+                                    ti.setCreatedBy(t.getCreatedBy()); // ← thêm
+                                    ti.setUpdatedBy(t.getUpdatedBy()); // ← thêm
+                                    ti.setCreatedAt(t.getCreatedAt()); // ← thêm
+                                    ti.setUpdatedAt(t.getUpdatedAt()); // ← thêm
 
                                     return ti;
 
@@ -344,9 +347,6 @@ public class DepartmentObjectiveService {
 
         } else {
 
-            /*
-             * KHÔNG CÓ BỘ PHẬN → list thẳng
-             */
             res.setGeneralTasks(
                     list.stream()
                             .filter(i -> "TASK".equals(i.getType()))
@@ -356,6 +356,10 @@ public class DepartmentObjectiveService {
 
                                 ti.setId(i.getId());
                                 ti.setContent(i.getContent());
+                                ti.setCreatedBy(i.getCreatedBy()); // ← thêm
+                                ti.setUpdatedBy(i.getUpdatedBy()); // ← thêm
+                                ti.setCreatedAt(i.getCreatedAt()); // ← thêm
+                                ti.setUpdatedAt(i.getUpdatedAt()); // ← thêm
 
                                 return ti;
 
@@ -375,6 +379,10 @@ public class DepartmentObjectiveService {
 
                             a.setId(i.getId());
                             a.setContent(i.getContent());
+                            a.setCreatedBy(i.getCreatedBy()); // ← thêm
+                            a.setUpdatedBy(i.getUpdatedBy()); // ← thêm
+                            a.setCreatedAt(i.getCreatedAt()); // ← thêm
+                            a.setUpdatedAt(i.getUpdatedAt()); // ← thêm
 
                             return a;
 
