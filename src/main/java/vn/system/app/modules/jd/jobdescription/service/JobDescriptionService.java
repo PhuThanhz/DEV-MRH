@@ -27,13 +27,14 @@ import vn.system.app.modules.department.service.DepartmentService;
 import vn.system.app.modules.companyjobtitle.service.CompanyJobTitleService;
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
 import vn.system.app.modules.sectionjobtitle.service.SectionJobTitleService;
-
+import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.jd.jobdescriptionrequirement.service.JobDescriptionRequirementService;
 import vn.system.app.modules.jd.jobdescriptiontask.service.JobDescriptionTaskService;
 import vn.system.app.modules.jd.jobdescriptionposition.service.JobDescriptionPositionService;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.jd.jdflow.service.JdFlowLogService;
+import vn.system.app.modules.user.domain.User;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +42,7 @@ public class JobDescriptionService {
 
     private final JobDescriptionRepository repository;
     private final JdFlowLogService jdFlowLogService; // ← THÊM
+    private final UserRepository userRepository; // ← THÊM VÀO ĐÂY
 
     private final CompanyService companyService;
     private final DepartmentService departmentService;
@@ -121,7 +123,12 @@ public class JobDescriptionService {
         if ("IN_REVIEW".equals(current.getStatus())) {
             throw new RuntimeException("JD đang duyệt, không thể chỉnh sửa");
         }
-
+        if ("REJECTED".equals(current.getStatus())) {
+            String email = SecurityUtil.getCurrentUserLogin().orElse("");
+            if (!email.equals(current.getCreatedBy())) {
+                throw new RuntimeException("Bạn không có quyền chỉnh sửa JD này");
+            }
+        }
         current.setReportTo(req.getReportTo());
         current.setBelongsTo(req.getBelongsTo());
         current.setCollaborateWith(req.getCollaborateWith());
@@ -213,8 +220,14 @@ public class JobDescriptionService {
      * JD ĐÃ TỪ CHỐI
      * ==========================================
      */
+    // SỬA THÀNH — chỉ lấy JD mà TÔI đã từ chối
     public ResultPaginationDTO fetchRejected(Pageable pageable) {
-        return buildPaginationDTO(repository.findByStatus("REJECTED", pageable));
+        String email = SecurityUtil.getCurrentUserLogin().orElse("");
+        User me = userRepository.findByEmail(email);
+        if (me == null)
+            return buildPaginationDTO(Page.empty());
+        return buildPaginationDTO(
+                repository.findRejectedByUser(me.getId(), pageable));
     }
 
     /*

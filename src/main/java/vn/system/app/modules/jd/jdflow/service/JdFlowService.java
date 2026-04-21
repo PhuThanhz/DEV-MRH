@@ -392,8 +392,14 @@ public class JdFlowService {
             if (jd.getDepartment() != null)
                 dto.setDepartmentName(jd.getDepartment().getName());
 
-            if (jd.getCompanyJobTitle() != null)
+            // THAY BẰNG — ưu tiên department > section > company
+            if (jd.getDepartmentJobTitle() != null && jd.getDepartmentJobTitle().getJobTitle() != null) {
+                dto.setJobTitleName(jd.getDepartmentJobTitle().getJobTitle().getNameVi());
+            } else if (jd.getSectionJobTitle() != null && jd.getSectionJobTitle().getJobTitle() != null) {
+                dto.setJobTitleName(jd.getSectionJobTitle().getJobTitle().getNameVi());
+            } else if (jd.getCompanyJobTitle() != null && jd.getCompanyJobTitle().getJobTitle() != null) {
                 dto.setJobTitleName(jd.getCompanyJobTitle().getJobTitle().getNameVi());
+            }
 
             if (flow.getCurrentUser() != null) {
                 ResJdInboxDTO.UserSimple current = new ResJdInboxDTO.UserSimple();

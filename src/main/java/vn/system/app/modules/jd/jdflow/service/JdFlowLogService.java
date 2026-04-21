@@ -52,7 +52,8 @@ public class JdFlowLogService {
                 List<JdFlowLog> logs = repository
                                 .findByJobDescriptionIdOrderByCreatedAtAsc(jdId);
                 return logs.stream()
-                                .filter(log -> "SUBMIT".equals(log.getAction()))
+                                .filter(log -> "SUBMIT".equals(log.getAction())
+                                                || "SUBMIT_TO_FINAL".equals(log.getAction()))
                                 .map(JdFlowLog::getFromUser)
                                 .findFirst()
                                 .orElse(null);
