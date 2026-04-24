@@ -63,7 +63,7 @@ public class ProcedureShareTokenService {
                 .procedureType(req.getProcedureType())
                 .token(token)
                 .pin(pin)
-                .permission(req.getPermission())
+                // ❌ bỏ .permission(req.getPermission())
                 .expiresAt(req.getExpiresAt())
                 .maxAccessCount(req.getMaxAccessCount())
                 .qrCode(qrCode)
@@ -114,7 +114,7 @@ public class ProcedureShareTokenService {
         variables.put("shareUrl", shareUrl);
         variables.put("pin", entity.getPin());
         variables.put("qrBase64", entity.getQrCode());
-        variables.put("permission", entity.getPermission());
+        // ❌ bỏ variables.put("permission", ...)
         variables.put("expiresAt", entity.getExpiresAt());
 
         emailService.sendShareTokenEmail(
@@ -181,7 +181,7 @@ public class ProcedureShareTokenService {
                 .procedureId(entity.getProcedureId())
                 .procedureType(entity.getProcedureType())
                 .token(entity.getToken())
-                .permission(entity.getPermission())
+                // ❌ bỏ .permission(entity.getPermission())
                 .expiresAt(entity.getExpiresAt())
                 .maxAccessCount(entity.getMaxAccessCount())
                 .accessCount(entity.getAccessCount())

@@ -21,11 +21,8 @@ public class ResPublicProcedureDTO {
     private String sectionName;
     private String note;
 
-    // null nếu permission = VIEW_INFO
-    private List<String> fileUrls;
-
-    // true chỉ khi permission = VIEW_ALL
-    private Boolean allowDownload;
+    private List<String> fileUrls; // luôn trả về
+    private Boolean allowDownload; // luôn true
 
     private Integer accessCount;
     private Integer maxAccessCount;

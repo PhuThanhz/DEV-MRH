@@ -61,12 +61,11 @@ public class PublicProcedureViewService {
     }
 
     // =====================================================
-    // BUILD DTO THEO PERMISSION
+    // BUILD DTO (bỏ permission, luôn trả fileUrls + allowDownload = true)
     // =====================================================
     public ResPublicProcedureDTO buildPublicDTO(ProcedureShareToken shareToken) {
         String type = shareToken.getProcedureType();
         Long id = shareToken.getProcedureId();
-        String permission = shareToken.getPermission();
 
         return switch (type) {
             case "COMPANY" -> {
@@ -86,8 +85,8 @@ public class PublicProcedureViewService {
                         .departmentName(p.getDepartment() != null ? p.getDepartment().getName() : null)
                         .sectionName(p.getSection() != null ? p.getSection().getName() : null)
                         .note(p.getNote())
-                        .fileUrls(resolveFileUrls(permission, p.getFileUrls()))
-                        .allowDownload(resolveAllowDownload(permission))
+                        .fileUrls(parseFileUrls(p.getFileUrls()))
+                        .allowDownload(true)
                         .accessCount(shareToken.getAccessCount())
                         .maxAccessCount(shareToken.getMaxAccessCount())
                         .expiresAt(shareToken.getExpiresAt())
@@ -115,8 +114,8 @@ public class PublicProcedureViewService {
                         .departmentName(deptName)
                         .sectionName(p.getSection() != null ? p.getSection().getName() : null)
                         .note(p.getNote())
-                        .fileUrls(resolveFileUrls(permission, p.getFileUrls()))
-                        .allowDownload(resolveAllowDownload(permission))
+                        .fileUrls(parseFileUrls(p.getFileUrls()))
+                        .allowDownload(true)
                         .accessCount(shareToken.getAccessCount())
                         .maxAccessCount(shareToken.getMaxAccessCount())
                         .expiresAt(shareToken.getExpiresAt())
@@ -140,8 +139,8 @@ public class PublicProcedureViewService {
                         .departmentName(p.getDepartment() != null ? p.getDepartment().getName() : null)
                         .sectionName(p.getSection() != null ? p.getSection().getName() : null)
                         .note(p.getNote())
-                        .fileUrls(resolveFileUrls(permission, p.getFileUrls()))
-                        .allowDownload(resolveAllowDownload(permission))
+                        .fileUrls(parseFileUrls(p.getFileUrls()))
+                        .allowDownload(true)
                         .accessCount(shareToken.getAccessCount())
                         .maxAccessCount(shareToken.getMaxAccessCount())
                         .expiresAt(shareToken.getExpiresAt())
@@ -155,10 +154,7 @@ public class PublicProcedureViewService {
     // =====================================================
     // HELPER: parse fileUrls từ String JSON → List<String>
     // =====================================================
-    private List<String> resolveFileUrls(String permission, String fileUrlsJson) {
-        if ("VIEW_INFO".equals(permission)) {
-            return null;
-        }
+    private List<String> parseFileUrls(String fileUrlsJson) {
         if (fileUrlsJson == null || fileUrlsJson.isBlank()) {
             return List.of();
         }
@@ -168,13 +164,6 @@ public class PublicProcedureViewService {
         } catch (Exception e) {
             return List.of();
         }
-    }
-
-    // =====================================================
-    // HELPER: allowDownload theo permission
-    // =====================================================
-    private Boolean resolveAllowDownload(String permission) {
-        return "VIEW_ALL".equals(permission);
     }
 
     // =====================================================

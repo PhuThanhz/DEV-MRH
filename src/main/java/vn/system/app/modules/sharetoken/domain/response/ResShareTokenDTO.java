@@ -15,7 +15,6 @@ public class ResShareTokenDTO {
     private Long procedureId;
     private String procedureType;
     private String token;
-    private String permission;
     private Instant expiresAt;
     private Integer maxAccessCount;
     private Integer accessCount;

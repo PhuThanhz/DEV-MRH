@@ -17,9 +17,6 @@ public class CreateShareTokenRequest {
 
     private Boolean autoGeneratePin = false; // true = tự động sinh PIN 6 số
 
-    @NotNull
-    private String permission; // "VIEW_INFO" | "VIEW_FILE" | "VIEW_ALL"
-
     private Instant expiresAt; // nullable
 
     private Integer maxAccessCount; // nullable

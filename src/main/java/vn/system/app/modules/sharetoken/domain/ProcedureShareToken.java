@@ -30,9 +30,6 @@ public class ProcedureShareToken {
     @Column(name = "pin", length = 6)
     private String pin; // nullable
 
-    @Column(name = "permission", nullable = false, length = 20)
-    private String permission; // "VIEW_INFO" | "VIEW_FILE" | "VIEW_ALL"
-
     @Column(name = "expires_at")
     private Instant expiresAt;
 
