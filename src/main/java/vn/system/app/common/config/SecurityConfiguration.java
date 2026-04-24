@@ -50,7 +50,7 @@ public class SecurityConfiguration {
                 "/v3/api-docs/**",
                 "/swagger-ui/**", "/api/v1/users/request-password-code",
                 "/api/v1/users/confirm-reset-password",
-                "/swagger-ui.html", "/public/view/**",
+                "/swagger-ui.html", "/public/view/**", "/api/public/view/**", // ← thêm dòng này
 
         };
         http

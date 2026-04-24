@@ -13,15 +13,12 @@ import vn.system.app.modules.sharetoken.domain.request.VerifyPinRequest;
 import vn.system.app.modules.sharetoken.service.PublicProcedureViewService;
 
 @RestController
-@RequestMapping("/public/view")
+@RequestMapping("/api/public/view")
 @RequiredArgsConstructor
 public class PublicProcedureController {
 
     private final PublicProcedureViewService publicViewService;
 
-    // =====================================================
-    // XEM QUY TRÌNH QUA LINK PUBLIC (không cần JWT)
-    // =====================================================
     @GetMapping("/{token}")
     @ApiMessage("Xem quy trình qua link chia sẻ")
     public ResponseEntity<?> viewByToken(
@@ -35,9 +32,6 @@ public class PublicProcedureController {
         return ResponseEntity.ok(result);
     }
 
-    // =====================================================
-    // VERIFY PIN
-    // =====================================================
     @PostMapping("/{token}/verify-pin")
     @ApiMessage("Xác minh PIN để xem quy trình")
     public ResponseEntity<?> verifyPin(
@@ -52,13 +46,9 @@ public class PublicProcedureController {
         return ResponseEntity.ok(result);
     }
 
-    // =====================================================
-    // HELPER: lấy IP thật của client (qua proxy/nginx)
-    // =====================================================
     private String resolveClientIp(HttpServletRequest request) {
         String ip = request.getHeader("X-Forwarded-For");
         if (ip != null && !ip.isBlank()) {
-            // X-Forwarded-For có thể chứa nhiều IP: "client, proxy1, proxy2"
             return ip.split(",")[0].trim();
         }
         return request.getRemoteAddr();
