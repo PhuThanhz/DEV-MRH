@@ -33,6 +33,8 @@ public class ResConfidentialProcedureDTO {
     private Instant issuedDate; // ← THÊM
     private String createdByName; // ← THÊM
 
+    private String qrToken;
+    private String qrCode;
     private List<String> userIds;
     private List<Long> roleIds;
 

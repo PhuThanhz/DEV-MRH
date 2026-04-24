@@ -18,6 +18,7 @@ import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 
 import vn.system.app.modules.procedure.enums.ProcedureType;
+import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 
 import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
 import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureDTO;
@@ -42,6 +43,7 @@ public class ProcedureController {
     private final CompanyProcedureService companyProcedureService;
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
+    private final ProcedureQrService procedureQrService;
 
     // =====================================================
     // CREATE
@@ -174,7 +176,6 @@ public class ProcedureController {
         if (type == ProcedureType.COMPANY) {
             Specification<CompanyProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
             return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
-            // ✅ Sửa thành
         } else if (type == ProcedureType.DEPARTMENT) {
             Specification<DepartmentProcedure> spec = ScopeSpec.byCompanyScope("departments.company.id");
             return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
@@ -293,6 +294,26 @@ public class ProcedureController {
         } else {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
+        }
+    }
+
+    // =====================================================
+    // SCAN QR NỘI BỘ
+    // =====================================================
+    @GetMapping("/qr/{token}")
+    @ApiMessage("Quét mã QR nội bộ")
+    public ResponseEntity<?> scanQr(@PathVariable String token) {
+        ProcedureQrService.ScanResult result = procedureQrService.resolveAndCheckAccess(token);
+
+        if ("COMPANY".equals(result.type)) {
+            return ResponseEntity.ok(companyProcedureService.convertToDTO(
+                    companyProcedureService.fetchById(result.id)));
+        } else if ("DEPARTMENT".equals(result.type)) {
+            return ResponseEntity.ok(departmentProcedureService.convertToDTO(
+                    departmentProcedureService.fetchById(result.id)));
+        } else {
+            return ResponseEntity.ok(confidentialProcedureService.convertToDTO(
+                    confidentialProcedureService.fetchById(result.id)));
         }
     }
 

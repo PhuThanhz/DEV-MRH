@@ -44,6 +44,11 @@ public class ConfidentialProcedure {
     @Column(nullable = false)
     private Integer version = 1;
 
+    @Column(name = "qr_token", length = 36)
+    private String qrToken;
+
+    @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
+    private String qrCode;
     // ===== RELATIONSHIP =====
 
     @ManyToOne(fetch = FetchType.LAZY)

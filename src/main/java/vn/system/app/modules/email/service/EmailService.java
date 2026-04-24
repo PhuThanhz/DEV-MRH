@@ -75,7 +75,42 @@ public class EmailService {
     public void sendTemplateEmail(String to, String subject, Map<String, Object> variables) {
         Context context = new Context();
         variables.forEach(context::setVariable);
+
         String content = templateEngine.process("otp", context);
         this.sendEmailSync(to, subject, content, false, true);
+    }
+
+    @Async
+    public void sendShareTokenEmail(String to, String subject, Map<String, Object> variables) {
+        try {
+            MimeMessage mimeMessage = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, StandardCharsets.UTF_8.name());
+
+            helper.setTo(to);
+            helper.setSubject(subject);
+
+            String qrCid = "qr-code-image";
+            variables.put("qrCid", qrCid);
+
+            System.out.println("DEBUG PIN: " + variables.get("pin"));
+            System.out.println("DEBUG QR null? " + (variables.get("qrBase64") == null));
+
+            Context context = new Context();
+            variables.forEach(context::setVariable);
+            String content = templateEngine.process("share-token", context);
+            helper.setText(content, true);
+
+            String qrBase64 = (String) variables.get("qrBase64");
+            if (qrBase64 != null) {
+                byte[] qrBytes = java.util.Base64.getDecoder().decode(qrBase64);
+                helper.addInline(qrCid,
+                        new org.springframework.core.io.ByteArrayResource(qrBytes),
+                        "image/png");
+            }
+
+            javaMailSender.send(mimeMessage);
+        } catch (Exception e) {
+            System.out.println("ERROR SEND SHARE EMAIL: " + e);
+        }
     }
 }

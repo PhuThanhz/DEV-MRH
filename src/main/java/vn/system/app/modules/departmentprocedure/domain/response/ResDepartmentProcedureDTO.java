@@ -32,6 +32,8 @@ public class ResDepartmentProcedureDTO {
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
+    private String qrToken;
+    private String qrCode;
 
     // ✅ Inner class chứa thông tin phòng ban
     @Getter

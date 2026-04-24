@@ -113,7 +113,6 @@ public class PermissionInterceptor implements HandlerInterceptor {
                         isSuperAdmin,
                         isAdminLevel,
                         isCompanyLevel));
-                // ─────────────────────────────────────────────────────────
 
                 Role role = user.getRole();
                 if (role != null) {

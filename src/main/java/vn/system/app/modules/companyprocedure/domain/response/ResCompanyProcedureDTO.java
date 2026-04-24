@@ -33,6 +33,8 @@ public class ResCompanyProcedureDTO {
     private boolean active;
     private Integer version; // ← thêm vào đây
     private Instant issuedDate; // ← THÊM — sau version
+    private String qrToken;
+    private String qrCode;
 
     // ===== Audit =====
     private Instant createdAt;

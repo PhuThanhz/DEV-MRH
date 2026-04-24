@@ -39,6 +39,9 @@ dependencies {
     implementation 'org.json:json:20231013'
 	implementation 'org.seleniumhq.selenium:selenium-java:4.15.0'
 
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.zxing:javase:3.5.3'
+
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	runtimeOnly("com.mysql:mysql-connector-j")
     // nếu dùng WebDriver manager để auto download driver

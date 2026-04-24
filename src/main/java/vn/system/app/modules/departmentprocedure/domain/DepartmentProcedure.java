@@ -44,6 +44,11 @@ public class DepartmentProcedure {
     @Column(nullable = false)
     private Integer version = 1;
 
+    @Column(name = "qr_token", length = 36)
+    private String qrToken;
+
+    @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
+    private String qrCode;
     // ✅ Đổi từ ManyToOne sang ManyToMany
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "department_procedure_mapping", joinColumns = @JoinColumn(name = "procedure_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))

@@ -22,7 +22,7 @@ import vn.system.app.common.util.error.IdInvalidException;
 
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
-
+import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
 
@@ -36,7 +36,7 @@ import vn.system.app.modules.companyprocedure.repository.CompanyProcedureHistory
 
 @Service
 public class CompanyProcedureService {
-
+    private final ProcedureQrService qrService;
     private final CompanyProcedureRepository repository;
     private final CompanyProcedureHistoryRepository historyRepository;
     private final DepartmentRepository departmentRepository;
@@ -47,11 +47,13 @@ public class CompanyProcedureService {
             CompanyProcedureRepository repository,
             CompanyProcedureHistoryRepository historyRepository,
             DepartmentRepository departmentRepository,
-            SectionRepository sectionRepository) {
+            SectionRepository sectionRepository,
+            ProcedureQrService qrService) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
+        this.qrService = qrService;
     }
 
     // =====================================================
@@ -92,7 +94,11 @@ public class CompanyProcedureService {
         entity.setSection(section);
         entity.setIssuedDate(req.getIssuedDate()); // ← THÊM
 
-        return convertToDTO(repository.save(entity));
+        CompanyProcedure saved = repository.save(entity);
+        saved.setQrToken(qrService.buildQrToken());
+        saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
+        repository.save(saved);
+        return convertToDTO(saved);
     }
 
     // =====================================================
@@ -359,6 +365,11 @@ public class CompanyProcedureService {
         dto.setActive(e.isActive());
         dto.setVersion(e.getVersion());
         dto.setIssuedDate(e.getIssuedDate()); // ← THÊM
+        if (e.getQrToken() != null) {
+            dto.setQrToken(e.getQrToken());
+            dto.setQrCode(qrService.buildQrBase64(e.getQrToken()));
+        }
+
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());

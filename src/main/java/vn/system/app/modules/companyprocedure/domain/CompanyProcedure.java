@@ -52,6 +52,11 @@ public class CompanyProcedure {
     private Section section;
     private Instant issuedDate; // ← THÊM — ngày ban hành do user chọn
 
+    @Column(name = "qr_token", length = 36)
+    private String qrToken;
+
+    @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
+    private String qrCode;
     // ===== AUDIT =====
 
     private Instant createdAt;

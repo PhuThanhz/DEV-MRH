@@ -22,6 +22,7 @@ import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
+import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
 import vn.system.app.modules.confidentialprocedure.domain.*;
@@ -35,7 +36,7 @@ import vn.system.app.modules.confidentialprocedure.repository.*;
 
 @Service
 public class ConfidentialProcedureService {
-
+    private final ProcedureQrService qrService;
     private final ConfidentialProcedureRepository repository;
     private final ConfidentialProcedureHistoryRepository historyRepository;
     private final ConfidentialProcedureAccessRepository accessRepository;
@@ -57,7 +58,8 @@ public class ConfidentialProcedureService {
             SectionRepository sectionRepository,
             UserRepository userRepository,
             ConfidentialAccessService accessService,
-            ConfidentialShareLogService shareLogService) {
+            ConfidentialShareLogService shareLogService,
+            ProcedureQrService qrService) {
 
         this.repository = repository;
         this.historyRepository = historyRepository;
@@ -67,6 +69,7 @@ public class ConfidentialProcedureService {
         this.userRepository = userRepository;
         this.accessService = accessService;
         this.shareLogService = shareLogService;
+        this.qrService = qrService;
     }
 
     // =====================================================
@@ -101,6 +104,11 @@ public class ConfidentialProcedureService {
         entity.setIssuedDate(req.getIssuedDate());
 
         ConfidentialProcedure saved = repository.save(entity);
+
+        // Sinh QR sau khi có ID
+        saved.setQrToken(qrService.buildQrToken());
+        saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
+        repository.save(saved);
 
         // logShare = true: lần đầu tạo mới → ghi log SHARE thật sự
         accessService.saveAccessList(saved, req, true);
@@ -349,6 +357,12 @@ public class ConfidentialProcedureService {
         dto.setActive(e.isActive());
         dto.setVersion(e.getVersion());
         dto.setIssuedDate(e.getIssuedDate());
+        // MỚI
+        if (e.getQrToken() != null) {
+            dto.setQrToken(e.getQrToken());
+            dto.setQrCode(qrService.buildQrBase64(e.getQrToken()));
+        }
+
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());

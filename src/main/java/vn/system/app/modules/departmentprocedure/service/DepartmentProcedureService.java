@@ -20,6 +20,7 @@ import vn.system.app.modules.departmentprocedure.domain.request.DepartmentProced
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureDTO;
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureHistoryDTO;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureRepository;
+import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureHistoryRepository;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
@@ -31,7 +32,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class DepartmentProcedureService {
-
+    private final ProcedureQrService qrService;
     private final DepartmentProcedureRepository repository;
     private final DepartmentProcedureHistoryRepository historyRepository;
     private final DepartmentRepository departmentRepository;
@@ -43,11 +44,13 @@ public class DepartmentProcedureService {
             DepartmentProcedureRepository repository,
             DepartmentProcedureHistoryRepository historyRepository,
             DepartmentRepository departmentRepository,
-            SectionRepository sectionRepository) {
+            SectionRepository sectionRepository,
+            ProcedureQrService qrService) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
+        this.qrService = qrService;
     }
 
     // =====================================================
@@ -89,7 +92,11 @@ public class DepartmentProcedureService {
         entity.setDepartments(departments);
         entity.setSection(section);
 
-        return convertToDTO(repository.save(entity));
+        DepartmentProcedure saved = repository.save(entity);
+        saved.setQrToken(qrService.buildQrToken());
+        saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
+        repository.save(saved);
+        return convertToDTO(saved);
     }
 
     // =====================================================
@@ -211,9 +218,21 @@ public class DepartmentProcedureService {
             Specification<DepartmentProcedure> spec, Pageable pageable) {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
-            Specification<DepartmentProcedure> scopeSpec = ScopeSpec.byCompanyScope("departments.company.id");
-            spec = Specification.where(spec).and(scopeSpec);
+        // SỬA LẠI (đúng)
+        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+            // Filter công ty
+            spec = Specification.where(spec)
+                    .and(ScopeSpec.byCompanyScope("departments.company.id"));
+
+            // ADMIN_SUB_2 → thấy toàn bộ công ty, không lọc phòng ban
+            // Employee → chỉ thấy phòng ban của mình
+            if (!scope.isCompanyLevel()) {
+                spec = spec.and((root, query, cb) -> {
+                    query.distinct(true);
+                    return root.join("departments").get("id")
+                            .in(scope.departmentIds());
+                });
+            }
         }
 
         Page<DepartmentProcedure> page = repository.findAll(spec, pageable);
@@ -358,6 +377,11 @@ public class DepartmentProcedureService {
         dto.setNote(e.getNote());
         dto.setActive(e.isActive());
         dto.setVersion(e.getVersion());
+        if (e.getQrToken() != null) {
+            dto.setQrToken(e.getQrToken());
+            dto.setQrCode(qrService.buildQrBase64(e.getQrToken()));
+        }
+
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());
