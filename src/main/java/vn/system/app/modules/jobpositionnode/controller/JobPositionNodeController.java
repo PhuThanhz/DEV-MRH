@@ -1,6 +1,7 @@
 package vn.system.app.modules.jobpositionnode.controller;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.jobpositionnode.domain.JobPositionNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNode;
+import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNodeTree;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNode;
 import vn.system.app.modules.jobpositionnode.domain.response.ResJobPositionNodeDTO;
 import vn.system.app.modules.jobpositionnode.service.JobPositionNodeService;
@@ -26,7 +28,7 @@ public class JobPositionNodeController {
 
     /*
      * ==================================
-     * CREATE NODE
+     * CREATE NODE (single)
      * ==================================
      */
     @PostMapping("/job-position-nodes")
@@ -38,6 +40,24 @@ public class JobPositionNodeController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(this.nodeService.convertToDTO(node));
+    }
+
+    /*
+     * ==================================
+     * CREATE NODE TREE (bulk)
+     * ==================================
+     */
+    @PostMapping("/job-position-nodes/bulk-tree")
+    @ApiMessage("Bulk create node tree")
+    public ResponseEntity<List<ResJobPositionNodeDTO>> createNodeTree(
+            @RequestBody List<ReqCreateNodeTree> reqs) {
+
+        List<JobPositionNode> nodes = this.nodeService.handleCreateNodeTree(reqs);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(nodes.stream()
+                        .map(this.nodeService::convertToDTO)
+                        .collect(Collectors.toList()));
     }
 
     /*

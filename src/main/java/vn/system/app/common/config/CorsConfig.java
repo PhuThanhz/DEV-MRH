@@ -25,7 +25,7 @@ public class CorsConfig {
                         "https://hrm.vlotustech.vn"));
 
         // các method nào đc kết nối
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
         // các phần header được phép gửi lên
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "x-no-retry"));

@@ -14,6 +14,7 @@ import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 import vn.system.app.modules.jd.jobdescription.repository.JobDescriptionRepository;
 import vn.system.app.modules.jobpositionnode.domain.JobPositionNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNode;
+import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNodeTree;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNode;
 import vn.system.app.modules.jobpositionnode.domain.response.ResJobPositionNodeDTO;
 import vn.system.app.modules.jobpositionnode.repository.JobPositionNodeRepository;
@@ -37,7 +38,7 @@ public class JobPositionNodeService {
 
     /*
      * ==================================
-     * CREATE NODE
+     * CREATE NODE (single)
      * ==================================
      */
     @Transactional
@@ -65,6 +66,18 @@ public class JobPositionNodeService {
         }
 
         return this.nodeRepository.save(node);
+    }
+
+    /*
+     * ==================================
+     * CREATE NODE TREE (bulk)
+     * ==================================
+     */
+    @Transactional
+    public List<JobPositionNode> handleCreateNodeTree(List<ReqCreateNodeTree> reqs) {
+        return reqs.stream()
+                .map(req -> createRecursive(req, req.getParentId()))
+                .collect(Collectors.toList());
     }
 
     /*
@@ -185,9 +198,58 @@ public class JobPositionNodeService {
 
     /*
      * ==================================
-     * PRIVATE HELPER
+     * PRIVATE HELPER — đệ quy tạo cây
      * ==================================
      */
+
+    /**
+     * Tạo node hiện tại, sau đó đệ quy tạo các node con.
+     * parentId được truyền từ node cha vừa lưu xuống DB.
+     */
+    private JobPositionNode createRecursive(ReqCreateNodeTree req, Long parentId) {
+
+        // Resolve chart — ưu tiên chartId của node, fallback lên parentId không có
+        Long chartId = req.getChartId();
+        if (chartId == null) {
+            throw new IdInvalidException("chartId không được để trống");
+        }
+
+        JobPositionChart chart = this.chartRepository.findById(chartId)
+                .orElseThrow(() -> new IdInvalidException(
+                        "Chart với id = " + chartId + " không tồn tại"));
+
+        // Build node
+        JobPositionNode node = new JobPositionNode();
+        node.setName(req.getName());
+        node.setLevel(req.getLevel());
+        node.setHolderName(req.getHolderName());
+        node.setIsGoal(req.getIsGoal() != null ? req.getIsGoal() : false);
+        node.setParentId(parentId); // ⭐ gán parentId từ node cha đã lưu
+        node.setChart(chart);
+        node.setPosX(req.getPosX());
+        node.setPosY(req.getPosY());
+
+        // Gắn JD nếu có
+        if (req.getJobDescriptionId() != null) {
+            node.setJobDescription(
+                    resolvePublishedJD(req.getJobDescriptionId(), chart));
+        }
+
+        JobPositionNode saved = this.nodeRepository.save(node);
+
+        // ⭐ Đệ quy tạo các node con, truyền id của node vừa lưu làm parentId
+        if (req.getChildren() != null && !req.getChildren().isEmpty()) {
+            for (ReqCreateNodeTree child : req.getChildren()) {
+                // Kế thừa chartId nếu node con không tự khai báo
+                if (child.getChartId() == null) {
+                    child.setChartId(chartId);
+                }
+                createRecursive(child, saved.getId());
+            }
+        }
+
+        return saved;
+    }
 
     /**
      * Tìm JD theo id, kiểm tra:
