@@ -150,7 +150,7 @@ public class AuthController {
         return ResponseEntity.ok().body(userGetAccount);
     }
 
-    @GetMapping("/auth/refresh")
+    @PostMapping("/auth/refresh")
     @ApiMessage("Get User by refresh token")
     public ResponseEntity<ResLoginDTO> getRefreshToken(
             @CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token)
@@ -176,6 +176,9 @@ public class AuthController {
         if (currentUserDB == null || !currentUserDB.isActive()) {
             throw new IdInvalidException("Tài khoản đã bị vô hiệu hóa");
         }
+
+        // ✅ THÊM DÒNG NÀY
+        res.setUser(buildUserLogin(currentUserDB));
 
         // create access token
         String access_token = this.securityUtil.createAccessToken(email, res);
