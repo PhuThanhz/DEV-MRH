@@ -3,17 +3,28 @@ package vn.system.app.modules.document.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import vn.system.app.modules.document.domain.DocumentAccess;
+import vn.system.app.modules.document.domain.Document;
 
 @Repository
-public interface DocumentAccessRepository
-        extends JpaRepository<DocumentAccess, Long> {
+public interface DocumentRepository extends
+        JpaRepository<Document, Long>,
+        JpaSpecificationExecutor<Document> {
 
-    List<DocumentAccess> findByDocument_Id(Long documentId);
+    boolean existsByDocumentCode(String documentCode);
 
-    void deleteByDocument_Id(Long documentId);
+    boolean existsByDocumentCodeAndIdNot(String documentCode, Long id);
 
-    boolean existsByDocument_IdAndUserId(Long documentId, String userId);
+    @Query("SELECT d FROM Document d WHERE d.department.company.id = :companyId")
+    List<Document> findByCompanyId(@Param("companyId") Long companyId);
+
+    List<Document> findByDepartment_Id(Long departmentId);
+
+    List<Document> findBySection_Id(Long sectionId);
+
+    List<Document> findByCategory_Id(Long categoryId);
 }
