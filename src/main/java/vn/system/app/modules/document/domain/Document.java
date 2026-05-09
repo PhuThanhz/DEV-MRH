@@ -1,0 +1,96 @@
+package vn.system.app.modules.document.domain;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.modules.documentcategory.domain.DocumentCategory;
+import vn.system.app.modules.department.domain.Department;
+import vn.system.app.modules.section.domain.Section;
+import vn.system.app.modules.procedure.enums.ProcedureType;
+
+@Entity
+@Table(name = "document")
+@Getter
+@Setter
+@JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
+public class Document {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "document_code", length = 100, nullable = false)
+    private String documentCode;
+
+    @Column(name = "document_name", nullable = false)
+    private String documentName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    @JsonIgnoreProperties({ "documents" })
+    private DocumentCategory category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    @JsonIgnoreProperties({ "documents" })
+    private Department department;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_id")
+    @JsonIgnoreProperties({ "documents" })
+    private Section section;
+
+    private String status;
+    private Integer planYear;
+    private Instant issuedDate;
+
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String fileUrls;
+
+    private String note;
+
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(nullable = false)
+    private Integer version = 1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "procedure_type")
+    private ProcedureType procedureType;
+
+    @Column(name = "procedure_id")
+    private Long procedureId;
+
+    @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({ "document" })
+    private List<DocumentAccess> accessList = new ArrayList<>();
+
+    private Instant createdAt;
+    private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
+
+    @PrePersist
+    public void beforeCreate() {
+        this.createdAt = Instant.now();
+        this.createdBy = SecurityUtil.getCurrentUserLogin().orElse("");
+        this.active = true;
+        if (this.version == null)
+            this.version = 1;
+    }
+
+    @PreUpdate
+    public void beforeUpdate() {
+        this.updatedAt = Instant.now();
+        this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
+    }
+}
