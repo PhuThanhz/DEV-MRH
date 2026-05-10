@@ -20,6 +20,11 @@ import vn.system.app.modules.document.domain.Document;
 import vn.system.app.modules.document.domain.request.DocumentRequest;
 import vn.system.app.modules.document.domain.response.ResDocumentDTO;
 import vn.system.app.modules.document.service.DocumentService;
+import vn.system.app.modules.sharetoken.domain.ShareTokenAccessLog;
+import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
+import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
+import vn.system.app.modules.sharetoken.domain.response.ResShareTokenDTO;
+import vn.system.app.modules.sharetoken.service.ProcedureShareTokenService;
 
 @RestController
 @RequestMapping("/api/v1/documents")
@@ -27,6 +32,7 @@ import vn.system.app.modules.document.service.DocumentService;
 public class DocumentController {
 
     private final DocumentService service;
+    private final ProcedureShareTokenService shareTokenService;
 
     // =====================================================
     // CREATE
@@ -128,5 +134,61 @@ public class DocumentController {
     public ResponseEntity<List<ResDocumentDTO>> getByCategory(
             @PathVariable Long categoryId) {
         return ResponseEntity.ok(service.fetchByCategory(categoryId));
+    }
+
+    // =====================================================
+    // TẠO SHARE TOKEN
+    // =====================================================
+    @PostMapping("/{id}/share-tokens")
+    @ApiMessage("Tạo link chia sẻ văn bản")
+    public ResponseEntity<ResShareTokenDTO> createShareToken(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateShareTokenRequest req) {
+        service.fetchById(id); // kiểm tra document tồn tại
+        req.setProcedureType("DOCUMENT");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(shareTokenService.handleCreate(id, req));
+    }
+
+    // =====================================================
+    // DANH SÁCH SHARE TOKEN
+    // =====================================================
+    @GetMapping("/{id}/share-tokens")
+    @ApiMessage("Danh sách link chia sẻ của văn bản")
+    public ResponseEntity<List<ResShareTokenDTO>> getShareTokens(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(shareTokenService.fetchByProcedure(id, "DOCUMENT"));
+    }
+
+    // =====================================================
+    // THU HỒI SHARE TOKEN
+    // =====================================================
+    @PatchMapping("/share-tokens/{tokenId}/revoke")
+    @ApiMessage("Thu hồi link chia sẻ văn bản")
+    public ResponseEntity<Void> revokeShareToken(@PathVariable Long tokenId) {
+        shareTokenService.handleRevoke(tokenId);
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
+    // GỬI EMAIL CHIA SẺ
+    // =====================================================
+    @PostMapping("/share-tokens/{tokenId}/send-email")
+    @ApiMessage("Gửi email chia sẻ văn bản")
+    public ResponseEntity<Void> sendShareEmail(
+            @PathVariable Long tokenId,
+            @Valid @RequestBody SendShareEmailRequest req) {
+        shareTokenService.handleSendEmail(tokenId, req.getEmail());
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
+    // LỊCH SỬ TRUY CẬP SHARE TOKEN
+    // =====================================================
+    @GetMapping("/share-tokens/{tokenId}/access-logs")
+    @ApiMessage("Lịch sử truy cập link chia sẻ văn bản")
+    public ResponseEntity<List<ShareTokenAccessLog>> getAccessLogs(
+            @PathVariable Long tokenId) {
+        return ResponseEntity.ok(shareTokenService.fetchAccessLogs(tokenId));
     }
 }

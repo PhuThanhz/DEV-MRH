@@ -3,7 +3,6 @@ package vn.system.app.modules.sharetoken.domain.request;
 import java.time.Instant;
 
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,8 +10,7 @@ import lombok.Setter;
 @Setter
 public class CreateShareTokenRequest {
 
-    @NotNull
-    private String procedureType; // "COMPANY" | "DEPARTMENT" | "CONFIDENTIAL"
+    private String procedureType; // "COMPANY" | "DEPARTMENT" | "CONFIDENTIAL" | "DOCUMENT"
 
     private String pin; // nullable, tự nhập
 

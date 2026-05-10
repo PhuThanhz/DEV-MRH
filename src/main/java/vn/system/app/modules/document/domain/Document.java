@@ -49,7 +49,6 @@ public class Document {
     private Section section;
 
     private String status;
-    private Integer planYear;
     private Instant issuedDate;
 
     @Column(columnDefinition = "MEDIUMTEXT")
@@ -69,6 +68,12 @@ public class Document {
 
     @Column(name = "procedure_id")
     private Long procedureId;
+
+    @Column(name = "qr_token", length = 36, unique = true)
+    private String qrToken;
+
+    @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
+    private String qrCode;
 
     @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnoreProperties({ "document" })

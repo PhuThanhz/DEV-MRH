@@ -21,7 +21,6 @@ public class ResDocumentDTO {
     private SectionRef section;
 
     private String status;
-    private Integer planYear;
     private Instant issuedDate;
     private List<String> fileUrls;
     private String note;
@@ -30,6 +29,8 @@ public class ResDocumentDTO {
 
     private ProcedureType procedureType;
     private Long procedureId;
+
+    private String qrCode;
 
     // Danh sách userId được xem — chỉ có khi category.mappingProcedure = false
     private List<String> userIds;

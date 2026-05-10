@@ -21,6 +21,9 @@ import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureR
 import vn.system.app.modules.confidentialprocedure.domain.ConfidentialProcedure;
 import vn.system.app.modules.confidentialprocedure.repository.ConfidentialProcedureRepository;
 
+import vn.system.app.modules.document.domain.Document;
+import vn.system.app.modules.document.repository.DocumentRepository;
+
 @Service
 @RequiredArgsConstructor
 public class PublicProcedureViewService {
@@ -29,6 +32,7 @@ public class PublicProcedureViewService {
     private final CompanyProcedureRepository companyProcedureRepository;
     private final DepartmentProcedureRepository departmentProcedureRepository;
     private final ConfidentialProcedureRepository confidentialProcedureRepository;
+    private final DocumentRepository documentRepository;
     private final ObjectMapper objectMapper;
 
     // =====================================================
@@ -61,7 +65,7 @@ public class PublicProcedureViewService {
     }
 
     // =====================================================
-    // BUILD DTO (bỏ permission, luôn trả fileUrls + allowDownload = true)
+    // BUILD DTO
     // =====================================================
     public ResPublicProcedureDTO buildPublicDTO(ProcedureShareToken shareToken) {
         String type = shareToken.getProcedureType();
@@ -72,9 +76,8 @@ public class PublicProcedureViewService {
                 CompanyProcedure p = companyProcedureRepository.findById(id)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
 
-                if (!p.isActive()) {
+                if (!p.isActive())
                     throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
-                }
 
                 yield ResPublicProcedureDTO.builder()
                         .procedureCode(p.getProcedureCode())
@@ -97,9 +100,8 @@ public class PublicProcedureViewService {
                 DepartmentProcedure p = departmentProcedureRepository.findById(id)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
 
-                if (!p.isActive()) {
+                if (!p.isActive())
                     throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
-                }
 
                 String deptName = (p.getDepartments() != null && !p.getDepartments().isEmpty())
                         ? p.getDepartments().get(0).getName()
@@ -126,9 +128,8 @@ public class PublicProcedureViewService {
                 ConfidentialProcedure p = confidentialProcedureRepository.findById(id)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
 
-                if (!p.isActive()) {
+                if (!p.isActive())
                     throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
-                }
 
                 yield ResPublicProcedureDTO.builder()
                         .procedureCode(p.getProcedureCode())
@@ -147,7 +148,31 @@ public class PublicProcedureViewService {
                         .build();
             }
 
-            default -> throw new RuntimeException("Loại quy trình không hợp lệ: " + type);
+            case "DOCUMENT" -> {
+                Document doc = documentRepository.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy văn bản"));
+
+                if (!doc.isActive())
+                    throw new RuntimeException("Văn bản đã bị vô hiệu hóa");
+
+                yield ResPublicProcedureDTO.builder()
+                        .procedureCode(doc.getDocumentCode())
+                        .procedureName(doc.getDocumentName())
+                        .status(doc.getStatus())
+                        .version(doc.getVersion())
+                        .issuedDate(doc.getIssuedDate())
+                        .departmentName(doc.getDepartment() != null ? doc.getDepartment().getName() : null)
+                        .sectionName(doc.getSection() != null ? doc.getSection().getName() : null)
+                        .note(doc.getNote())
+                        .fileUrls(parseFileUrls(doc.getFileUrls()))
+                        .allowDownload(true)
+                        .accessCount(shareToken.getAccessCount())
+                        .maxAccessCount(shareToken.getMaxAccessCount())
+                        .expiresAt(shareToken.getExpiresAt())
+                        .build();
+            }
+
+            default -> throw new RuntimeException("Loại không hợp lệ: " + type);
         };
     }
 

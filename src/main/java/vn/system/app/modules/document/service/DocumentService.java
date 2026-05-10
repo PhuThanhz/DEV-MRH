@@ -29,6 +29,7 @@ import vn.system.app.modules.departmentprocedure.domain.request.DepartmentProced
 import vn.system.app.modules.departmentprocedure.service.DepartmentProcedureService;
 import vn.system.app.modules.confidentialprocedure.domain.request.ConfidentialProcedureRequest;
 import vn.system.app.modules.confidentialprocedure.service.ConfidentialProcedureService;
+import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ public class DocumentService {
     private final CompanyProcedureService companyProcedureService;
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
+    private final ProcedureQrService qrService;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -57,7 +59,8 @@ public class DocumentService {
             SectionRepository sectionRepository,
             CompanyProcedureService companyProcedureService,
             DepartmentProcedureService departmentProcedureService,
-            ConfidentialProcedureService confidentialProcedureService) {
+            ConfidentialProcedureService confidentialProcedureService,
+            ProcedureQrService qrService) {
         this.repository = repository;
         this.accessRepository = accessRepository;
         this.categoryRepository = categoryRepository;
@@ -66,6 +69,7 @@ public class DocumentService {
         this.companyProcedureService = companyProcedureService;
         this.departmentProcedureService = departmentProcedureService;
         this.confidentialProcedureService = confidentialProcedureService;
+        this.qrService = qrService;
     }
 
     // =====================================================
@@ -105,7 +109,6 @@ public class DocumentService {
         entity.setDepartment(department);
         entity.setSection(section);
         entity.setStatus(req.getStatus());
-        entity.setPlanYear(req.getPlanYear());
         entity.setIssuedDate(req.getIssuedDate());
         entity.setFileUrls(toJsonArray(req.getFileUrls()));
         entity.setNote(req.getNote());
@@ -118,7 +121,10 @@ public class DocumentService {
 
         Document saved = repository.save(entity);
 
-        // Lưu danh sách người được xem — chỉ khi không mapping procedure
+        saved.setQrToken(qrService.buildQrToken());
+        saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
+        repository.save(saved);
+
         if (!category.isMappingProcedure()) {
             saveAccessList(saved, req.getUserIds());
         }
@@ -163,7 +169,6 @@ public class DocumentService {
         current.setDepartment(department);
         current.setSection(section);
         current.setStatus(req.getStatus());
-        current.setPlanYear(req.getPlanYear());
         current.setIssuedDate(req.getIssuedDate());
         current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
@@ -178,12 +183,10 @@ public class DocumentService {
                 Long procedureId = autoCreateProcedure(req, code);
                 current.setProcedureId(procedureId);
             }
-            // Mapping procedure → xóa access list (người xem quản lý qua procedure)
             accessRepository.deleteByDocument_Id(current.getId());
         } else {
             current.setProcedureType(null);
             current.setProcedureId(null);
-            // Không mapping → cập nhật lại access list
             accessRepository.deleteByDocument_Id(current.getId());
             saveAccessList(current, req.getUserIds());
         }
@@ -300,7 +303,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -313,7 +315,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -326,7 +327,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -348,7 +348,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -361,7 +360,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -374,7 +372,6 @@ public class DocumentService {
                 r.setProcedureCode(code);
                 r.setProcedureName(req.getDocumentName());
                 r.setStatus(req.getStatus());
-                r.setPlanYear(req.getPlanYear());
                 r.setIssuedDate(req.getIssuedDate());
                 r.setFileUrls(req.getFileUrls());
                 r.setNote(req.getNote());
@@ -449,7 +446,6 @@ public class DocumentService {
         }
 
         dto.setStatus(e.getStatus());
-        dto.setPlanYear(e.getPlanYear());
         dto.setIssuedDate(e.getIssuedDate());
         dto.setFileUrls(fromJsonArray(e.getFileUrls()));
         dto.setNote(e.getNote());
@@ -457,12 +453,16 @@ public class DocumentService {
         dto.setVersion(e.getVersion());
         dto.setProcedureType(e.getProcedureType());
         dto.setProcedureId(e.getProcedureId());
+
+        if (e.getQrToken() != null) {
+            dto.setQrCode(qrService.buildQrBase64(e.getQrToken()));
+        }
+
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());
         dto.setUpdatedBy(e.getUpdatedBy());
 
-        // Map userIds từ accessList — chỉ có khi không mapping procedure
         if (e.getCategory() != null && !e.getCategory().isMappingProcedure()) {
             List<String> userIds = accessRepository.findByDocument_Id(e.getId())
                     .stream()
