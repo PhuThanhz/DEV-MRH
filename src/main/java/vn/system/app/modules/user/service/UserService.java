@@ -29,6 +29,7 @@ import vn.system.app.modules.userinfo.domain.UserInfo;
 import vn.system.app.modules.userinfo.repository.UserInfoRepository;
 import vn.system.app.modules.userposition.domain.UserPosition;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
+import vn.system.app.modules.usersession.service.UserSessionService;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -42,6 +43,7 @@ public class UserService {
     private final RoleService roleService;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    private final UserSessionService userSessionService;
 
     public UserService(
             UserRepository userRepository,
@@ -50,7 +52,8 @@ public class UserService {
             EmployeeCareerPathRepository employeeCareerPathRepository,
             RoleService roleService,
             EmailService emailService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            UserSessionService userSessionService) {
         this.userRepository = userRepository;
         this.userInfoRepository = userInfoRepository;
         this.userPositionRepository = userPositionRepository;
@@ -58,6 +61,7 @@ public class UserService {
         this.roleService = roleService;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
+        this.userSessionService = userSessionService;
     }
 
     // ======================================================
@@ -256,7 +260,7 @@ public class UserService {
             currentUser.setActive(req.getActive());
 
             if (!req.getActive()) {
-                currentUser.setRefreshToken(null);
+                this.userSessionService.deleteAllSessionsForUser(currentUser.getEmail());
             }
         }
 
@@ -327,25 +331,6 @@ public class UserService {
 
     public boolean isEmailExist(String email) {
         return this.userRepository.existsByEmail(email);
-    }
-
-    // ======================================================
-    // TOKEN UPDATE
-    // ======================================================
-    public void updateUserToken(String token, String email) {
-
-        User currentUser = this.handleGetUserByUsername(email);
-
-        if (currentUser == null) {
-            throw new IdInvalidException("User không tồn tại");
-        }
-
-        currentUser.setRefreshToken(token);
-        this.userRepository.save(currentUser);
-    }
-
-    public User getUserByRefreshTokenAndEmail(String token, String email) {
-        return this.userRepository.findByRefreshTokenAndEmail(token, email);
     }
 
     // ======================================================

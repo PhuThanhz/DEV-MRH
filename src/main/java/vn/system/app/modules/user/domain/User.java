@@ -33,9 +33,6 @@ public class User {
 
     private String password;
 
-    @Column(columnDefinition = "MEDIUMTEXT")
-    private String refreshToken;
-
     @Column(name = "avatar", columnDefinition = "TEXT")
     private String avatar;
 

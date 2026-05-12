@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.annotation.ApiMessage;
@@ -28,6 +29,7 @@ import vn.system.app.modules.auth.domain.response.ResLoginDTO;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.domain.response.ResCreateUserDTO;
 import vn.system.app.modules.user.service.UserService;
+import vn.system.app.modules.usersession.service.UserSessionService;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -37,6 +39,7 @@ public class AuthController {
     private final SecurityUtil securityUtil;
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
+    private final UserSessionService userSessionService;
 
     @Value("${lotusgroup.jwt.refresh-token-validity-in-seconds}")
     private long refreshTokenExpiration;
@@ -45,11 +48,13 @@ public class AuthController {
             AuthenticationManagerBuilder authenticationManagerBuilder,
             SecurityUtil securityUtil,
             UserService userService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            UserSessionService userSessionService) {
         this.authenticationManagerBuilder = authenticationManagerBuilder;
         this.securityUtil = securityUtil;
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
+        this.userSessionService = userSessionService;
     }
 
     // ── HELPER: map UserInfo entity → DTO ──────────────────────────────────────
@@ -81,7 +86,7 @@ public class AuthController {
     }
 
     @PostMapping("/auth/login")
-    public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDto) {
+    public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDto, HttpServletRequest request) {
         // Nạp input gồm username/password vào Security
         UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                 loginDto.getUsername(), loginDto.getPassword());
@@ -113,8 +118,18 @@ public class AuthController {
         // create refresh token
         String refresh_token = this.securityUtil.createRefreshToken(loginDto.getUsername(), res);
 
-        // update user
-        this.userService.updateUserToken(refresh_token, loginDto.getUsername());
+        // save session
+        String userAgent = request.getHeader("User-Agent");
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip != null && !ip.isBlank()) {
+            ip = ip.split(",")[0].trim();
+        } else {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isBlank()) {
+            ip = request.getRemoteAddr();
+        }
+        this.userSessionService.createSession(currentUserDB, refresh_token, userAgent, ip);
 
         // set cookies
         ResponseCookie resCookies = ResponseCookie
@@ -163,8 +178,13 @@ public class AuthController {
         Jwt decodedToken = this.securityUtil.checkValidRefreshToken(refresh_token);
         String email = decodedToken.getSubject();
 
-        // check user by token + email
-        User currentUser = this.userService.getUserByRefreshTokenAndEmail(refresh_token, email);
+        // check session
+        var sessionOpt = this.userSessionService.findByRefreshToken(refresh_token);
+        if (sessionOpt.isEmpty()) {
+            throw new IdInvalidException("Refresh token không hợp lệ hoặc đã bị đăng xuất khỏi thiết bị này.");
+        }
+        
+        User currentUser = sessionOpt.get().getUser();
 
         if (currentUser == null || !currentUser.isActive()) {
             throw new IdInvalidException("User đã bị vô hiệu hóa");
@@ -187,8 +207,8 @@ public class AuthController {
         // create refresh token
         String new_refresh_token = this.securityUtil.createRefreshToken(email, res);
 
-        // update user
-        this.userService.updateUserToken(new_refresh_token, email);
+        // update session token
+        this.userSessionService.updateSessionToken(refresh_token, new_refresh_token);
 
         // set cookies
         ResponseCookie resCookies = ResponseCookie
@@ -206,7 +226,7 @@ public class AuthController {
 
     @PostMapping("/auth/logout")
     @ApiMessage("Logout User")
-    public ResponseEntity<Void> logout() throws IdInvalidException {
+    public ResponseEntity<Void> logout(@CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token) throws IdInvalidException {
         String email = SecurityUtil.getCurrentUserLogin().isPresent()
                 ? SecurityUtil.getCurrentUserLogin().get()
                 : "";
@@ -215,8 +235,10 @@ public class AuthController {
             throw new IdInvalidException("Access Token không hợp lệ");
         }
 
-        // update refresh token = null
-        this.userService.updateUserToken(null, email);
+        // delete session
+        if (!refresh_token.equals("abc")) {
+            this.userSessionService.deleteSession(refresh_token);
+        }
 
         // remove refresh token cookie
         ResponseCookie deleteSpringCookie = ResponseCookie
