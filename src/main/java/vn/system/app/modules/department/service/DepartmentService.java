@@ -13,6 +13,7 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.service.CompanyService;
 import vn.system.app.modules.department.domain.Department;
@@ -32,6 +33,21 @@ public class DepartmentService {
             CompanyService companyService) {
         this.departmentRepository = departmentRepository;
         this.companyService = companyService;
+    }
+
+    private void checkDepartmentScope(Department d) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+            if (scope.isCompanyLevel()) {
+                if (!scope.companyIds().contains(d.getCompany().getId())) {
+                    throw new PermissionException("Bạn không có quyền thao tác trên phòng ban của công ty này");
+                }
+            } else {
+                if (!scope.departmentIds().contains(d.getId())) {
+                    throw new PermissionException("Bạn không có quyền thao tác trên phòng ban này");
+                }
+            }
+        }
     }
 
     /* ================= CREATE ================= */
@@ -60,6 +76,7 @@ public class DepartmentService {
     @Transactional
     public DepartmentResponse handleUpdateDepartment(Long id, UpdateDepartmentRequest req) {
         Department d = fetchEntityById(id);
+        checkDepartmentScope(d);
 
         if (req.getName() != null)
             d.setName(req.getName());
@@ -77,6 +94,7 @@ public class DepartmentService {
     @Transactional
     public void handleDeleteDepartment(Long id) {
         Department d = fetchEntityById(id);
+        checkDepartmentScope(d);
 
         if (d.getStatus() == 0) {
             throw new IdInvalidException("Phòng ban đã bị vô hiệu hóa trước đó");
@@ -91,6 +109,7 @@ public class DepartmentService {
     @Transactional
     public DepartmentResponse handleActiveDepartment(Long id) {
         Department d = fetchEntityById(id);
+        checkDepartmentScope(d);
 
         if (d.getStatus() == 1) {
             throw new IdInvalidException("Phòng ban này đang hoạt động");

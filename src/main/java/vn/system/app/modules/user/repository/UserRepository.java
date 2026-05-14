@@ -2,12 +2,17 @@ package vn.system.app.modules.user.repository;
 
 import java.util.Optional;
 
+import java.time.Instant;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import vn.system.app.modules.user.domain.User;
@@ -46,4 +51,12 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
      */
     @EntityGraph(attributePaths = { "role" })
     Optional<User> findWithRoleById(String id);
+
+    // =========================
+    // ATOMIC UPDATE
+    // =========================
+    
+    @Modifying
+    @Query("UPDATE User u SET u.lastLoginAt = :now, u.lastLoginIp = :ip WHERE u.id = :id AND (u.lastLoginAt IS NULL OR u.lastLoginAt < :threshold)")
+    int updateLastLogin(@Param("id") String id, @Param("ip") String ip, @Param("now") Instant now, @Param("threshold") Instant threshold);
 }

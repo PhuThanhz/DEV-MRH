@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vn.system.app.common.util.UserScopeContext;
 
 import vn.system.app.common.response.ResultPaginationDTO;
@@ -32,8 +33,10 @@ import vn.system.app.modules.userposition.repository.UserPositionRepository;
 import vn.system.app.modules.usersession.service.UserSessionService;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 @Service
+@Transactional
 public class UserService {
 
     private final UserRepository userRepository;
@@ -331,6 +334,12 @@ public class UserService {
 
     public boolean isEmailExist(String email) {
         return this.userRepository.existsByEmail(email);
+    }
+    
+    public void updateLastLoginIfNecessary(String userId, String ip) {
+        Instant now = Instant.now();
+        Instant threshold = now.minus(10, ChronoUnit.MINUTES);
+        this.userRepository.updateLastLogin(userId, ip, now, threshold);
     }
 
     // ======================================================

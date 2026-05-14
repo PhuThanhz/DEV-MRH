@@ -66,24 +66,17 @@ public class PermissionInterceptor implements HandlerInterceptor {
             if (user != null) {
 
                 // ── Cập nhật lastLoginAt + IP (tối đa mỗi 10 phút) ──────
-                Instant now = Instant.now();
-                boolean shouldUpdate = user.getLastLoginAt() == null
-                        || user.getLastLoginAt().isBefore(now.minus(10, ChronoUnit.MINUTES));
-
-                if (shouldUpdate) {
-                    String ip = request.getHeader("X-Forwarded-For");
-                    if (ip != null && !ip.isBlank()) {
-                        ip = ip.split(",")[0].trim();
-                    } else {
-                        ip = request.getHeader("X-Real-IP");
-                    }
-                    if (ip == null || ip.isBlank()) {
-                        ip = request.getRemoteAddr();
-                    }
-                    user.setLastLoginAt(now);
-                    user.setLastLoginIp(ip);
-                    userService.save(user);
+                String ip = request.getHeader("X-Forwarded-For");
+                if (ip != null && !ip.isBlank()) {
+                    ip = ip.split(",")[0].trim();
+                } else {
+                    ip = request.getHeader("X-Real-IP");
                 }
+                if (ip == null || ip.isBlank()) {
+                    ip = request.getRemoteAddr();
+                }
+                
+                userService.updateLastLoginIfNecessary(user.getId(), ip);
 
                 // ── SET SCOPE vào ThreadLocal ────────────────────────────
                 String roleName = user.getRole() != null ? user.getRole().getName() : "";

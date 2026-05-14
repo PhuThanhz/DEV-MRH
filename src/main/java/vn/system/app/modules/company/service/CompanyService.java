@@ -13,6 +13,7 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.domain.request.ReqCreateCompanyDTO;
 import vn.system.app.modules.company.domain.request.ReqUpdateCompanyDTO;
@@ -32,6 +33,15 @@ public class CompanyService {
         this.companyRepository = companyRepository;
     }
 
+    private void checkCompanyScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+            if (!scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác trên công ty này");
+            }
+        }
+    }
+
     /* ================= CREATE ================= */
 
     @Transactional
@@ -44,6 +54,7 @@ public class CompanyService {
     @Transactional
     public Company handleUpdateCompany(ReqUpdateCompanyDTO req) {
         Company current = fetchEntityById(req.getId());
+        checkCompanyScope(current.getId());
         current.setName(req.getName());
         current.setEnglishName(req.getEnglishName());
         return companyRepository.save(current);
@@ -54,6 +65,7 @@ public class CompanyService {
     @Transactional
     public void handleInactiveCompany(Long id) {
         Company company = fetchEntityById(id);
+        checkCompanyScope(company.getId());
         company.setStatus(0);
         companyRepository.save(company);
     }
@@ -63,6 +75,7 @@ public class CompanyService {
     @Transactional
     public void handleActiveCompany(Long id) {
         Company company = fetchEntityById(id);
+        checkCompanyScope(company.getId());
         company.setStatus(1);
         companyRepository.save(company);
     }

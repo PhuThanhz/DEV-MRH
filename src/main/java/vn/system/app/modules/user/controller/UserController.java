@@ -63,7 +63,6 @@ public class UserController {
                 if (user == null) {
                         return ResponseEntity.ok(Map.of(
                                         "success", true,
-                                        "mode", user.isActive() ? "reset" : "activate",
                                         "message", "Hệ thống đã gửi mã xác nhận."));
                 }
 
