@@ -15,18 +15,23 @@ import vn.system.app.modules.department.repository.DepartmentRepository;
 import vn.system.app.modules.jobpositionchart.domain.JobPositionChart;
 import vn.system.app.modules.jobpositionchart.domain.response.ResJobPositionChartDTO;
 import vn.system.app.modules.jobpositionchart.repository.JobPositionChartRepository;
+import vn.system.app.modules.jobpositionnode.repository.JobPositionNodeRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class JobPositionChartService {
 
     private final JobPositionChartRepository chartRepository;
-    private final DepartmentRepository departmentRepository; // ⭐ THÊM
+    private final DepartmentRepository departmentRepository;
+    private final JobPositionNodeRepository nodeRepository;
 
     public JobPositionChartService(
             JobPositionChartRepository chartRepository,
-            DepartmentRepository departmentRepository) { // ⭐ THÊM
+            DepartmentRepository departmentRepository,
+            JobPositionNodeRepository nodeRepository) {
         this.chartRepository = chartRepository;
-        this.departmentRepository = departmentRepository; // ⭐ THÊM
+        this.departmentRepository = departmentRepository;
+        this.nodeRepository = nodeRepository;
     }
 
     /*
@@ -43,7 +48,12 @@ public class JobPositionChartService {
      * DELETE CHART
      * ==========================
      */
+    @Transactional
     public void handleDeleteChart(Long id) {
+        // 1. Xóa tất cả các node thuộc sơ đồ này trước
+        this.nodeRepository.deleteByChartId(id);
+
+        // 2. Xóa sơ đồ
         this.chartRepository.deleteById(id);
     }
 

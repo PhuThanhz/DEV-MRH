@@ -11,6 +11,7 @@ import lombok.Setter;
 public class ResConfidentialProcedureDTO {
 
     private Long id;
+    private final String type = "CONFIDENTIAL";
 
     private Long companyId; // ← THÊM
     private String companyCode;

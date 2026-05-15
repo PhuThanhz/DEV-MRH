@@ -14,4 +14,8 @@ public interface JobPositionNodeRepository
 
     List<JobPositionNode> findByChartId(Long chartId);
 
+    List<JobPositionNode> findByParentId(Long parentId);
+
+    void deleteByChartId(Long chartId);
+
 }

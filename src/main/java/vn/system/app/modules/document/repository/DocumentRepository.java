@@ -1,6 +1,7 @@
 package vn.system.app.modules.document.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -29,4 +30,6 @@ public interface DocumentRepository extends
     List<Document> findByCategory_Id(Long categoryId);
 
     boolean existsByCategory_Id(Long categoryId);
+
+    Optional<Document> findByQrToken(String qrToken);
 }

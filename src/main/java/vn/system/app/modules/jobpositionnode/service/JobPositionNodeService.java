@@ -85,7 +85,19 @@ public class JobPositionNodeService {
      * DELETE NODE
      * ==================================
      */
+    @Transactional
     public void handleDeleteNode(Long id) {
+        // 1. Tìm các node con trực tiếp
+        List<JobPositionNode> children = this.nodeRepository.findByParentId(id);
+
+        // 2. Đệ quy xóa các node con (và cháu, chắt...)
+        if (children != null && !children.isEmpty()) {
+            for (JobPositionNode child : children) {
+                handleDeleteNode(child.getId());
+            }
+        }
+
+        // 3. Xóa node hiện tại
         this.nodeRepository.deleteById(id);
     }
 
@@ -129,6 +141,16 @@ public class JobPositionNodeService {
             currentNode.setIsGoal(req.getIsGoal());
         }
         if (req.getParentId() != null) {
+            // ⭐ Chống vòng lặp (Cycle Detection)
+            if (req.getParentId().equals(currentNode.getId())) {
+                throw new IdInvalidException("Không thể gán node cha là chính nó");
+            }
+
+            // Nếu node cha mới là con cháu của node hiện tại -> báo lỗi
+            if (isDescendant(currentNode.getId(), req.getParentId())) {
+                throw new IdInvalidException("Không thể gán node cha là node con/cháu của chính nó (gây vòng lặp)");
+            }
+
             currentNode.setParentId(req.getParentId());
         }
         if (req.getPosX() != null) {
@@ -278,5 +300,21 @@ public class JobPositionNodeService {
         }
 
         return jd;
+    }
+
+    /**
+     * Kiểm tra xem targetId có phải là hậu duệ của parentId không
+     */
+    private boolean isDescendant(Long parentId, Long targetId) {
+        List<JobPositionNode> children = this.nodeRepository.findByParentId(parentId);
+        for (JobPositionNode child : children) {
+            if (child.getId().equals(targetId)) {
+                return true;
+            }
+            if (isDescendant(child.getId(), targetId)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -21,6 +21,9 @@ import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureR
 import vn.system.app.modules.confidentialprocedure.domain.ConfidentialProcedure;
 import vn.system.app.modules.confidentialprocedure.repository.ConfidentialProcedureRepository;
 import vn.system.app.modules.confidentialprocedure.service.ConfidentialAccessService;
+import vn.system.app.modules.document.domain.Document;
+import vn.system.app.modules.document.repository.DocumentAccessRepository;
+import vn.system.app.modules.document.repository.DocumentRepository;
 
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +40,8 @@ public class ProcedureQrService {
     private final DepartmentProcedureRepository departmentProcedureRepository;
     private final ConfidentialProcedureRepository confidentialProcedureRepository;
     private final ConfidentialAccessService confidentialAccessService;
+    private final DocumentRepository documentRepository;
+    private final DocumentAccessRepository documentAccessRepository;
 
     // =====================================================
     // SINH TOKEN
@@ -100,6 +105,14 @@ public class ProcedureQrService {
             confidentialAccessService.checkAccess(confidential.getId());
             return new ScanResult("CONFIDENTIAL", confidential.getId());
         }
+        
+        Document document = documentRepository.findByQrToken(token).orElse(null);
+        if (document != null) {
+            if (!document.isActive())
+                throw new IdInvalidException("Văn bản đã bị vô hiệu hóa");
+            checkDocumentAccess(document);
+            return new ScanResult("DOCUMENT", document.getId());
+        }
 
         throw new IdInvalidException("Mã QR không hợp lệ hoặc không tồn tại");
     }
@@ -160,6 +173,72 @@ public class ProcedureQrService {
 
         if (procedureDeptIds.stream().noneMatch(userDeptIds::contains))
             throw new IdInvalidException("Bạn không có quyền xem quy trình này");
+    }
+
+    // =====================================================
+    // KIỂM TRA QUYỀN — DOCUMENT
+    // =====================================================
+    private void checkDocumentAccess(Document document) {
+        User user = getCurrentUser();
+        String roleName = user.getRole() != null ? user.getRole().getName() : "";
+
+        // 1. Super Admin & Admin cấp 1 có quyền xem mọi thứ
+        if ("SUPER_ADMIN".equals(roleName) || "ADMIN_SUB_1".equals(roleName))
+            return;
+
+        // 2. Lấy thông tin công ty của văn bản
+        Long docCompanyId = (document.getDepartment() != null && document.getDepartment().getCompany() != null)
+                ? document.getDepartment().getCompany().getId()
+                : null;
+
+        Set<Long> userCompanyIds = userPositionService.getCompanyIdsByUser(user.getId());
+
+        // 3. Nếu là Admin công ty (ADMIN_SUB_2)
+        if ("ADMIN_SUB_2".equals(roleName)) {
+            if (docCompanyId == null || !userCompanyIds.contains(docCompanyId)) {
+                throw new IdInvalidException("Bạn không có quyền xem văn bản của công ty khác");
+            }
+            return; // Admin cùng công ty được xem hết
+        }
+
+        // 4. Kiểm tra văn bản mapping quy trình
+        if (document.getCategory() != null && document.getCategory().isMappingProcedure()) {
+            if (document.getProcedureType() == null || document.getProcedureId() == null) {
+                throw new IdInvalidException("Văn bản đang ở chế độ mapping nhưng thiếu thông tin quy trình");
+            }
+            switch (document.getProcedureType()) {
+                case COMPANY -> {
+                    CompanyProcedure cp = companyProcedureRepository.findById(document.getProcedureId())
+                            .orElseThrow(() -> new IdInvalidException("Quy trình công ty không tồn tại"));
+                    checkCompanyAccess(cp);
+                }
+                case DEPARTMENT -> {
+                    DepartmentProcedure dp = departmentProcedureRepository.findById(document.getProcedureId())
+                            .orElseThrow(() -> new IdInvalidException("Quy trình phòng ban không tồn tại"));
+                    checkDepartmentAccess(dp);
+                }
+                case CONFIDENTIAL -> {
+                    confidentialAccessService.checkAccess(document.getProcedureId());
+                }
+                default -> throw new IdInvalidException("Loại quy trình không được hỗ trợ trong mapping: " + document.getProcedureType());
+            }
+            return;
+        }
+
+        // 5. Kiểm tra văn bản không mapping (Kiểm tra chéo công ty và danh sách đích danh)
+        if (docCompanyId != null && !userCompanyIds.contains(docCompanyId)) {
+             // Khác công ty thì bắt buộc phải có trong danh sách DocumentAccess (được share đích danh)
+             boolean hasExplicitAccess = documentAccessRepository.existsByDocument_IdAndUserId(document.getId(), user.getId());
+             if (!hasExplicitAccess) {
+                 throw new IdInvalidException("Bạn không có quyền xem văn bản của công ty khác");
+             }
+        } else {
+             // Cùng công ty nhưng không mapping quy trình -> kiểm tra danh sách DocumentAccess
+             boolean hasAccess = documentAccessRepository.existsByDocument_IdAndUserId(document.getId(), user.getId());
+             if (!hasAccess) {
+                 throw new IdInvalidException("Bạn không có quyền xem văn bản này");
+             }
+        }
     }
 
     // =====================================================

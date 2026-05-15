@@ -399,6 +399,7 @@ public class DocumentService {
                 r.setUserIds(req.getUserIds());
                 yield confidentialProcedureService.handleCreate(r).getId();
             }
+            default -> throw new IdInvalidException("Loại quy trình không hỗ trợ: " + req.getProcedureType());
         };
     }
 
@@ -443,6 +444,9 @@ public class DocumentService {
                 r.setSectionId(req.getSectionId());
                 r.setUserIds(req.getUserIds());
                 confidentialProcedureService.handleUpdate(procedureId, r);
+            }
+            default -> {
+                // Không xử lý cho loại DOCUMENT trong update procedure vì không có procedureId tương ứng
             }
         }
     }

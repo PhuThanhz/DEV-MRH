@@ -11,6 +11,7 @@ import lombok.Setter;
 public class ResDepartmentProcedureDTO {
 
     private Long id;
+    private final String type = "DEPARTMENT";
 
     // ✅ Đổi từ 1 department sang list
     private List<DepartmentRef> departments;

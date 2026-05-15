@@ -11,6 +11,7 @@ import lombok.Setter;
 public class ResCompanyProcedureDTO {
 
     private Long id;
+    private final String type = "COMPANY";
 
     // ===== Company =====
     private String companyCode;

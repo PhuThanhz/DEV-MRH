@@ -15,6 +15,7 @@ public class ResDocumentDTO {
     private Long id;
     private String documentCode;
     private String documentName;
+    private final String type = "DOCUMENT";
 
     private CategoryRef category;
     private DepartmentRef department;

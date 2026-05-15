@@ -16,9 +16,12 @@ import lombok.RequiredArgsConstructor;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
+import vn.system.app.common.util.error.IdInvalidException;
 
 import vn.system.app.modules.procedure.enums.ProcedureType;
 import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
+import vn.system.app.modules.document.service.DocumentService;
+import vn.system.app.modules.document.domain.Document;
 
 import vn.system.app.modules.companyprocedure.domain.CompanyProcedure;
 import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureDTO;
@@ -44,6 +47,7 @@ public class ProcedureController {
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
     private final ProcedureQrService procedureQrService;
+    private final DocumentService documentService;
 
     // =====================================================
     // CREATE
@@ -60,9 +64,11 @@ public class ProcedureController {
         } else if (type == ProcedureType.DEPARTMENT) {
             ResDepartmentProcedureDTO res = departmentProcedureService.handleCreate(req.toDepartmentRequest());
             return ResponseEntity.status(HttpStatus.CREATED).body(res);
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             ResConfidentialProcedureDTO res = confidentialProcedureService.handleCreate(req.toConfidentialRequest());
             return ResponseEntity.status(HttpStatus.CREATED).body(res);
+        } else {
+            throw new IdInvalidException("Vui lòng sử dụng DocumentController để tạo văn bản");
         }
     }
 
@@ -80,8 +86,10 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.handleUpdate(id, req.toCompanyRequest()));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.handleUpdate(id, req.toDepartmentRequest()));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             return ResponseEntity.ok(confidentialProcedureService.handleUpdate(id, req.toConfidentialRequest()));
+        } else {
+            throw new IdInvalidException("Vui lòng sử dụng DocumentController để cập nhật văn bản");
         }
     }
 
@@ -99,8 +107,10 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.handleRevise(id, req.toCompanyRequest()));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.handleRevise(id, req.toDepartmentRequest()));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             return ResponseEntity.ok(confidentialProcedureService.handleRevise(id, req.toConfidentialRequest()));
+        } else {
+            throw new IdInvalidException("Văn bản không hỗ trợ tạo phiên bản mới qua endpoint này");
         }
     }
 
@@ -117,8 +127,10 @@ public class ProcedureController {
             companyProcedureService.handleToggleActive(id);
         } else if (type == ProcedureType.DEPARTMENT) {
             departmentProcedureService.handleToggleActive(id);
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             confidentialProcedureService.handleToggleActive(id);
+        } else {
+            documentService.handleToggleActive(id);
         }
         return ResponseEntity.ok().build();
     }
@@ -136,8 +148,10 @@ public class ProcedureController {
             companyProcedureService.handleDelete(id);
         } else if (type == ProcedureType.DEPARTMENT) {
             departmentProcedureService.handleDelete(id);
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             confidentialProcedureService.handleDelete(id);
+        } else {
+            documentService.handleDelete(id);
         }
         return ResponseEntity.ok().build();
     }
@@ -157,10 +171,13 @@ public class ProcedureController {
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.convertToDTO(
                     departmentProcedureService.fetchById(id)));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.convertToDTO(
                     confidentialProcedureService.fetchById(id)));
+        } else {
+            return ResponseEntity.ok(documentService.convertToDTO(
+                    documentService.fetchById(id)));
         }
     }
 
@@ -179,9 +196,12 @@ public class ProcedureController {
         } else if (type == ProcedureType.DEPARTMENT) {
             Specification<DepartmentProcedure> spec = ScopeSpec.byCompanyScope("departments.company.id");
             return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             Specification<ConfidentialProcedure> spec = ScopeSpec.byCompanyScope("department.company.id");
             return ResponseEntity.ok(confidentialProcedureService.fetchAll(spec, pageable));
+        } else {
+            Specification<Document> spec = ScopeSpec.byCompanyScope("department.company.id");
+            return ResponseEntity.ok(documentService.fetchAll(spec, pageable));
         }
     }
 
@@ -237,8 +257,10 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.fetchByCompany(companyId));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.fetchByCompany(companyId));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             return ResponseEntity.ok(confidentialProcedureService.fetchByCompany(companyId));
+        } else {
+            return ResponseEntity.ok(documentService.fetchByCompany(companyId));
         }
     }
 
@@ -255,8 +277,10 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.fetchByDepartment(departmentId));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.fetchByDepartment(departmentId));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             return ResponseEntity.ok(confidentialProcedureService.fetchByDepartment(departmentId));
+        } else {
+            return ResponseEntity.ok(documentService.fetchByDepartment(departmentId));
         }
     }
 
@@ -273,8 +297,10 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.fetchBySection(sectionId));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.fetchBySection(sectionId));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             return ResponseEntity.ok(confidentialProcedureService.fetchBySection(sectionId));
+        } else {
+            return ResponseEntity.ok(documentService.fetchBySection(sectionId));
         }
     }
 
@@ -291,9 +317,12 @@ public class ProcedureController {
             return ResponseEntity.ok(companyProcedureService.fetchHistory(id));
         } else if (type == ProcedureType.DEPARTMENT) {
             return ResponseEntity.ok(departmentProcedureService.fetchHistory(id));
-        } else {
+        } else if (type == ProcedureType.CONFIDENTIAL) {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.fetchHistory(id));
+        } else {
+            // Documents don't have history yet, return empty list
+            return ResponseEntity.ok(java.util.Collections.emptyList());
         }
     }
 
@@ -311,9 +340,12 @@ public class ProcedureController {
         } else if ("DEPARTMENT".equals(result.type)) {
             return ResponseEntity.ok(departmentProcedureService.convertToDTO(
                     departmentProcedureService.fetchById(result.id)));
-        } else {
+        } else if ("CONFIDENTIAL".equals(result.type)) {
             return ResponseEntity.ok(confidentialProcedureService.convertToDTO(
                     confidentialProcedureService.fetchById(result.id)));
+        } else {
+            return ResponseEntity.ok(documentService.convertToDTO(
+                    documentService.fetchById(result.id)));
         }
     }
 
