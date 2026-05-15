@@ -50,6 +50,7 @@ public class DepartmentObjectiveService {
     public void handleCreate(ReqCreateDepartmentObjective req) {
 
         Department department = departmentService.fetchEntityById(req.getDepartmentId());
+        departmentService.checkDepartmentScope(department);
 
         /*
          * XÓA TOÀN BỘ MISSION CŨ
@@ -153,6 +154,8 @@ public class DepartmentObjectiveService {
             throw new IdInvalidException("Không tìm thấy id = " + id);
         }
 
+        departmentService.checkDepartmentScope(entity.getDepartment());
+
         repository.deleteById(id);
     }
 
@@ -165,7 +168,12 @@ public class DepartmentObjectiveService {
 
         Optional<DepartmentObjective> optional = repository.findById(id);
 
-        return optional.orElse(null);
+        if (optional.isPresent()) {
+            departmentService.checkDepartmentScope(optional.get().getDepartment());
+            return optional.get();
+        }
+
+        return null;
     }
 
     /*
@@ -222,8 +230,8 @@ public class DepartmentObjectiveService {
         res.setStatus(e.getStatus());
         res.setCreatedAt(e.getCreatedAt());
         res.setUpdatedAt(e.getUpdatedAt());
-        res.setCreatedBy(e.getCreatedBy()); // ← thêm
-        res.setUpdatedBy(e.getUpdatedBy()); // ← thêm
+        res.setCreatedBy(e.getCreatedBy());
+        res.setUpdatedBy(e.getUpdatedBy());
 
         ResDepartmentObjectiveDTO.DepartmentInfo d = new ResDepartmentObjectiveDTO.DepartmentInfo();
 
@@ -260,8 +268,13 @@ public class DepartmentObjectiveService {
     public ResDepartmentMissionTreeDTO fetchMissionTree(Long departmentId) {
 
         Department department = departmentService.fetchEntityById(departmentId);
+        departmentService.checkDepartmentScope(department);
 
         List<DepartmentObjective> list = repository.findByDepartmentId(departmentId);
+
+        // Sắp xếp theo orderNo
+        list.sort(Comparator.comparing(DepartmentObjective::getOrderNo,
+                Comparator.nullsLast(Comparator.naturalOrder())));
 
         boolean hasSections = sectionService.existsByDepartmentId(departmentId);
 
@@ -292,10 +305,10 @@ public class DepartmentObjectiveService {
 
                             o.setId(i.getId());
                             o.setContent(i.getContent());
-                            o.setCreatedBy(i.getCreatedBy()); // ← thêm
-                            o.setUpdatedBy(i.getUpdatedBy()); // ← thêm
-                            o.setCreatedAt(i.getCreatedAt()); // ← thêm
-                            o.setUpdatedAt(i.getUpdatedAt()); // ← thêm
+                            o.setCreatedBy(i.getCreatedBy());
+                            o.setUpdatedBy(i.getUpdatedBy());
+                            o.setCreatedAt(i.getCreatedAt());
+                            o.setUpdatedAt(i.getUpdatedAt());
 
                             return o;
 
@@ -303,68 +316,47 @@ public class DepartmentObjectiveService {
                         .collect(Collectors.toList()));
 
         /*
-         * TASKS
+         * TASKS - PHÂN LOẠI NHIỆM VỤ
          */
+        // 1. Nhiệm vụ chung (không thuộc bộ phận nào)
+        List<ResDepartmentMissionTreeDTO.TaskItem> generalTasks = list.stream()
+                .filter(i -> "TASK".equals(i.getType()) && i.getSection() == null)
+                .map(this::mapToTaskItem)
+                .collect(Collectors.toList());
+
+        res.setGeneralTasks(generalTasks);
+
+        // 2. Nhiệm vụ theo bộ phận (nếu có bộ phận)
         if (hasSections) {
 
-            Map<Section, List<DepartmentObjective>> map = list.stream()
-                    .filter(i -> "TASK".equals(i.getType())
-                            && i.getSection() != null)
-                    .collect(Collectors.groupingBy(
-                            DepartmentObjective::getSection));
+            // Nhóm theo Section ID để an toàn (tránh lỗi hashCode/equals của Entity)
+            Map<Long, List<DepartmentObjective>> map = list.stream()
+                    .filter(i -> "TASK".equals(i.getType()) && i.getSection() != null)
+                    .collect(Collectors.groupingBy(i -> i.getSection().getId()));
 
             List<ResDepartmentMissionTreeDTO.SectionTask> sectionTasks = new ArrayList<>();
 
-            map.forEach((section, tasks) -> {
+            map.forEach((sectionId, tasks) -> {
 
                 ResDepartmentMissionTreeDTO.SectionTask st = new ResDepartmentMissionTreeDTO.SectionTask();
 
-                st.setSectionId(section.getId());
+                // Lấy thông tin section từ entity đầu tiên trong nhóm
+                Section section = tasks.get(0).getSection();
+                st.setSectionId(sectionId);
                 st.setSectionName(section.getName());
 
                 st.setTasks(
                         tasks.stream()
-                                .map(t -> {
-
-                                    ResDepartmentMissionTreeDTO.TaskItem ti = new ResDepartmentMissionTreeDTO.TaskItem();
-
-                                    ti.setId(t.getId());
-                                    ti.setContent(t.getContent());
-                                    ti.setCreatedBy(t.getCreatedBy()); // ← thêm
-                                    ti.setUpdatedBy(t.getUpdatedBy()); // ← thêm
-                                    ti.setCreatedAt(t.getCreatedAt()); // ← thêm
-                                    ti.setUpdatedAt(t.getUpdatedAt()); // ← thêm
-
-                                    return ti;
-
-                                })
+                                .map(this::mapToTaskItem)
                                 .collect(Collectors.toList()));
 
                 sectionTasks.add(st);
             });
 
+            // Sắp xếp các SectionTask theo tên bộ phận hoặc ID nếu cần
+            sectionTasks.sort(Comparator.comparing(ResDepartmentMissionTreeDTO.SectionTask::getSectionName));
+
             res.setTasks(sectionTasks);
-
-        } else {
-
-            res.setGeneralTasks(
-                    list.stream()
-                            .filter(i -> "TASK".equals(i.getType()))
-                            .map(i -> {
-
-                                ResDepartmentMissionTreeDTO.TaskItem ti = new ResDepartmentMissionTreeDTO.TaskItem();
-
-                                ti.setId(i.getId());
-                                ti.setContent(i.getContent());
-                                ti.setCreatedBy(i.getCreatedBy()); // ← thêm
-                                ti.setUpdatedBy(i.getUpdatedBy()); // ← thêm
-                                ti.setCreatedAt(i.getCreatedAt()); // ← thêm
-                                ti.setUpdatedAt(i.getUpdatedAt()); // ← thêm
-
-                                return ti;
-
-                            })
-                            .collect(Collectors.toList()));
         }
 
         /*
@@ -379,10 +371,10 @@ public class DepartmentObjectiveService {
 
                             a.setId(i.getId());
                             a.setContent(i.getContent());
-                            a.setCreatedBy(i.getCreatedBy()); // ← thêm
-                            a.setUpdatedBy(i.getUpdatedBy()); // ← thêm
-                            a.setCreatedAt(i.getCreatedAt()); // ← thêm
-                            a.setUpdatedAt(i.getUpdatedAt()); // ← thêm
+                            a.setCreatedBy(i.getCreatedBy());
+                            a.setUpdatedBy(i.getUpdatedBy());
+                            a.setCreatedAt(i.getCreatedAt());
+                            a.setUpdatedAt(i.getUpdatedAt());
 
                             return a;
 
@@ -390,5 +382,16 @@ public class DepartmentObjectiveService {
                         .collect(Collectors.toList()));
 
         return res;
+    }
+
+    private ResDepartmentMissionTreeDTO.TaskItem mapToTaskItem(DepartmentObjective t) {
+        ResDepartmentMissionTreeDTO.TaskItem ti = new ResDepartmentMissionTreeDTO.TaskItem();
+        ti.setId(t.getId());
+        ti.setContent(t.getContent());
+        ti.setCreatedBy(t.getCreatedBy());
+        ti.setUpdatedBy(t.getUpdatedBy());
+        ti.setCreatedAt(t.getCreatedAt());
+        ti.setUpdatedAt(t.getUpdatedAt());
+        return ti;
     }
 }

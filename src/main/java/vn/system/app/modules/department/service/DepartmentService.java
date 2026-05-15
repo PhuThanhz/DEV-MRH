@@ -35,7 +35,7 @@ public class DepartmentService {
         this.companyService = companyService;
     }
 
-    private void checkDepartmentScope(Department d) {
+    public void checkDepartmentScope(Department d) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
             if (scope.isCompanyLevel()) {
