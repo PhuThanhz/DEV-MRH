@@ -88,6 +88,16 @@ public class DocumentCategoryController {
     }
 
     // =====================================================
+    // DELETE
+    // =====================================================
+    @DeleteMapping("/{id}")
+    @ApiMessage("Xóa danh mục loại văn bản")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.handleDelete(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
     // GET MAPPING PROCEDURE (dùng khi render form tạo văn bản)
     // =====================================================
     @GetMapping("/mapping-procedure")

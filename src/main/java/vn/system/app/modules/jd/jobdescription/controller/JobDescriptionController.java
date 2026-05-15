@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.*;
 
 import com.turkraft.springfilter.boot.Filter;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import jakarta.validation.Valid;
+
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
 
@@ -27,21 +30,24 @@ public class JobDescriptionController {
 
     @PostMapping("/job-descriptions")
     @ApiMessage("Tạo mới mô tả công việc")
+    @PreAuthorize("hasAuthority('JD_CREATE')")
     public ResponseEntity<ResJobDescriptionDTO> create(
-            @RequestBody ReqCreateJobDescriptionDTO req) {
+            @Valid @RequestBody ReqCreateJobDescriptionDTO req) {
         return ResponseEntity.status(201).body(service.convertToDTO(service.handleCreate(req)));
     }
 
     @PutMapping("/job-descriptions/{id}")
     @ApiMessage("Cập nhật mô tả công việc")
+    @PreAuthorize("hasAuthority('JD_UPDATE')")
     public ResponseEntity<ResJobDescriptionDTO> update(
             @PathVariable Long id,
-            @RequestBody ReqCreateJobDescriptionDTO req) {
+            @Valid @RequestBody ReqCreateJobDescriptionDTO req) {
         return ResponseEntity.ok(service.convertToDTO(service.handleUpdate(id, req)));
     }
 
     @DeleteMapping("/job-descriptions/{id}")
     @ApiMessage("Xóa mô tả công việc")
+    @PreAuthorize("hasAuthority('JD_DELETE')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.handleDelete(id);
         return ResponseEntity.ok().build();

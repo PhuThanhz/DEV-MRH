@@ -27,4 +27,6 @@ public interface DocumentRepository extends
     List<Document> findBySection_Id(Long sectionId);
 
     List<Document> findByCategory_Id(Long categoryId);
+
+    boolean existsByCategory_Id(Long categoryId);
 }

@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.document.domain.Document;
 import vn.system.app.modules.document.domain.DocumentAccess;
 import vn.system.app.modules.document.domain.request.DocumentRequest;
@@ -86,20 +88,29 @@ public class DocumentService {
         DocumentCategory category = categoryRepository.findById(req.getCategoryId())
                 .orElseThrow(() -> new IdInvalidException("Loại văn bản không tồn tại"));
 
-        if (category.isMappingProcedure() && req.getProcedureType() == null) {
-            throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
+        // Validate logic Mapping Procedure
+        if (category.isMappingProcedure()) {
+            if (req.getProcedureType() == null) {
+                throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
+            }
+            validateProcedureRequirements(req);
         }
 
         Department department = null;
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+            validateScope(department.getCompany().getId());
         }
 
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            // Validate Section thuộc về Department
+            if (department != null && !section.getDepartment().getId().equals(department.getId())) {
+                throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+            }
         }
 
         Document entity = new Document();
@@ -147,20 +158,29 @@ public class DocumentService {
         DocumentCategory category = categoryRepository.findById(req.getCategoryId())
                 .orElseThrow(() -> new IdInvalidException("Loại văn bản không tồn tại"));
 
-        if (category.isMappingProcedure() && req.getProcedureType() == null) {
-            throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
+        // Validate logic Mapping Procedure
+        if (category.isMappingProcedure()) {
+            if (req.getProcedureType() == null) {
+                throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
+            }
+            validateProcedureRequirements(req);
         }
 
         Department department = null;
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+            validateScope(department.getCompany().getId());
         }
 
         Section section = null;
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            // Validate Section thuộc về Department
+            if (department != null && !section.getDepartment().getId().equals(department.getId())) {
+                throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+            }
         }
 
         current.setDocumentCode(code);
@@ -192,6 +212,50 @@ public class DocumentService {
         }
 
         return convertToDTO(repository.save(current));
+    }
+
+    /**
+     * Kiểm tra yêu cầu dữ liệu theo từng loại quy trình
+     */
+    private void validateProcedureRequirements(DocumentRequest req) {
+        if (req.getProcedureType() == null)
+            return;
+
+        switch (req.getProcedureType()) {
+            case DEPARTMENT -> {
+                if (req.getDepartmentIds() == null || req.getDepartmentIds().isEmpty()) {
+                    throw new IdInvalidException("Vui lòng chọn danh sách phòng ban áp dụng");
+                }
+            }
+            case CONFIDENTIAL -> {
+                if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+                    throw new IdInvalidException("Vui lòng chọn danh sách người dùng được quyền xem");
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            // Trường hợp User bình thường (không phải admin)
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
     }
 
     // =====================================================

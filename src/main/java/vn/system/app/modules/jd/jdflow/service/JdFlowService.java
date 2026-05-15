@@ -1,5 +1,6 @@
 package vn.system.app.modules.jd.jdflow.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -408,7 +409,7 @@ public class JdFlowService {
                 dto.setCurrentUser(current);
             }
 
-            User fromUser = logService.findLastSender(jd.getId());
+            User fromUser = findLastSender(jd);
             if (fromUser != null) {
                 ResJdInboxDTO.UserSimple from = new ResJdInboxDTO.UserSimple();
                 from.setId(fromUser.getId());
@@ -417,9 +418,9 @@ public class JdFlowService {
             }
 
             if ("REJECTED".equals(jd.getStatus())) {
-                JdFlowLogService.RejectInfo rejectInfo = logService.findLatestRejectInfo(jd.getId());
-                User lastSender = logService.findLastSender(jd.getId());
-                JdFlowLog rejectLog = logService.findLatestRejectLog(jd.getId());
+                JdFlowLogService.RejectInfo rejectInfo = logService.findRejectInfoFromLogs(jd.getLogs());
+                User lastSender = findLastSender(jd);
+                JdFlowLog rejectLog = findLatestRejectLog(jd);
 
                 boolean rejectorIsLastSender = lastSender != null
                         && rejectLog != null
@@ -463,6 +464,25 @@ public class JdFlowService {
     }
 
     // ====================== HELPER METHODS ======================
+    
+    private User findLastSender(JobDescription jd) {
+        if (jd.getLogs() == null || jd.getLogs().isEmpty()) return null;
+        return jd.getLogs().stream()
+                .sorted((l1, l2) -> l2.getCreatedAt().compareTo(l1.getCreatedAt()))
+                .map(JdFlowLog::getFromUser)
+                .filter(u -> u != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private JdFlowLog findLatestRejectLog(JobDescription jd) {
+        if (jd.getLogs() == null || jd.getLogs().isEmpty()) return null;
+        return jd.getLogs().stream()
+                .filter(log -> "REJECT".equals(log.getAction()))
+                .sorted((l1, l2) -> l2.getCreatedAt().compareTo(l1.getCreatedAt()))
+                .findFirst()
+                .orElse(null);
+    }
 
     private boolean isUserInScope(User u, UserScopeContext.UserScope scope) {
         if (scope == null || scope.isSuperAdmin())
@@ -534,20 +554,31 @@ public class JdFlowService {
 
     // Thành:
     public List<ResJdApproverDTO> fetchApprovers(Long jdId) {
-        Long companyId = null;
+        List<Long> companyIds = null;
         if (jdId != null) {
             JobDescription jd = jobDescriptionRepository.findById(jdId).orElse(null);
-            if (jd != null && jd.getCompany() != null)
-                companyId = jd.getCompany().getId();
+            if (jd != null && jd.getCompany() != null) {
+                companyIds = List.of(jd.getCompany().getId());
+            }
         }
-        final Long finalCompanyId = companyId;
-        UserScopeContext.UserScope scope = UserScopeContext.get();
 
-        return userRepository.findAll().stream()
-                .filter(u -> isUserInScope(u, scope)
-                        && (permissionService.hasApprovePermission(u)
-                                || permissionService.hasApproveFinalPermission(u))
-                        && (finalCompanyId == null || isUserInCompany(u, finalCompanyId)))
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            if (companyIds == null) {
+                companyIds = new ArrayList<>(scope.companyIds());
+            } else {
+                // Giao điểm giữa công ty của JD và công ty được phép truy cập
+                companyIds = companyIds.stream()
+                        .filter(id -> scope.companyIds().contains(id))
+                        .collect(Collectors.toList());
+            }
+        }
+
+        List<User> approvers = userRepository.findUsersByPermissionAndCompany(
+                List.of("JD_APPROVE", "JD_APPROVE_FINAL"),
+                companyIds);
+
+        return approvers.stream()
                 .map(u -> {
                     ResJdApproverDTO dto = new ResJdApproverDTO(
                             u.getId(),
@@ -563,19 +594,30 @@ public class JdFlowService {
 
     // Thành:
     public List<ResJdApproverDTO> fetchIssuers(Long jdId) {
-        Long companyId = null;
+        List<Long> companyIds = null;
         if (jdId != null) {
             JobDescription jd = jobDescriptionRepository.findById(jdId).orElse(null);
-            if (jd != null && jd.getCompany() != null)
-                companyId = jd.getCompany().getId();
+            if (jd != null && jd.getCompany() != null) {
+                companyIds = List.of(jd.getCompany().getId());
+            }
         }
-        final Long finalCompanyId = companyId;
-        UserScopeContext.UserScope scope = UserScopeContext.get();
 
-        return userRepository.findAll().stream()
-                .filter(u -> isUserInScope(u, scope)
-                        && permissionService.hasIssuePermission(u)
-                        && (finalCompanyId == null || isUserInCompany(u, finalCompanyId)))
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            if (companyIds == null) {
+                companyIds = new ArrayList<>(scope.companyIds());
+            } else {
+                companyIds = companyIds.stream()
+                        .filter(id -> scope.companyIds().contains(id))
+                        .collect(Collectors.toList());
+            }
+        }
+
+        List<User> issuers = userRepository.findUsersByPermissionAndCompany(
+                List.of("JD_ISSUE"),
+                companyIds);
+
+        return issuers.stream()
                 .map(u -> {
                     ResJdApproverDTO dto = new ResJdApproverDTO(
                             u.getId(),

@@ -51,11 +51,14 @@ public class JobDescriptionRequirementService {
                 .findByJobDescription_Id(jdId)
                 .orElse(null);
 
+        return convertToDTO(entity);
+    }
+
+    public ResRequirementDTO convertToDTO(JobDescriptionRequirement entity) {
         if (entity == null)
             return null;
 
         ResRequirementDTO res = new ResRequirementDTO();
-
         res.setKnowledge(entity.getKnowledge());
         res.setExperience(entity.getExperience());
         res.setSkills(entity.getSkills());

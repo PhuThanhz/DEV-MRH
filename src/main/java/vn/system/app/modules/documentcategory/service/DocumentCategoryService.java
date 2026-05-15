@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.modules.document.repository.DocumentRepository;
 import vn.system.app.modules.documentcategory.domain.DocumentCategory;
 import vn.system.app.modules.documentcategory.domain.request.DocumentCategoryRequest;
 import vn.system.app.modules.documentcategory.domain.response.ResDocumentCategoryDTO;
@@ -20,9 +21,13 @@ import vn.system.app.modules.documentcategory.repository.DocumentCategoryReposit
 public class DocumentCategoryService {
 
     private final DocumentCategoryRepository repository;
+    private final DocumentRepository documentRepository;
 
-    public DocumentCategoryService(DocumentCategoryRepository repository) {
+    public DocumentCategoryService(
+            DocumentCategoryRepository repository,
+            DocumentRepository documentRepository) {
         this.repository = repository;
+        this.documentRepository = documentRepository;
     }
 
     // =====================================================
@@ -75,8 +80,32 @@ public class DocumentCategoryService {
     @Transactional
     public void handleToggleActive(Long id) {
         DocumentCategory current = fetchById(id);
+
+        // Nếu đang active mà muốn deactivate -> check xem có văn bản nào đang dùng không
+        if (current.isActive()) {
+            boolean hasDocs = documentRepository.existsByCategory_Id(id);
+            if (hasDocs) {
+                throw new IdInvalidException("Không thể vô hiệu hóa danh mục này vì đang có văn bản sử dụng");
+            }
+        }
+
         current.setActive(!current.isActive());
         repository.save(current);
+    }
+
+    // =====================================================
+    // DELETE
+    // =====================================================
+    @Transactional
+    public void handleDelete(Long id) {
+        DocumentCategory current = fetchById(id);
+
+        boolean hasDocs = documentRepository.existsByCategory_Id(id);
+        if (hasDocs) {
+            throw new IdInvalidException("Không thể xóa danh mục này vì đang có văn bản sử dụng");
+        }
+
+        repository.delete(current);
     }
 
     // =====================================================

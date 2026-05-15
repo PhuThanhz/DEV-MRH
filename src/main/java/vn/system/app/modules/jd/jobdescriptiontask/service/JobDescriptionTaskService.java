@@ -98,18 +98,18 @@ public class JobDescriptionTaskService {
 
         List<JobDescriptionTask> tasks = repository.findByJobDescription_IdOrderByOrderNo(jdId);
 
-        return tasks.stream().map(task -> {
+        return tasks.stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
 
-            ResTaskDTO res = new ResTaskDTO();
-
-            res.setId(task.getId());
-            res.setOrderNo(task.getOrderNo());
-            res.setTitle(task.getTitle());
-            res.setContent(task.getContent());
-
-            return res;
-
-        }).collect(Collectors.toList());
+    public ResTaskDTO convertToDTO(JobDescriptionTask task) {
+        if (task == null)
+            return null;
+        ResTaskDTO res = new ResTaskDTO();
+        res.setId(task.getId());
+        res.setOrderNo(task.getOrderNo());
+        res.setTitle(task.getTitle());
+        res.setContent(task.getContent());
+        return res;
     }
 
     /*

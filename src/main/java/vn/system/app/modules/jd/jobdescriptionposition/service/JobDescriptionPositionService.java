@@ -83,22 +83,24 @@ public class JobDescriptionPositionService {
 
         List<JobDescriptionPosition> positions = repository.findByJobDescription_Id(jdId);
 
-        return positions.stream().map(p -> {
+        return positions.stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
 
-            ResPositionDTO res = new ResPositionDTO();
+    public ResPositionDTO convertToDTO(JobDescriptionPosition p) {
+        if (p == null)
+            return null;
+        ResPositionDTO res = new ResPositionDTO();
 
-            if (p.getChart() != null)
-                res.setChartId(p.getChart().getId());
+        if (p.getChart() != null)
+            res.setChartId(p.getChart().getId());
 
-            if (p.getNode() != null)
-                res.setNodeId(p.getNode().getId());
+        if (p.getNode() != null)
+            res.setNodeId(p.getNode().getId());
 
-            res.setNodeName(p.getNodeName());
-            res.setLevelCode(p.getLevelCode());
+        res.setNodeName(p.getNodeName());
+        res.setLevelCode(p.getLevelCode());
 
-            return res;
-
-        }).collect(Collectors.toList());
+        return res;
     }
 
     /*

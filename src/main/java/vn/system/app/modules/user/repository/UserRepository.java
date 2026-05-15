@@ -1,6 +1,7 @@
 package vn.system.app.modules.user.repository;
 
 import java.util.Optional;
+import java.util.List;
 
 import java.time.Instant;
 
@@ -55,8 +56,29 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
     // =========================
     // ATOMIC UPDATE
     // =========================
-    
+
     @Modifying
     @Query("UPDATE User u SET u.lastLoginAt = :now, u.lastLoginIp = :ip WHERE u.id = :id AND (u.lastLoginAt IS NULL OR u.lastLoginAt < :threshold)")
-    int updateLastLogin(@Param("id") String id, @Param("ip") String ip, @Param("now") Instant now, @Param("threshold") Instant threshold);
+    int updateLastLogin(@Param("id") String id, @Param("ip") String ip, @Param("now") Instant now,
+            @Param("threshold") Instant threshold);
+
+    /**
+     * Tối ưu hóa: Tìm user có permission cụ thể và thuộc công ty cụ thể
+     */
+    @Query("SELECT DISTINCT u FROM User u " +
+            "JOIN u.role r " +
+            "JOIN r.permissions p " +
+            "JOIN UserPosition up ON up.user.id = u.id " +
+            "LEFT JOIN up.companyJobTitle cjt " +
+            "LEFT JOIN up.departmentJobTitle djt " +
+            "LEFT JOIN up.sectionJobTitle sjt " +
+            "WHERE p.name IN :permissionNames " +
+            "AND up.active = true " +
+            "AND (:companyIds IS NULL OR " +
+            "     cjt.company.id IN :companyIds OR " +
+            "     djt.department.company.id IN :companyIds OR " +
+            "     sjt.section.department.company.id IN :companyIds)")
+    List<User> findUsersByPermissionAndCompany(
+            @Param("permissionNames") List<String> permissionNames,
+            @Param("companyIds") List<Long> companyIds);
 }

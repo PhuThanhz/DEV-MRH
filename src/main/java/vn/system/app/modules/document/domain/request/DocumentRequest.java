@@ -5,6 +5,8 @@ import java.util.List;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.modules.procedure.enums.ProcedureType;
@@ -14,8 +16,11 @@ import vn.system.app.modules.procedure.enums.ProcedureType;
 public class DocumentRequest {
 
     @NotBlank(message = "Mã văn bản không được để trống")
+    @Size(max = 100, message = "Mã văn bản tối đa 100 ký tự")
+    @Pattern(regexp = "^[A-Za-z0-9_./-]*$", message = "Mã văn bản chứa ký tự không hợp lệ")
     private String documentCode;
     @NotBlank(message = "Tên văn bản không được để trống")
+    @Size(max = 250, message = "Tên văn bản tối đa 250 ký tự")
     private String documentName;
     @NotNull(message = "Loại văn bản không được để trống")
     private Long categoryId;

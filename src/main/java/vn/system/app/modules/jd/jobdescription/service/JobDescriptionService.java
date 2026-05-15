@@ -63,6 +63,10 @@ public class JobDescriptionService {
     @Transactional
     public JobDescription handleCreate(ReqCreateJobDescriptionDTO req) {
 
+        if (req.getCode() != null && repository.existsByCode(req.getCode())) {
+            throw new IdInvalidException("Mã mô tả công việc " + req.getCode() + " đã tồn tại");
+        }
+
         JobDescription jd = new JobDescription();
 
         if (req.getCompanyId() != null) {
@@ -329,11 +333,21 @@ public class JobDescriptionService {
             res.setSectionJobTitleId(jd.getSectionJobTitle().getId());
         }
 
-        res.setRequirements(requirementService.getByJobDescription(jd.getId()));
-        res.setTasks(taskService.getByJobDescription(jd.getId()));
-        res.setPositions(positionService.getByJobDescription(jd.getId()));
+        // Tối ưu hóa: Sử dụng trực tiếp từ thực thể nhờ OneToOne/OneToMany bidirectional
+        res.setRequirements(requirementService.convertToDTO(jd.getRequirement()));
 
-        // THAY BẰNG đoạn mới này
+        if (jd.getTasks() != null) {
+            res.setTasks(jd.getTasks().stream()
+                    .map(taskService::convertToDTO)
+                    .collect(Collectors.toList()));
+        }
+
+        if (jd.getPositions() != null) {
+            res.setPositions(jd.getPositions().stream()
+                    .map(positionService::convertToDTO)
+                    .collect(Collectors.toList()));
+        }
+
         if ("REJECTED".equals(jd.getStatus()) || "RETURNED".equals(jd.getStatus())) {
             JdFlowLogService.RejectInfo rejectInfo = jdFlowLogService.findLatestRejectInfo(jd.getId());
             if (rejectInfo != null) {
@@ -341,7 +355,7 @@ public class JobDescriptionService {
                 res.setRejectorName(rejectInfo.getRejectorName());
                 res.setRejectorPosition(rejectInfo.getRejectorPosition());
                 res.setRejectorDepartment(rejectInfo.getRejectorDepartment());
-                res.setRejectorPositionCode(rejectInfo.getRejectorPositionCode()); // ← cần thêm vào convertToDTO()
+                res.setRejectorPositionCode(rejectInfo.getRejectorPositionCode());
             }
         }
         return res;

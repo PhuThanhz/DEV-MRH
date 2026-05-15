@@ -15,6 +15,8 @@ import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 public interface JobDescriptionRepository
         extends JpaRepository<JobDescription, Long>,
         JpaSpecificationExecutor<JobDescription> {
+    
+    boolean existsByCode(String code);
 
     List<JobDescription> findByCreatedBy(String createdBy);
 
