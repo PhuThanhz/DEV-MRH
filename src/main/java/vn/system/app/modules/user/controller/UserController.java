@@ -193,6 +193,20 @@ public class UserController {
         }
 
         // ===========================================================
+        // GET USERS CROSS-COMPANY (CROSS-COMPANY SEARCH & PAGINATION)
+        // ===========================================================
+        @GetMapping("/users/cross-company")
+        @ApiMessage("Fetch users success")
+        public ResponseEntity<ResultPaginationDTO> getCrossCompanyUsers(
+                        @RequestParam(value = "page", defaultValue = "1") int page,
+                        @RequestParam(value = "size", defaultValue = "10") int size,
+                        @RequestParam(value = "search", required = false) String search,
+                        @RequestParam(value = "companyId", required = false) Long companyId) {
+                Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, size);
+                return ResponseEntity.ok(this.userService.fetchCrossCompanyUsers(search, companyId, pageable));
+        }
+
+        // ===========================================================
         // UPDATE USER
         // ===========================================================
         @PutMapping("/users")

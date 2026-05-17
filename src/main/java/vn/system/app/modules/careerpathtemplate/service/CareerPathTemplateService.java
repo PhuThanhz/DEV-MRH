@@ -1,6 +1,8 @@
 package vn.system.app.modules.careerpathtemplate.service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -43,6 +45,14 @@ public class CareerPathTemplateService {
     @Transactional
     public CareerPathTemplateResponse handleCreate(CareerPathTemplateRequest req) {
 
+        // Kiểm tra trùng lặp stepOrder trong request
+        Set<Integer> orderSet = req.getSteps().stream()
+                .map(CareerPathTemplateRequest.StepRequest::getStepOrder)
+                .collect(Collectors.toSet());
+        if (orderSet.size() < req.getSteps().size()) {
+            throw new IdInvalidException("Thứ tự các bước trong lộ trình thăng tiến không được trùng lặp");
+        }
+
         if (templateRepo.existsByNameAndDepartment_Id(req.getName(), req.getDepartmentId())) {
             throw new IdInvalidException(
                     "Ten lo trinh da ton tai trong phong ban nay: " + req.getName());
@@ -71,6 +81,14 @@ public class CareerPathTemplateService {
     // =====================================================
     @Transactional
     public CareerPathTemplateResponse handleUpdate(Long id, CareerPathTemplateRequest req) {
+
+        // Kiểm tra trùng lặp stepOrder trong request
+        Set<Integer> orderSet = req.getSteps().stream()
+                .map(CareerPathTemplateRequest.StepRequest::getStepOrder)
+                .collect(Collectors.toSet());
+        if (orderSet.size() < req.getSteps().size()) {
+            throw new IdInvalidException("Thứ tự các bước trong lộ trình thăng tiến không được trùng lặp");
+        }
 
         CareerPathTemplate template = fetchById(id);
 

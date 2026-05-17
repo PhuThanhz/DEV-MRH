@@ -18,6 +18,8 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.department.domain.Department;
@@ -72,6 +74,30 @@ public class ConfidentialProcedureService {
         this.qrService = qrService;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     // =====================================================
     // CREATE
     // =====================================================
@@ -87,6 +113,8 @@ public class ConfidentialProcedureService {
 
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+
+        validateScope(department.getCompany() != null ? department.getCompany().getId() : null);
 
         Section section = resolveSection(req.getSectionId());
 
@@ -123,12 +151,20 @@ public class ConfidentialProcedureService {
     public ResConfidentialProcedureDTO handleUpdate(Long id, ConfidentialProcedureRequest req) {
 
         ConfidentialProcedure current = fetchById(id);
+        
+        Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(currentCompanyId);
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         checkDuplicateCode(req.getDepartmentId(), code, id);
 
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+
+        Long targetCompanyId = (department.getCompany() != null) ? department.getCompany().getId() : null;
+        validateScope(targetCompanyId);
 
         Section section = resolveSection(req.getSectionId());
 
@@ -158,12 +194,20 @@ public class ConfidentialProcedureService {
     public ResConfidentialProcedureDTO handleRevise(Long id, ConfidentialProcedureRequest req) {
 
         ConfidentialProcedure current = fetchById(id);
+
+        Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(currentCompanyId);
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         checkDuplicateCode(req.getDepartmentId(), code, id);
 
         Department department = departmentRepository.findById(req.getDepartmentId())
                 .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+
+        Long targetCompanyId = (department.getCompany() != null) ? department.getCompany().getId() : null;
+        validateScope(targetCompanyId);
 
         Section section = resolveSection(req.getSectionId());
 
@@ -196,6 +240,9 @@ public class ConfidentialProcedureService {
     @Transactional
     public void handleToggleActive(Long id) {
         ConfidentialProcedure current = fetchById(id);
+        Long companyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(companyId);
         current.setActive(!current.isActive());
         repository.save(current);
     }
@@ -205,7 +252,10 @@ public class ConfidentialProcedureService {
     // =====================================================
     @Transactional
     public void handleDelete(Long id) {
-        fetchById(id);
+        ConfidentialProcedure current = fetchById(id);
+        Long companyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(companyId);
         repository.deleteById(id);
     }
 

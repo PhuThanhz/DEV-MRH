@@ -3,6 +3,7 @@ package vn.system.app.modules.careerpathtemplate.domain.request;
 import java.util.List;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -36,6 +37,7 @@ public class CareerPathTemplateRequest {
         @NotNull(message = "Chức danh không được để trống")
         private Long careerPathId;
 
+        @Min(value = 1, message = "Thời gian giữ bậc tối thiểu phải từ 1 tháng")
         private Integer durationMonths; // null = bước cuối (đỉnh)
 
         private String description;

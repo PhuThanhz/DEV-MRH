@@ -28,6 +28,7 @@ import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
 import vn.system.app.modules.sectionjobtitle.repository.SectionJobTitleRepository;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.common.util.error.PermissionException;
 
 @Service
 public class CompanyJobTitleService {
@@ -52,6 +53,30 @@ public class CompanyJobTitleService {
         this.sectionRepo = sectionRepo;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     /*
      * =====================================================
      * CREATE / REACTIVATE (GÁN Ở CÔNG TY)
@@ -59,6 +84,8 @@ public class CompanyJobTitleService {
      */
     @Transactional
     public CompanyJobTitle handleCreate(ReqCompanyJobTitleDTO dto) {
+
+        validateScope(dto.getCompanyId());
 
         Company company = companyService.fetchEntityById(dto.getCompanyId());
         JobTitle jobTitle = jobTitleService.fetchEntityById(dto.getJobTitleId());
@@ -109,6 +136,8 @@ public class CompanyJobTitleService {
     public void handleDelete(Long id) {
 
         CompanyJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getCompany().getId());
+
         if (!entity.isActive())
             return;
 
@@ -127,6 +156,7 @@ public class CompanyJobTitleService {
     public CompanyJobTitle restore(Long id) {
 
         CompanyJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getCompany().getId());
 
         if (entity.isActive()) {
             throw new IdInvalidException("Bản ghi đang hoạt động, không cần khôi phục.");
@@ -206,6 +236,10 @@ public class CompanyJobTitleService {
     @Transactional(readOnly = true)
     public List<ResCompanyJobTitleDTO> fetchAllJobTitlesOfCompany(Long companyId) {
 
+        validateScope(companyId);
+
+        Company company = companyService.fetchEntityById(companyId);
+
         Map<Long, CompanyJobTitle> companyMap = repository.findByCompany_IdAndActiveTrue(companyId)
                 .stream()
                 .collect(Collectors.toMap(
@@ -220,7 +254,7 @@ public class CompanyJobTitleService {
 
         for (SectionJobTitle sjt : sectionList) {
             Long jobId = sjt.getJobTitle().getId();
-            ResCompanyJobTitleDTO dto = convertToResDTO(buildVirtual(companyId, sjt.getJobTitle()));
+            ResCompanyJobTitleDTO dto = convertToResDTO(buildVirtual(company, sjt.getJobTitle()));
             dto.setSource("SECTION");
             resultMap.put(jobId, dto);
         }
@@ -228,7 +262,7 @@ public class CompanyJobTitleService {
         for (DepartmentJobTitle djt : deptList) {
             Long jobId = djt.getJobTitle().getId();
             if (!resultMap.containsKey(jobId)) {
-                ResCompanyJobTitleDTO dto = convertToResDTO(buildVirtual(companyId, djt.getJobTitle()));
+                ResCompanyJobTitleDTO dto = convertToResDTO(buildVirtual(company, djt.getJobTitle()));
                 dto.setSource("DEPARTMENT");
                 resultMap.put(jobId, dto);
             }
@@ -267,6 +301,8 @@ public class CompanyJobTitleService {
      */
     @Transactional(readOnly = true)
     public List<ResCompanyJobTitleDTO> fetchUnassignedJobTitlesOfCompany(Long companyId) {
+
+        validateScope(companyId);
 
         List<JobTitle> allActiveJobTitles = jobTitleService.findAllActive();
         if (allActiveJobTitles.isEmpty())
@@ -341,9 +377,9 @@ public class CompanyJobTitleService {
                 .collect(Collectors.toList());
     }
 
-    private CompanyJobTitle buildVirtual(Long companyId, JobTitle jt) {
+    private CompanyJobTitle buildVirtual(Company company, JobTitle jt) {
         CompanyJobTitle fake = new CompanyJobTitle();
-        fake.setCompany(companyService.fetchEntityById(companyId));
+        fake.setCompany(company);
         fake.setJobTitle(jt);
         fake.setActive(false);
         return fake;

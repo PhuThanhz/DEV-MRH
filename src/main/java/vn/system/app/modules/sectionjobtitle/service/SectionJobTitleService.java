@@ -13,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
+import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.common.util.ScopeSpec;
 
 import vn.system.app.modules.departmentjobtitle.service.DepartmentJobTitleService;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
@@ -44,6 +47,30 @@ public class SectionJobTitleService {
         this.departmentJobTitleService = departmentJobTitleService;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     /*
      * =====================================================
      * CREATE + REACTIVATE
@@ -54,6 +81,8 @@ public class SectionJobTitleService {
 
         JobTitle jobTitle = jobTitleService.fetchEntityById(dto.getJobTitleId());
         Section section = sectionService.fetchEntityById(dto.getSectionId());
+
+        validateScope(section.getDepartment().getCompany() != null ? section.getDepartment().getCompany().getId() : null);
 
         Long deptId = section.getDepartment().getId();
         Long jobId = jobTitle.getId();
@@ -106,6 +135,7 @@ public class SectionJobTitleService {
     public SectionJobTitle restore(Long id) {
 
         SectionJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getSection().getDepartment().getCompany() != null ? entity.getSection().getDepartment().getCompany().getId() : null);
 
         if (entity.isActive()) {
             throw new IdInvalidException("Bản ghi đang hoạt động, không cần khôi phục.");
@@ -133,6 +163,7 @@ public class SectionJobTitleService {
     public void handleSoftDelete(Long id) {
 
         SectionJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getSection().getDepartment().getCompany() != null ? entity.getSection().getDepartment().getCompany().getId() : null);
 
         if (!entity.isActive()) {
             return;
@@ -171,6 +202,19 @@ public class SectionJobTitleService {
     public ResultPaginationDTO fetchAll(
             Specification<SectionJobTitle> spec,
             Pageable pageable) {
+
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            if (scope.isAdminLevel()) {
+                // ADMIN_SUB_1 → thấy toàn bộ, không filter
+            } else if (scope.isCompanyLevel()) {
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byCompanyScope("section.department.company.id"));
+            } else {
+                spec = Specification.where(spec)
+                        .and(ScopeSpec.byDepartmentScope("section.department.id"));
+            }
+        }
 
         Page<SectionJobTitle> page = repository.findAll(spec, pageable);
 

@@ -17,9 +17,13 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.document.domain.Document;
+import vn.system.app.modules.document.domain.DocumentAccess;
 import vn.system.app.modules.document.domain.request.DocumentRequest;
 import vn.system.app.modules.document.domain.response.ResDocumentDTO;
 import vn.system.app.modules.document.service.DocumentService;
+import vn.system.app.common.util.SecurityUtil;
+import jakarta.persistence.criteria.Subquery;
+import jakarta.persistence.criteria.Root;
 import vn.system.app.modules.sharetoken.domain.ShareTokenAccessLog;
 import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
 import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
@@ -76,6 +80,16 @@ public class DocumentController {
     }
 
     // =====================================================
+    // MARK AS READ
+    // =====================================================
+    @PutMapping("/{id}/read")
+    @ApiMessage("Đánh dấu đã xem văn bản")
+    public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
+        service.handleMarkAsRead(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // =====================================================
     // GET ONE
     // =====================================================
     @GetMapping("/{id}")
@@ -92,8 +106,52 @@ public class DocumentController {
     public ResponseEntity<ResultPaginationDTO> getAll(
             @Filter Specification<Document> spec,
             Pageable pageable) {
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        
+        vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
+        
+        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+            // Super Admin & Admin Sub 1 (ALL): Bypass filter, see everything
+        } else if (scope.isCompanyLevel()) {
+            // Admin Sub 2 (COMPANY): Filter by companyId OR cross-company access
+            Specification<Document> companySpec = ScopeSpec.byCompanyScope("department.company.id");
+            Specification<Document> accessSpec = buildAccessSpec();
+            spec = spec.and(companySpec.or(accessSpec));
+        } else {
+            // User bình thường (INDIVIDUAL): Filter by createdBy OR accessList
+            Specification<Document> individualSpec = (root, query, cb) -> {
+                String currentUserLogin = SecurityUtil.getCurrentUserLogin().orElse("");
+                String currentUserId = SecurityUtil.getCurrentUserId().orElse("");
+                jakarta.persistence.criteria.Predicate createdByPred = cb.equal(root.get("createdBy"), currentUserLogin);
+                
+                Subquery<Integer> subquery = query.subquery(Integer.class);
+                Root<DocumentAccess> accessRoot = subquery.from(DocumentAccess.class);
+                subquery.select(cb.literal(1));
+                subquery.where(
+                    cb.equal(accessRoot.get("document"), root),
+                    cb.equal(accessRoot.get("userId"), currentUserId)
+                );
+                jakarta.persistence.criteria.Predicate accessPred = cb.exists(subquery);
+                
+                return cb.or(createdByPred, accessPred);
+            };
+            spec = spec.and(individualSpec);
+        }
+        
         return ResponseEntity.ok(service.fetchAll(spec, pageable));
+    }
+
+    private Specification<Document> buildAccessSpec() {
+        return (root, query, cb) -> {
+            String currentUserId = SecurityUtil.getCurrentUserId().orElse("");
+            Subquery<Integer> subquery = query.subquery(Integer.class);
+            Root<DocumentAccess> accessRoot = subquery.from(DocumentAccess.class);
+            subquery.select(cb.literal(1));
+            subquery.where(
+                cb.equal(accessRoot.get("document"), root),
+                cb.equal(accessRoot.get("userId"), currentUserId)
+            );
+            return cb.exists(subquery);
+        };
     }
 
     // =====================================================

@@ -103,7 +103,7 @@ public class JdFlowController {
          */
         @PostMapping("/jd-flow/submit")
         @ApiMessage("Gửi JD duyệt thành công")
-        @PreAuthorize("hasAnyAuthority('JD_CREATE', 'JD_UPDATE')")
+        // @PreAuthorize("hasAnyAuthority('JD_CREATE', 'JD_UPDATE')")
         public ResponseEntity<ResJdFlowDTO> submitFlow(
                         @Valid @RequestBody ReqSubmitJdFlow req) {
 
@@ -129,7 +129,7 @@ public class JdFlowController {
          */
         @PostMapping("/jd-flow/approve")
         @ApiMessage("Duyệt JD thành công")
-        @PreAuthorize("hasAnyAuthority('JD_APPROVE', 'JD_APPROVE_FINAL')")
+        // @PreAuthorize("hasAnyAuthority('JD_APPROVE', 'JD_APPROVE_FINAL')")
         public ResponseEntity<ResJdFlowDTO> approveFlow(
                         @Valid @RequestBody ReqApproveJdFlow req) {
 
@@ -148,7 +148,7 @@ public class JdFlowController {
          */
         @PostMapping("/jd-flow/reject")
         @ApiMessage("Từ chối JD thành công")
-        @PreAuthorize("hasAnyAuthority('JD_APPROVE', 'JD_APPROVE_FINAL')")
+        // @PreAuthorize("hasAnyAuthority('JD_APPROVE', 'JD_APPROVE_FINAL')")
         public ResponseEntity<ResJdFlowDTO> rejectFlow(
                         @Valid @RequestBody ReqRejectJdFlow req) {
 
@@ -167,7 +167,7 @@ public class JdFlowController {
          */
         @PostMapping("/jd-flow/issue")
         @ApiMessage("Ban hành JD thành công")
-        @PreAuthorize("hasAuthority('JD_ISSUE')")
+        // @PreAuthorize("hasAuthority('JD_ISSUE')")
         public ResponseEntity<ResJdFlowDTO> issueFlow(
                         @Valid @RequestBody ReqIssueJdFlow req) {
 

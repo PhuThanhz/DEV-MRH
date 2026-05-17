@@ -33,7 +33,10 @@ import vn.system.app.modules.jd.jobdescriptiontask.service.JobDescriptionTaskSer
 import vn.system.app.modules.jd.jobdescriptionposition.service.JobDescriptionPositionService;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.modules.jd.jdflow.domain.JdFlow;
+import vn.system.app.modules.jd.jdflow.repository.JdFlowRepository;
 import vn.system.app.modules.jd.jdflow.service.JdFlowLogService;
+import vn.system.app.modules.jd.jdflow.service.JdPermissionService;
 import vn.system.app.modules.user.domain.User;
 
 @Service
@@ -41,8 +44,10 @@ import vn.system.app.modules.user.domain.User;
 public class JobDescriptionService {
 
     private final JobDescriptionRepository repository;
-    private final JdFlowLogService jdFlowLogService; // ← THÊM
-    private final UserRepository userRepository; // ← THÊM VÀO ĐÂY
+    private final JdFlowLogService jdFlowLogService;
+    private final UserRepository userRepository;
+    private final JdPermissionService permissionService;
+    private final JdFlowRepository jdFlowRepository;
 
     private final CompanyService companyService;
     private final DepartmentService departmentService;
@@ -81,7 +86,24 @@ public class JobDescriptionService {
         jd.setReportTo(req.getReportTo());
         jd.setBelongsTo(req.getBelongsTo());
         jd.setCollaborateWith(req.getCollaborateWith());
-        jd.setStatus("DRAFT");
+
+        if (Boolean.TRUE.equals(req.getPublishDirectly())) {
+            String email = SecurityUtil.getCurrentUserLogin().orElse("");
+            User currentUser = userRepository.findByEmail(email);
+            if (currentUser == null) {
+                throw new RuntimeException("Không xác định được người tạo JD");
+            }
+            UserScopeContext.UserScope scope = UserScopeContext.get();
+            boolean isSuperAdmin = scope != null && scope.isSuperAdmin();
+            if (!isSuperAdmin && !permissionService.hasIssuePermission(currentUser)) {
+                throw new RuntimeException("Bạn không có quyền ban hành trực tiếp JD này");
+            }
+            jd.setStatus("PUBLISHED");
+            jd.setVersion(1);
+        } else {
+            jd.setStatus("DRAFT");
+        }
+
         jd.setEffectiveDate(req.getEffectiveDate());
 
         if (req.getDepartmentJobTitleId() != null) {
@@ -106,6 +128,20 @@ public class JobDescriptionService {
         requirementService.createFromDTO(jd, req.getRequirements());
         taskService.createFromDTO(jd, req.getTasks());
         positionService.createFromDTO(jd, req.getPositions());
+
+        if (Boolean.TRUE.equals(req.getPublishDirectly())) {
+            String email = SecurityUtil.getCurrentUserLogin().orElse("");
+            User currentUser = userRepository.findByEmail(email);
+            
+            JdFlow flow = new JdFlow();
+            flow.setJobDescription(jd);
+            flow.setFromUser(currentUser);
+            flow.setCurrentUser(null);
+            flow.setStatus("ISSUED");
+            jdFlowRepository.save(flow);
+
+            jdFlowLogService.saveLog(jd, currentUser, null, "ISSUE", "Ban hành trực tiếp");
+        }
 
         return jd;
     }
@@ -133,6 +169,20 @@ public class JobDescriptionService {
                 throw new RuntimeException("Bạn không có quyền chỉnh sửa JD này");
             }
         }
+        if (Boolean.TRUE.equals(req.getPublishDirectly())) {
+            String email = SecurityUtil.getCurrentUserLogin().orElse("");
+            User currentUser = userRepository.findByEmail(email);
+            if (currentUser == null) {
+                throw new RuntimeException("Không xác định được người chỉnh sửa JD");
+            }
+            UserScopeContext.UserScope scope = UserScopeContext.get();
+            boolean isSuperAdmin = scope != null && scope.isSuperAdmin();
+            if (!isSuperAdmin && !permissionService.hasIssuePermission(currentUser)) {
+                throw new RuntimeException("Bạn không có quyền ban hành trực tiếp JD này");
+            }
+            current.setStatus("PUBLISHED");
+        }
+
         current.setReportTo(req.getReportTo());
         current.setBelongsTo(req.getBelongsTo());
         current.setCollaborateWith(req.getCollaborateWith());
@@ -144,6 +194,20 @@ public class JobDescriptionService {
         requirementService.update(current.getId(), req.getRequirements());
         taskService.updateFromDTO(current, req.getTasks());
         positionService.updateFromDTO(current, req.getPositions());
+
+        if (Boolean.TRUE.equals(req.getPublishDirectly())) {
+            String email = SecurityUtil.getCurrentUserLogin().orElse("");
+            User currentUser = userRepository.findByEmail(email);
+            
+            JdFlow flow = new JdFlow();
+            flow.setJobDescription(current);
+            flow.setFromUser(currentUser);
+            flow.setCurrentUser(null);
+            flow.setStatus("ISSUED");
+            jdFlowRepository.save(flow);
+
+            jdFlowLogService.saveLog(current, currentUser, null, "ISSUE", "Ban hành trực tiếp");
+        }
 
         return current; // ← đổi chỗ này thôi
     }

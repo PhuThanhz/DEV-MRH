@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.jd.jdflow.domain.JdFlow;
 import vn.system.app.modules.jd.jdflow.domain.JdFlowLog;
 import vn.system.app.modules.jd.jdflow.domain.response.ResJdApproverDTO;
@@ -47,6 +48,30 @@ public class JdFlowService {
         this.userPositionRepository = userPositionRepository;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     /*
      * ==========================================
      * FETCH FLOW BY JD
@@ -72,6 +97,8 @@ public class JdFlowService {
 
         JobDescription jd = jobDescriptionRepository.findById(jdId)
                 .orElseThrow(() -> new RuntimeException("JD không tồn tại"));
+
+        validateScope(jd.getCompany() != null ? jd.getCompany().getId() : null);
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         User fromUser = userRepository.findByEmail(email);
@@ -133,6 +160,10 @@ public class JdFlowService {
 
         User toUser = userRepository.findById(nextUserId)
                 .orElseThrow(() -> new RuntimeException("User không tồn tại"));
+
+        if (jd.getCompany() != null && !isUserInCompany(toUser, jd.getCompany().getId())) {
+            throw new RuntimeException("Người nhận không thuộc công ty quản lý của JD này");
+        }
 
         if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể gửi JD duyệt cho chính mình");
@@ -198,6 +229,8 @@ public class JdFlowService {
         if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
 
+        validateScope(flow.getJobDescription().getCompany() != null ? flow.getJobDescription().getCompany().getId() : null);
+
         if ("REJECTED".equals(flow.getStatus()))
             throw new RuntimeException("JD đã bị từ chối");
 
@@ -217,6 +250,10 @@ public class JdFlowService {
 
             User issuer = userRepository.findById(nextUserId)
                     .orElseThrow(() -> new RuntimeException("User không tồn tại"));
+
+            if (flow.getJobDescription().getCompany() != null && !isUserInCompany(issuer, flow.getJobDescription().getCompany().getId())) {
+                throw new RuntimeException("Người nhận không thuộc công ty quản lý của JD này");
+            }
 
             if (!permissionService.hasIssuePermission(issuer))
                 throw new RuntimeException("User không có quyền ban hành JD");
@@ -244,6 +281,10 @@ public class JdFlowService {
 
         User toUser = userRepository.findById(nextUserId)
                 .orElseThrow(() -> new RuntimeException("User tiếp theo không tồn tại"));
+
+        if (flow.getJobDescription().getCompany() != null && !isUserInCompany(toUser, flow.getJobDescription().getCompany().getId())) {
+            throw new RuntimeException("Người nhận không thuộc công ty quản lý của JD này");
+        }
 
         if (fromUser.getId().equals(toUser.getId()))
             throw new RuntimeException("Không thể chuyển duyệt cho chính mình");
@@ -279,6 +320,8 @@ public class JdFlowService {
 
         if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
+
+        validateScope(flow.getJobDescription().getCompany() != null ? flow.getJobDescription().getCompany().getId() : null);
 
         if ("ISSUED".equals(flow.getStatus()) || "REJECTED".equals(flow.getStatus()))
             throw new RuntimeException("JD không thể từ chối ở trạng thái này");
@@ -326,6 +369,8 @@ public class JdFlowService {
 
         if (flow == null)
             throw new RuntimeException("JD Flow không tồn tại");
+
+        validateScope(flow.getJobDescription().getCompany() != null ? flow.getJobDescription().getCompany().getId() : null);
 
         if (!"APPROVED".equals(flow.getStatus()))
             throw new RuntimeException("JD chưa được duyệt hoàn tất");

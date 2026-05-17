@@ -1,5 +1,6 @@
 package vn.system.app.modules.jobpositionnode.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -7,6 +8,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.jobpositionchart.domain.JobPositionChart;
 import vn.system.app.modules.jobpositionchart.repository.JobPositionChartRepository;
@@ -16,6 +18,7 @@ import vn.system.app.modules.jobpositionnode.domain.JobPositionNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNodeTree;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNode;
+import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNodePosition;
 import vn.system.app.modules.jobpositionnode.domain.response.ResJobPositionNodeDTO;
 import vn.system.app.modules.jobpositionnode.repository.JobPositionNodeRepository;
 
@@ -38,6 +41,20 @@ public class JobPositionNodeService {
 
     /*
      * ==================================
+     * VALIDATE SCOPE (IDOR Protection)
+     * ==================================
+     */
+    private void validateScope(JobPositionChart chart) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isSuperAdmin()) {
+            if (chart.getCompanyId() != null && !scope.companyIds().contains(chart.getCompanyId())) {
+                throw new IdInvalidException("Bạn không có quyền thao tác trên sơ đồ này");
+            }
+        }
+    }
+
+    /*
+     * ==================================
      * CREATE NODE (single)
      * ==================================
      */
@@ -47,6 +64,8 @@ public class JobPositionNodeService {
         JobPositionChart chart = this.chartRepository.findById(req.getChartId())
                 .orElseThrow(() -> new IdInvalidException(
                         "Chart với id = " + req.getChartId() + " không tồn tại"));
+
+        validateScope(chart);
 
         JobPositionNode node = new JobPositionNode();
 
@@ -75,6 +94,17 @@ public class JobPositionNodeService {
      */
     @Transactional
     public List<JobPositionNode> handleCreateNodeTree(List<ReqCreateNodeTree> reqs) {
+        if (reqs == null || reqs.isEmpty()) {
+            return List.of();
+        }
+        // Validate scope of the chart from the first tree element
+        Long chartId = reqs.get(0).getChartId();
+        if (chartId != null) {
+            JobPositionChart chart = this.chartRepository.findById(chartId)
+                    .orElseThrow(() -> new IdInvalidException("Chart không tồn tại"));
+            validateScope(chart);
+        }
+
         return reqs.stream()
                 .map(req -> createRecursive(req, req.getParentId()))
                 .collect(Collectors.toList());
@@ -87,18 +117,31 @@ public class JobPositionNodeService {
      */
     @Transactional
     public void handleDeleteNode(Long id) {
-        // 1. Tìm các node con trực tiếp
-        List<JobPositionNode> children = this.nodeRepository.findByParentId(id);
-
-        // 2. Đệ quy xóa các node con (và cháu, chắt...)
-        if (children != null && !children.isEmpty()) {
-            for (JobPositionNode child : children) {
-                handleDeleteNode(child.getId());
-            }
+        JobPositionNode node = this.fetchNodeById(id);
+        if (node == null) {
+            return;
         }
 
-        // 3. Xóa node hiện tại
-        this.nodeRepository.deleteById(id);
+        validateScope(node.getChart());
+
+        // 1. Lấy toàn bộ node của Chart này để xử lý đệ quy trên RAM
+        List<JobPositionNode> allNodes = this.nodeRepository.findByChartId(node.getChart().getId());
+
+        List<Long> idsToDelete = new ArrayList<>();
+        idsToDelete.add(id);
+        collectDescendants(id, allNodes, idsToDelete);
+
+        // 2. Xóa hàng loạt bằng in-batch delete
+        this.nodeRepository.deleteAllByIdInBatch(idsToDelete);
+    }
+
+    private void collectDescendants(Long parentId, List<JobPositionNode> allNodes, List<Long> idsToDelete) {
+        for (JobPositionNode child : allNodes) {
+            if (parentId.equals(child.getParentId())) {
+                idsToDelete.add(child.getId());
+                collectDescendants(child.getId(), allNodes, idsToDelete);
+            }
+        }
     }
 
     /*
@@ -128,6 +171,8 @@ public class JobPositionNodeService {
             return null;
         }
 
+        validateScope(currentNode.getChart());
+
         if (req.getName() != null) {
             currentNode.setName(req.getName());
         }
@@ -146,8 +191,11 @@ public class JobPositionNodeService {
                 throw new IdInvalidException("Không thể gán node cha là chính nó");
             }
 
+            // ⭐ Tối ưu: Lấy toàn bộ node của Chart này để kiểm tra vòng lặp trên RAM
+            List<JobPositionNode> allNodes = this.nodeRepository.findByChartId(currentNode.getChart().getId());
+
             // Nếu node cha mới là con cháu của node hiện tại -> báo lỗi
-            if (isDescendant(currentNode.getId(), req.getParentId())) {
+            if (isDescendant(currentNode.getId(), req.getParentId(), allNodes)) {
                 throw new IdInvalidException("Không thể gán node cha là node con/cháu của chính nó (gây vòng lặp)");
             }
 
@@ -174,6 +222,37 @@ public class JobPositionNodeService {
         }
 
         return this.nodeRepository.save(currentNode);
+    }
+
+    /*
+     * ==================================
+     * UPDATE NODE POSITIONS (bulk)
+     * ==================================
+     */
+    @Transactional
+    public void handleUpdateNodePositions(List<ReqUpdateNodePosition> reqs) {
+        if (reqs == null || reqs.isEmpty()) {
+            return;
+        }
+
+        // Validate scope of the first node's chart (they all belong to the same chart/scope)
+        JobPositionNode firstNode = this.fetchNodeById(reqs.get(0).getId());
+        if (firstNode != null) {
+            validateScope(firstNode.getChart());
+        }
+
+        for (ReqUpdateNodePosition req : reqs) {
+            JobPositionNode node = this.fetchNodeById(req.getId());
+            if (node != null) {
+                if (req.getPosX() != null) {
+                    node.setPosX(req.getPosX());
+                }
+                if (req.getPosY() != null) {
+                    node.setPosY(req.getPosY());
+                }
+                this.nodeRepository.save(node);
+            }
+        }
     }
 
     /*
@@ -303,16 +382,17 @@ public class JobPositionNodeService {
     }
 
     /**
-     * Kiểm tra xem targetId có phải là hậu duệ của parentId không
+     * Kiểm tra xem targetId có phải là hậu duệ của parentId không (RAM Traversal)
      */
-    private boolean isDescendant(Long parentId, Long targetId) {
-        List<JobPositionNode> children = this.nodeRepository.findByParentId(parentId);
-        for (JobPositionNode child : children) {
-            if (child.getId().equals(targetId)) {
-                return true;
-            }
-            if (isDescendant(child.getId(), targetId)) {
-                return true;
+    private boolean isDescendant(Long parentId, Long targetId, List<JobPositionNode> allNodes) {
+        for (JobPositionNode child : allNodes) {
+            if (parentId.equals(child.getParentId())) {
+                if (child.getId().equals(targetId)) {
+                    return true;
+                }
+                if (isDescendant(child.getId(), targetId, allNodes)) {
+                    return true;
+                }
             }
         }
         return false;

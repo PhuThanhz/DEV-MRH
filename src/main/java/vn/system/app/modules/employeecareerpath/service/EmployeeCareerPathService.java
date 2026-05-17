@@ -70,6 +70,10 @@ public class EmployeeCareerPathService {
 
         CareerPathTemplate template = templateService.fetchById(req.getTemplateId());
 
+        if (!template.isActive()) {
+            throw new IdInvalidException("Lộ trình mẫu '" + template.getName() + "' đã bị vô hiệu hoá, không thể gán cho nhân viên");
+        }
+
         CareerPath currentCp = template.getSteps().stream()
                 .filter(s -> s.getCareerPath().getId().equals(req.getCurrentCareerPathId()))
                 .map(CareerPathTemplateStep::getCareerPath)
@@ -120,6 +124,14 @@ public class EmployeeCareerPathService {
 
         EmployeeCareerPath e = fetchById(id);
 
+        if (!e.isActive()) {
+            throw new IdInvalidException("Lộ trình thăng tiến của nhân viên này đã kết thúc hoặc bị vô hiệu hóa");
+        }
+
+        if (e.getProgressStatus() == 2) {
+            throw new IdInvalidException("Lộ trình thăng tiến đang bị tạm dừng, vui lòng kích hoạt lại trước khi thăng tiến");
+        }
+
         CareerPathTemplateStep currentStep = templateService.fetchStep(
                 e.getTemplate().getId(), e.getCurrentStepOrder());
 
@@ -138,6 +150,9 @@ public class EmployeeCareerPathService {
         }
 
         LocalDate promotedAt = req.getPromotedAt() != null ? req.getPromotedAt() : LocalDate.now();
+        if (promotedAt.isBefore(e.getStepStartedAt())) {
+            throw new IdInvalidException("Ngày thăng tiến không thể trước ngày bắt đầu bước hiện tại (" + e.getStepStartedAt() + ")");
+        }
 
         // Lưu lịch sử
         EmployeeCareerPathHistory history = new EmployeeCareerPathHistory();
@@ -175,6 +190,9 @@ public class EmployeeCareerPathService {
     // =====================================================
     @Transactional
     public void handleSetStatus(Long id, Integer status) {
+        if (status == null || (status != 0 && status != 1 && status != 2)) {
+            throw new IdInvalidException("Trạng thái tiến độ không hợp lệ (chỉ chấp nhận 0, 1 hoặc 2)");
+        }
         EmployeeCareerPath e = fetchById(id);
         e.setProgressStatus(status);
         repo.save(e);

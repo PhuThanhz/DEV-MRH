@@ -139,6 +139,23 @@ public class SecurityUtil {
     }
 
     /**
+     * Get the User ID (UUID) of the current user from JWT claim.
+     *
+     * @return the UUID of the current user.
+     */
+    public static Optional<String> getCurrentUserId() {
+        SecurityContext securityContext = SecurityContextHolder.getContext();
+        Authentication authentication = securityContext.getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            java.util.Map<String, Object> userToken = jwt.getClaim("user");
+            if (userToken != null && userToken.get("id") != null) {
+                return Optional.of(userToken.get("id").toString());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Get the JWT of the current user.
      *
      * @return the JWT of the current user.

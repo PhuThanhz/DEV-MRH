@@ -76,4 +76,6 @@ public class ReqCreateJobDescriptionDTO {
 
     private List<ReqPositionDTO> positions;
 
+    private Boolean publishDirectly;
+
 }

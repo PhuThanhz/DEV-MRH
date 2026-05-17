@@ -16,6 +16,8 @@ public class ResDocumentCategoryDTO {
     private String definition;
     private boolean active;
     private boolean mappingProcedure;
+    @com.fasterxml.jackson.annotation.JsonProperty("isCrossCompany")
+    private boolean isCrossCompany;
 
     private Instant createdAt;
     private Instant updatedAt;

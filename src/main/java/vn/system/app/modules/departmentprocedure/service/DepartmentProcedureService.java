@@ -12,6 +12,7 @@ import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
 import vn.system.app.modules.departmentprocedure.domain.DepartmentProcedure;
@@ -53,6 +54,30 @@ public class DepartmentProcedureService {
         this.qrService = qrService;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     // =====================================================
     // CREATE
     // =====================================================
@@ -67,6 +92,11 @@ public class DepartmentProcedureService {
         }
 
         for (Department dept : departments) {
+            if (dept.getCompany() != null) {
+                validateScope(dept.getCompany().getId());
+            } else {
+                validateScope(null);
+            }
             if (repository.existsByDepartmentIdAndProcedureCode(dept.getId(), code)) {
                 throw new IdInvalidException(
                         "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
@@ -106,6 +136,17 @@ public class DepartmentProcedureService {
     public ResDepartmentProcedureDTO handleUpdate(Long id, DepartmentProcedureRequest req) {
 
         DepartmentProcedure current = fetchById(id);
+        
+        if (current.getDepartments() != null) {
+            for (Department dept : current.getDepartments()) {
+                if (dept.getCompany() != null) {
+                    validateScope(dept.getCompany().getId());
+                } else {
+                    validateScope(null);
+                }
+            }
+        }
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         List<Department> departments = departmentRepository.findAllById(req.getDepartmentIds());
@@ -114,6 +155,11 @@ public class DepartmentProcedureService {
         }
 
         for (Department dept : departments) {
+            if (dept.getCompany() != null) {
+                validateScope(dept.getCompany().getId());
+            } else {
+                validateScope(null);
+            }
             if (repository.existsByDepartmentIdAndProcedureCodeAndIdNot(dept.getId(), code, id)) {
                 throw new IdInvalidException(
                         "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
@@ -148,6 +194,17 @@ public class DepartmentProcedureService {
     public ResDepartmentProcedureDTO handleRevise(Long id, DepartmentProcedureRequest req) {
 
         DepartmentProcedure current = fetchById(id);
+
+        if (current.getDepartments() != null) {
+            for (Department dept : current.getDepartments()) {
+                if (dept.getCompany() != null) {
+                    validateScope(dept.getCompany().getId());
+                } else {
+                    validateScope(null);
+                }
+            }
+        }
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         List<Department> departments = departmentRepository.findAllById(req.getDepartmentIds());
@@ -156,6 +213,11 @@ public class DepartmentProcedureService {
         }
 
         for (Department dept : departments) {
+            if (dept.getCompany() != null) {
+                validateScope(dept.getCompany().getId());
+            } else {
+                validateScope(null);
+            }
             if (repository.existsByDepartmentIdAndProcedureCodeAndIdNot(dept.getId(), code, id)) {
                 throw new IdInvalidException(
                         "Mã quy trình đã tồn tại trong phòng ban: " + dept.getName());
@@ -190,6 +252,15 @@ public class DepartmentProcedureService {
     @Transactional
     public void handleToggleActive(Long id) {
         DepartmentProcedure current = fetchById(id);
+        if (current.getDepartments() != null) {
+            for (Department dept : current.getDepartments()) {
+                if (dept.getCompany() != null) {
+                    validateScope(dept.getCompany().getId());
+                } else {
+                    validateScope(null);
+                }
+            }
+        }
         current.setActive(!current.isActive());
         repository.save(current);
     }
@@ -199,7 +270,16 @@ public class DepartmentProcedureService {
     // =====================================================
     @Transactional
     public void handleDelete(Long id) {
-        fetchById(id);
+        DepartmentProcedure current = fetchById(id);
+        if (current.getDepartments() != null) {
+            for (Department dept : current.getDepartments()) {
+                if (dept.getCompany() != null) {
+                    validateScope(dept.getCompany().getId());
+                } else {
+                    validateScope(null);
+                }
+            }
+        }
         repository.deleteById(id);
     }
 

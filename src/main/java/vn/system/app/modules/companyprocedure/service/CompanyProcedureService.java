@@ -19,6 +19,7 @@ import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
@@ -56,6 +57,30 @@ public class CompanyProcedureService {
         this.qrService = qrService;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     // =====================================================
     // CREATE
     // =====================================================
@@ -74,6 +99,8 @@ public class CompanyProcedureService {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
         }
+
+        validateScope(department != null && department.getCompany() != null ? department.getCompany().getId() : null);
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -108,6 +135,11 @@ public class CompanyProcedureService {
     public ResCompanyProcedureDTO handleUpdate(Long id, CompanyProcedureRequest req) {
 
         CompanyProcedure current = fetchById(id);
+        
+        Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(currentCompanyId);
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         if (req.getDepartmentId() != null &&
@@ -121,6 +153,9 @@ public class CompanyProcedureService {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
         }
+
+        Long targetCompanyId = (department != null && department.getCompany() != null) ? department.getCompany().getId() : null;
+        validateScope(targetCompanyId);
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -150,6 +185,11 @@ public class CompanyProcedureService {
     public ResCompanyProcedureDTO handleRevise(Long id, CompanyProcedureRequest req) {
 
         CompanyProcedure current = fetchById(id);
+
+        Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(currentCompanyId);
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         if (req.getDepartmentId() != null &&
@@ -163,6 +203,9 @@ public class CompanyProcedureService {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
         }
+
+        Long targetCompanyId = (department != null && department.getCompany() != null) ? department.getCompany().getId() : null;
+        validateScope(targetCompanyId);
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -192,6 +235,9 @@ public class CompanyProcedureService {
     @Transactional
     public void handleToggleActive(Long id) {
         CompanyProcedure current = fetchById(id);
+        Long companyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(companyId);
         current.setActive(!current.isActive());
         repository.save(current);
     }
@@ -201,7 +247,10 @@ public class CompanyProcedureService {
     // =====================================================
     @Transactional
     public void handleDelete(Long id) {
-        fetchById(id);
+        CompanyProcedure current = fetchById(id);
+        Long companyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
+                ? current.getDepartment().getCompany().getId() : null;
+        validateScope(companyId);
         repository.deleteById(id);
     }
 

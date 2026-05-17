@@ -23,8 +23,12 @@ import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.domain.request.ReqCreateUserDTO;
 import vn.system.app.modules.user.domain.request.ReqUpdateUserDTO;
 import vn.system.app.modules.user.domain.response.ResCreateUserDTO;
+import vn.system.app.modules.user.domain.response.ResCrossCompanyUserDTO;
 import vn.system.app.modules.user.domain.response.ResUpdateUserDTO;
 import vn.system.app.modules.user.domain.response.ResUserDTO;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.userinfo.domain.UserInfo;
 import vn.system.app.modules.userinfo.repository.UserInfoRepository;
@@ -519,5 +523,135 @@ public class UserService {
                 .filter(Optional::isPresent)
                 .map(opt -> convertToResUserDTO(opt.get()))
                 .collect(Collectors.toList());
+    }
+
+    // ======================================================
+    // FETCH CROSS COMPANY USERS WITH PAGINATION
+    // ======================================================
+    public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, Pageable pageable) {
+        Specification<User> spec = (root, query, cb) -> cb.equal(root.get("active"), true);
+
+        if (search != null && !search.trim().isEmpty()) {
+            Specification<User> searchSpec = (root, query, cb) -> {
+                String likeSearch = "%" + search.trim().toLowerCase() + "%";
+                return cb.or(
+                        cb.like(cb.lower(root.get("name")), likeSearch),
+                        cb.like(cb.lower(root.get("email")), likeSearch)
+                );
+            };
+            spec = spec.and(searchSpec);
+        }
+
+        if (companyId != null) {
+            Specification<User> companySpec = (root, query, cb) -> {
+                var sub = query.subquery(String.class);
+                var posRoot = sub.from(UserPosition.class);
+
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.or(
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "COMPANY"),
+                                                cb.equal(posRoot.get("companyJobTitle").get("company").get("id"), companyId)),
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                cb.equal(posRoot.get("departmentJobTitle").get("department").get("company").get("id"), companyId)),
+                                        cb.and(
+                                                cb.equal(posRoot.get("source"), "SECTION"),
+                                                cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("company").get("id"), companyId)))));
+
+                return root.get("id").in(sub);
+            };
+            spec = spec.and(companySpec);
+        }
+
+        Page<User> pageUser = this.userRepository.findAll(spec, pageable);
+
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+        mt.setPage(pageable.getPageNumber() + 1);
+        mt.setPageSize(pageable.getPageSize());
+        mt.setPages(pageUser.getTotalPages());
+        mt.setTotal(pageUser.getTotalElements());
+        rs.setMeta(mt);
+
+        List<User> content = pageUser.getContent();
+        if (content.isEmpty()) {
+            rs.setResult(List.of());
+            return rs;
+        }
+
+        // Fetch all active positions for the users on this page in one query
+        List<String> userIds = content.stream().map(User::getId).collect(Collectors.toList());
+        List<UserPosition> positions = userPositionRepository.findActiveFullByUserIds(userIds);
+
+        // Group positions by userId
+        Map<String, List<UserPosition>> positionsByUser = new HashMap<>();
+        for (UserPosition up : positions) {
+            if (up.getUser() != null) {
+                positionsByUser.computeIfAbsent(up.getUser().getId(), k -> new ArrayList<>()).add(up);
+            }
+        }
+
+        List<ResCrossCompanyUserDTO> dtoList = content.stream().map(user -> {
+            ResCrossCompanyUserDTO dto = new ResCrossCompanyUserDTO();
+            dto.setId(user.getId());
+            dto.setName(user.getName());
+            dto.setEmail(user.getEmail());
+            
+            List<UserPosition> userPos = positionsByUser.getOrDefault(user.getId(), List.of());
+            populateCompanyAndDepartment(dto, userPos);
+            
+            return dto;
+        }).collect(Collectors.toList());
+
+        rs.setResult(dtoList);
+        return rs;
+    }
+
+    private void populateCompanyAndDepartment(ResCrossCompanyUserDTO dto, List<UserPosition> positions) {
+        if (positions == null || positions.isEmpty()) {
+            return;
+        }
+        // Prefer DEPARTMENT or SECTION positions since they contain departmentName
+        UserPosition chosen = null;
+        for (UserPosition p : positions) {
+            if ("DEPARTMENT".equalsIgnoreCase(p.getSource()) || "SECTION".equalsIgnoreCase(p.getSource())) {
+                chosen = p;
+                break;
+            }
+        }
+        if (chosen == null) {
+            chosen = positions.get(0);
+        }
+
+        switch (chosen.getSource().toUpperCase()) {
+            case "COMPANY" -> {
+                if (chosen.getCompanyJobTitle() != null && chosen.getCompanyJobTitle().getCompany() != null) {
+                    dto.setCompanyName(chosen.getCompanyJobTitle().getCompany().getName());
+                }
+            }
+            case "DEPARTMENT" -> {
+                if (chosen.getDepartmentJobTitle() != null && chosen.getDepartmentJobTitle().getDepartment() != null) {
+                    var dept = chosen.getDepartmentJobTitle().getDepartment();
+                    dto.setDepartmentName(dept.getName());
+                    if (dept.getCompany() != null) {
+                        dto.setCompanyName(dept.getCompany().getName());
+                    }
+                }
+            }
+            case "SECTION" -> {
+                if (chosen.getSectionJobTitle() != null && chosen.getSectionJobTitle().getSection() != null) {
+                    var sec = chosen.getSectionJobTitle().getSection();
+                    if (sec.getDepartment() != null) {
+                        dto.setDepartmentName(sec.getDepartment().getName());
+                        if (sec.getDepartment().getCompany() != null) {
+                            dto.setCompanyName(sec.getDepartment().getCompany().getName());
+                        }
+                    }
+                }
+            }
+        }
     }
 }

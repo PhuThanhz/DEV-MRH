@@ -35,6 +35,7 @@ public class ResDocumentDTO {
 
     // Danh sách userId được xem — chỉ có khi category.mappingProcedure = false
     private List<String> userIds;
+    private List<UserAccessRef> accessDetails;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -66,5 +67,15 @@ public class ResDocumentDTO {
     public static class SectionRef {
         private Long id;
         private String name;
+    }
+
+    @Getter
+    @Setter
+    public static class UserAccessRef {
+        private String userId;
+        private String userName;
+        private Boolean isRead;
+        private Instant readAt;
+        private Instant assignedAt;
     }
 }

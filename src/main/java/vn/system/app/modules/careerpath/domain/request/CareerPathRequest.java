@@ -1,7 +1,6 @@
-// vn.system.app.modules.careerpath.domain.request.CareerPathRequest
-
 package vn.system.app.modules.careerpath.domain.request;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -9,7 +8,10 @@ import lombok.Setter;
 @Setter
 public class CareerPathRequest {
 
+    @NotNull(message = "Phòng ban không được để trống")
     private Long departmentId;
+
+    @NotNull(message = "Chức danh không được để trống")
     private Long jobTitleId;
 
     private String jobStandard;

@@ -30,7 +30,7 @@ public class JobDescriptionController {
 
     @PostMapping("/job-descriptions")
     @ApiMessage("Tạo mới mô tả công việc")
-    @PreAuthorize("hasAuthority('JD_CREATE')")
+    // @PreAuthorize("hasAuthority('JD_CREATE')")
     public ResponseEntity<ResJobDescriptionDTO> create(
             @Valid @RequestBody ReqCreateJobDescriptionDTO req) {
         return ResponseEntity.status(201).body(service.convertToDTO(service.handleCreate(req)));
@@ -38,7 +38,7 @@ public class JobDescriptionController {
 
     @PutMapping("/job-descriptions/{id}")
     @ApiMessage("Cập nhật mô tả công việc")
-    @PreAuthorize("hasAuthority('JD_UPDATE')")
+    // @PreAuthorize("hasAuthority('JD_UPDATE')")
     public ResponseEntity<ResJobDescriptionDTO> update(
             @PathVariable Long id,
             @Valid @RequestBody ReqCreateJobDescriptionDTO req) {
@@ -47,7 +47,7 @@ public class JobDescriptionController {
 
     @DeleteMapping("/job-descriptions/{id}")
     @ApiMessage("Xóa mô tả công việc")
-    @PreAuthorize("hasAuthority('JD_DELETE')")
+    // @PreAuthorize("hasAuthority('JD_DELETE')")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.handleDelete(id);
         return ResponseEntity.ok().build();

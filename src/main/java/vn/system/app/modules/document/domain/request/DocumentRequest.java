@@ -17,7 +17,7 @@ public class DocumentRequest {
 
     @NotBlank(message = "Mã văn bản không được để trống")
     @Size(max = 100, message = "Mã văn bản tối đa 100 ký tự")
-    @Pattern(regexp = "^[A-Za-z0-9_./-]*$", message = "Mã văn bản chứa ký tự không hợp lệ")
+    @Pattern(regexp = "^[A-Za-z0-9_./-]+$", message = "Mã văn bản chỉ gồm chữ, số, dấu chấm, gạch dưới, gạch ngang và dấu /")
     private String documentCode;
     @NotBlank(message = "Tên văn bản không được để trống")
     @Size(max = 250, message = "Tên văn bản tối đa 250 ký tự")

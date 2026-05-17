@@ -28,4 +28,10 @@ public class DocumentAccess {
 
     @Column(name = "assigned_at")
     private Instant assignedAt;
+
+    @Column(name = "is_read")
+    private Boolean isRead = false;
+
+    @Column(name = "read_at")
+    private Instant readAt;
 }

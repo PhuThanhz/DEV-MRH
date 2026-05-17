@@ -16,4 +16,6 @@ public interface DocumentAccessRepository
     void deleteByDocument_Id(Long documentId);
 
     boolean existsByDocument_IdAndUserId(Long documentId, String userId);
+
+    List<DocumentAccess> findByDocument_IdAndUserId(Long documentId, String userId);
 }

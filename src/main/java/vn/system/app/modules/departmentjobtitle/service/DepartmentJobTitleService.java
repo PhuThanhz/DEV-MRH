@@ -15,6 +15,7 @@ import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 
 import vn.system.app.modules.companyjobtitle.domain.CompanyJobTitle;
 import vn.system.app.modules.companyjobtitle.repository.CompanyJobTitleRepository;
@@ -53,6 +54,30 @@ public class DepartmentJobTitleService {
         this.departmentService = departmentService;
     }
 
+    /**
+     * Kiểm tra phạm vi truy cập của người dùng
+     */
+    private void validateScope(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null)
+            return;
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel())
+            return;
+
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+                throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
+            }
+        } else {
+            throw new PermissionException("Bạn không có quyền thực hiện thao tác này");
+        }
+    }
+
     public List<DepartmentJobTitle> fetchEntitiesByIds(List<Long> ids) {
         return repository.findAllById(ids);
     }
@@ -67,6 +92,8 @@ public class DepartmentJobTitleService {
 
         JobTitle jobTitle = jobTitleService.fetchEntityById(dto.getJobTitleId());
         Department department = departmentService.fetchEntityById(dto.getDepartmentId());
+
+        validateScope(department.getCompany() != null ? department.getCompany().getId() : null);
 
         Long deptId = department.getId();
         Long jobId = jobTitle.getId();
@@ -112,6 +139,7 @@ public class DepartmentJobTitleService {
     public void handleDelete(Long id) {
 
         DepartmentJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getDepartment().getCompany() != null ? entity.getDepartment().getCompany().getId() : null);
 
         if (!entity.isActive()) {
             return;
@@ -133,6 +161,7 @@ public class DepartmentJobTitleService {
     public DepartmentJobTitle restore(Long id) {
 
         DepartmentJobTitle entity = fetchEntityById(id);
+        validateScope(entity.getDepartment().getCompany() != null ? entity.getDepartment().getCompany().getId() : null);
 
         if (entity.isActive()) {
             throw new IdInvalidException("Bản ghi đang hoạt động, không cần khôi phục.");
@@ -171,6 +200,7 @@ public class DepartmentJobTitleService {
     public void assignIfNotExists(Long departmentId, Long jobTitleId) {
 
         Department dept = departmentService.fetchEntityById(departmentId);
+        validateScope(dept.getCompany() != null ? dept.getCompany().getId() : null);
         Long companyId = dept.getCompany().getId();
 
         if (companyRepo.existsByCompany_IdAndJobTitle_IdAndActiveTrue(companyId, jobTitleId)) {
@@ -208,6 +238,9 @@ public class DepartmentJobTitleService {
     public void inactiveIfExists(Long departmentId, Long jobTitleId) {
 
         DepartmentJobTitle entity = repository.findByDepartment_IdAndJobTitle_Id(departmentId, jobTitleId);
+        if (entity != null) {
+            validateScope(entity.getDepartment().getCompany() != null ? entity.getDepartment().getCompany().getId() : null);
+        }
 
         if (entity != null && entity.isActive()) {
             entity.setActive(false);
@@ -226,16 +259,14 @@ public class DepartmentJobTitleService {
     public List<ResDepartmentJobTitleDTO> fetchAllCompanyJobTitlesOfDepartment(Long departmentId) {
 
         Department department = departmentService.fetchEntityById(departmentId);
+        validateScope(department.getCompany() != null ? department.getCompany().getId() : null);
         Long companyId = department.getCompany().getId();
 
         List<SectionJobTitle> sectionList = sectionRepo.findBySection_Department_IdAndActiveTrue(departmentId);
         List<DepartmentJobTitle> departmentList = repository.findByDepartment_IdAndActiveTrue(departmentId);
         List<CompanyJobTitle> companyList = companyRepo.findByCompany_IdAndActiveTrue(companyId);
 
-        List<DepartmentJobTitle> allDeptJobs = repository.findAll()
-                .stream()
-                .filter(DepartmentJobTitle::isActive)
-                .collect(Collectors.toList());
+        List<DepartmentJobTitle> allDeptJobs = repository.findByDepartment_Company_IdAndActiveTrue(companyId);
 
         Map<Long, List<String>> jobUsedInDepartments = new HashMap<>();
         for (DepartmentJobTitle djt : allDeptJobs) {
@@ -423,6 +454,7 @@ public class DepartmentJobTitleService {
             Pageable pageable) {
 
         Department department = departmentService.fetchEntityById(departmentId);
+        validateScope(department.getCompany() != null ? department.getCompany().getId() : null);
         Long companyId = department.getCompany().getId();
 
         // 1. Lấy toàn bộ JobTitle active của công ty

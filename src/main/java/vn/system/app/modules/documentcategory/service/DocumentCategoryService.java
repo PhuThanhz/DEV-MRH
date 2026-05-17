@@ -41,6 +41,8 @@ public class DocumentCategoryService {
             throw new IdInvalidException("Mã danh mục đã tồn tại: " + code);
         }
 
+        validateMappingAndCrossCompany(req.isMappingProcedure(), req.isCrossCompany());
+
         DocumentCategory entity = new DocumentCategory();
         entity.setCategoryCode(code);
         entity.setCategoryName(req.getCategoryName().trim());
@@ -48,6 +50,7 @@ public class DocumentCategoryService {
         entity.setDefinition(req.getDefinition());
         entity.setActive(req.isActive());
         entity.setMappingProcedure(req.isMappingProcedure());
+        entity.setCrossCompany(req.isCrossCompany());
 
         return convertToDTO(repository.save(entity));
     }
@@ -64,12 +67,15 @@ public class DocumentCategoryService {
             throw new IdInvalidException("Mã danh mục đã tồn tại: " + code);
         }
 
+        validateMappingAndCrossCompany(req.isMappingProcedure(), req.isCrossCompany());
+
         current.setCategoryCode(code);
         current.setCategoryName(req.getCategoryName().trim());
         current.setSymbol(req.getSymbol());
         current.setDefinition(req.getDefinition());
         current.setActive(req.isActive());
         current.setMappingProcedure(req.isMappingProcedure());
+        current.setCrossCompany(req.isCrossCompany());
 
         return convertToDTO(repository.save(current));
     }
@@ -164,10 +170,22 @@ public class DocumentCategoryService {
         dto.setDefinition(e.getDefinition());
         dto.setActive(e.isActive());
         dto.setMappingProcedure(e.isMappingProcedure());
+        dto.setCrossCompany(e.isCrossCompany());
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setCreatedBy(e.getCreatedBy());
         dto.setUpdatedBy(e.getUpdatedBy());
         return dto;
+    }
+
+    // =====================================================
+    // VALIDATE: mappingProcedure vs isCrossCompany
+    // =====================================================
+    private void validateMappingAndCrossCompany(boolean mappingProcedure, boolean crossCompany) {
+        if (mappingProcedure && crossCompany) {
+            throw new IdInvalidException(
+                    "Không thể bật đồng thời 'Mapping quy trình' và 'Liên công ty'. "
+                            + "Danh mục thuộc loại quy trình phải chọn cấp công ty/phòng ban/bảo mật, không áp dụng liên công ty.");
+        }
     }
 }

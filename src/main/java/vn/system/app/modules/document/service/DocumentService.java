@@ -32,10 +32,13 @@ import vn.system.app.modules.departmentprocedure.service.DepartmentProcedureServ
 import vn.system.app.modules.confidentialprocedure.domain.request.ConfidentialProcedureRequest;
 import vn.system.app.modules.confidentialprocedure.service.ConfidentialProcedureService;
 import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
+import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.user.repository.UserRepository;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -50,6 +53,7 @@ public class DocumentService {
     private final DepartmentProcedureService departmentProcedureService;
     private final ConfidentialProcedureService confidentialProcedureService;
     private final ProcedureQrService qrService;
+    private final UserRepository userRepository;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -62,7 +66,8 @@ public class DocumentService {
             CompanyProcedureService companyProcedureService,
             DepartmentProcedureService departmentProcedureService,
             ConfidentialProcedureService confidentialProcedureService,
-            ProcedureQrService qrService) {
+            ProcedureQrService qrService,
+            UserRepository userRepository) {
         this.repository = repository;
         this.accessRepository = accessRepository;
         this.categoryRepository = categoryRepository;
@@ -72,6 +77,7 @@ public class DocumentService {
         this.departmentProcedureService = departmentProcedureService;
         this.confidentialProcedureService = confidentialProcedureService;
         this.qrService = qrService;
+        this.userRepository = userRepository;
     }
 
     // =====================================================
@@ -94,14 +100,18 @@ public class DocumentService {
                 throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
             }
             validateProcedureRequirements(req);
+        } else if (category.isCrossCompany()) {
+            if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+                throw new IdInvalidException("Vui lòng chọn danh sách người nhận cho văn bản liên công ty");
+            }
         }
 
         Department department = null;
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
-            validateScope(department.getCompany().getId());
         }
+        validateScope(department != null && department.getCompany() != null ? department.getCompany().getId() : null);
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -164,14 +174,18 @@ public class DocumentService {
                 throw new IdInvalidException("Loại văn bản này yêu cầu chọn loại quy trình");
             }
             validateProcedureRequirements(req);
+        } else if (category.isCrossCompany()) {
+            if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+                throw new IdInvalidException("Vui lòng chọn danh sách người nhận cho văn bản liên công ty");
+            }
         }
 
         Department department = null;
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
-            validateScope(department.getCompany().getId());
         }
+        validateScope(department != null && department.getCompany() != null ? department.getCompany().getId() : null);
 
         Section section = null;
         if (req.getSectionId() != null) {
@@ -248,6 +262,10 @@ public class DocumentService {
         if (scope.isSuperAdmin() || scope.isAdminLevel())
             return;
 
+        if (companyId == null) {
+            throw new PermissionException("Chỉ Quản trị viên hệ thống mới có quyền thao tác dữ liệu toàn cục");
+        }
+
         if (scope.isCompanyLevel()) {
             if (scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
                 throw new PermissionException("Bạn không có quyền thao tác dữ liệu cho công ty này");
@@ -264,6 +282,8 @@ public class DocumentService {
     @Transactional
     public void handleToggleActive(Long id) {
         Document current = fetchById(id);
+        validateScope(current.getDepartment() != null && current.getDepartment().getCompany() != null
+                ? current.getDepartment().getCompany().getId() : null);
         current.setActive(!current.isActive());
         repository.save(current);
     }
@@ -273,7 +293,9 @@ public class DocumentService {
     // =====================================================
     @Transactional
     public void handleDelete(Long id) {
-        fetchById(id);
+        Document current = fetchById(id);
+        validateScope(current.getDepartment() != null && current.getDepartment().getCompany() != null
+                ? current.getDepartment().getCompany().getId() : null);
         accessRepository.deleteByDocument_Id(id);
         repository.deleteById(id);
     }
@@ -532,13 +554,50 @@ public class DocumentService {
         dto.setUpdatedBy(e.getUpdatedBy());
 
         if (e.getCategory() != null && !e.getCategory().isMappingProcedure()) {
-            List<String> userIds = accessRepository.findByDocument_Id(e.getId())
-                    .stream()
+            List<DocumentAccess> accesses = accessRepository.findByDocument_Id(e.getId());
+            List<String> userIds = accesses.stream()
                     .map(DocumentAccess::getUserId)
                     .collect(Collectors.toList());
             dto.setUserIds(userIds);
+
+            Map<String, String> userNamesMap = new java.util.HashMap<>();
+            if (!userIds.isEmpty()) {
+                List<User> users = userRepository.findAllById(userIds);
+                for (User u : users) {
+                    if (u.getId() != null && u.getName() != null) {
+                        userNamesMap.put(u.getId(), u.getName());
+                    }
+                }
+            }
+
+            List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
+                ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
+                ref.setUserId(a.getUserId());
+                ref.setUserName(userNamesMap.getOrDefault(a.getUserId(), ""));
+                ref.setIsRead(a.getIsRead() != null ? a.getIsRead() : false);
+                ref.setReadAt(a.getReadAt());
+                ref.setAssignedAt(a.getAssignedAt());
+                return ref;
+            }).collect(Collectors.toList());
+            dto.setAccessDetails(accessDetails);
         }
 
         return dto;
+    }
+
+    // =====================================================
+    // MARK AS READ
+    // =====================================================
+    @Transactional
+    public void handleMarkAsRead(Long id) {
+        String currentUserId = SecurityUtil.getCurrentUserId().orElseThrow(() -> new PermissionException("Chưa đăng nhập"));
+        List<DocumentAccess> accesses = accessRepository.findByDocument_IdAndUserId(id, currentUserId);
+        for (DocumentAccess access : accesses) {
+            if (access.getIsRead() == null || !access.getIsRead()) {
+                access.setIsRead(true);
+                access.setReadAt(Instant.now());
+                accessRepository.save(access);
+            }
+        }
     }
 }

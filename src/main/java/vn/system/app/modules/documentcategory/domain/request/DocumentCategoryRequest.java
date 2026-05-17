@@ -27,4 +27,7 @@ public class DocumentCategoryRequest {
     private boolean active = true;
 
     private boolean mappingProcedure = false;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("isCrossCompany")
+    private boolean isCrossCompany = false;
 }

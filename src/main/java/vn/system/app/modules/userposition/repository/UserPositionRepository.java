@@ -80,6 +80,26 @@ public interface UserPositionRepository
         List<UserPosition> findActiveFullByUserId(@Param("userId") String userId);
 
         @Query("""
+                            SELECT up FROM UserPosition up
+                            LEFT JOIN FETCH up.companyJobTitle cjt
+                            LEFT JOIN FETCH cjt.company
+
+                            LEFT JOIN FETCH up.departmentJobTitle djt
+                            LEFT JOIN FETCH djt.department dept
+                            LEFT JOIN FETCH dept.company
+
+                            LEFT JOIN FETCH up.sectionJobTitle sjt
+                            LEFT JOIN FETCH sjt.section sec
+                            LEFT JOIN FETCH sec.department sdept
+                            LEFT JOIN FETCH sdept.company
+
+                            WHERE up.user.id IN :userIds
+                            AND up.active = true
+                        """)
+        List<UserPosition> findActiveFullByUserIds(@Param("userIds") List<String> userIds);
+
+
+        @Query("""
                             SELECT CASE WHEN COUNT(up) > 0 THEN true ELSE false END
                             FROM UserPosition up
                             LEFT JOIN up.companyJobTitle cjt

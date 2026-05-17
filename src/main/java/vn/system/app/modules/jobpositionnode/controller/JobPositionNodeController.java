@@ -13,6 +13,7 @@ import vn.system.app.modules.jobpositionnode.domain.JobPositionNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNode;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqCreateNodeTree;
 import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNode;
+import vn.system.app.modules.jobpositionnode.domain.request.ReqUpdateNodePosition;
 import vn.system.app.modules.jobpositionnode.domain.response.ResJobPositionNodeDTO;
 import vn.system.app.modules.jobpositionnode.service.JobPositionNodeService;
 
@@ -99,6 +100,21 @@ public class JobPositionNodeController {
         }
 
         return ResponseEntity.ok(this.nodeService.convertToDTO(updated));
+    }
+
+    /*
+     * ==================================
+     * UPDATE NODE POSITIONS (bulk)
+     * ==================================
+     */
+    @PutMapping("/job-position-nodes/positions")
+    @ApiMessage("Bulk update job position node positions")
+    public ResponseEntity<Void> updateNodePositions(
+            @RequestBody List<ReqUpdateNodePosition> reqs) {
+
+        this.nodeService.handleUpdateNodePositions(reqs);
+
+        return ResponseEntity.ok(null);
     }
 
     /*

@@ -36,6 +36,9 @@ public class DocumentCategory {
     @Column(name = "mapping_procedure", nullable = false)
     private boolean mappingProcedure = false;
 
+    @Column(name = "is_cross_company", nullable = false)
+    private boolean isCrossCompany = false;
+
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
