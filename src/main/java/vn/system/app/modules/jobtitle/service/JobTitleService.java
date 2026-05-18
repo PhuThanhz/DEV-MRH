@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
+import vn.system.app.common.util.ScopeSpec;
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.jobtitle.domain.JobTitle;
 import vn.system.app.modules.jobtitle.domain.request.ReqCreateJobTitleDTO;
@@ -167,6 +169,7 @@ public class JobTitleService {
             Pageable pageable) {
 
         spec = Specification.where(spec)
+                .and(ScopeSpec.byCompanyScope("positionLevel.company.id"))
                 .and((root, query, cb) -> cb.equal(root.get("active"), true));
 
         Page<JobTitle> page = jobTitleRepo.findAll(spec, pageable);
