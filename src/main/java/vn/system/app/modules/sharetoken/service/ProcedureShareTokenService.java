@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 
@@ -126,8 +127,9 @@ public class ProcedureShareTokenService {
     // =====================================================
     // KIỂM TRA TOKEN HỢP LỆ
     // =====================================================
+    @Transactional
     public ProcedureShareToken validateToken(String token) {
-        ProcedureShareToken entity = shareTokenRepository.findByToken(token)
+        ProcedureShareToken entity = shareTokenRepository.findByTokenWithLock(token)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy link chia sẻ"));
 
         if (Boolean.TRUE.equals(entity.getIsRevoked())) {
@@ -149,6 +151,7 @@ public class ProcedureShareTokenService {
     // =====================================================
     // GHI LOG + TĂNG ACCESS COUNT
     // =====================================================
+    @Transactional
     public void recordAccess(ProcedureShareToken entity, String ip, String userAgent) {
         entity.setAccessCount(entity.getAccessCount() + 1);
         shareTokenRepository.save(entity);

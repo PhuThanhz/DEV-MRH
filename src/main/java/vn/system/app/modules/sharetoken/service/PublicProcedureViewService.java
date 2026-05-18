@@ -45,6 +45,7 @@ public class PublicProcedureViewService {
             return RequirePinResponse.of(true);
         }
 
+        checkActiveStatus(shareToken);
         shareTokenService.recordAccess(shareToken, ip, userAgent);
         return buildPublicDTO(shareToken);
     }
@@ -60,8 +61,45 @@ public class PublicProcedureViewService {
             throw new RuntimeException("Mã PIN không đúng");
         }
 
+        checkActiveStatus(shareToken);
         shareTokenService.recordAccess(shareToken, ip, userAgent);
         return buildPublicDTO(shareToken);
+    }
+
+    private void checkActiveStatus(ProcedureShareToken shareToken) {
+        String type = shareToken.getProcedureType();
+        Long id = shareToken.getProcedureId();
+        switch (type) {
+            case "COMPANY" -> {
+                CompanyProcedure p = companyProcedureRepository.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                if (!p.isActive()) {
+                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                }
+            }
+            case "DEPARTMENT" -> {
+                DepartmentProcedure p = departmentProcedureRepository.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                if (!p.isActive()) {
+                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                }
+            }
+            case "CONFIDENTIAL" -> {
+                ConfidentialProcedure p = confidentialProcedureRepository.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                if (!p.isActive()) {
+                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                }
+            }
+            case "DOCUMENT" -> {
+                Document doc = documentRepository.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy văn bản"));
+                if (!doc.isActive()) {
+                    throw new RuntimeException("Văn bản đã bị vô hiệu hóa");
+                }
+            }
+            default -> throw new RuntimeException("Loại không hợp lệ: " + type);
+        }
     }
 
     // =====================================================
