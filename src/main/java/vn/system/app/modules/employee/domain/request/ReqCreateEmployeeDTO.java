@@ -22,6 +22,8 @@ public class ReqCreateEmployeeDTO {
 
     private Boolean active;
 
+    private String directManagerId;
+
     // ===== USER INFO =====
     private String employeeCode;
     private String phone;

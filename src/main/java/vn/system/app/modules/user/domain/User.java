@@ -1,6 +1,7 @@
 package vn.system.app.modules.user.domain;
 
 import java.time.Instant;
+import java.util.List;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
@@ -62,6 +63,17 @@ public class User {
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     @JsonIgnoreProperties({ "user" })
     private UserInfo userInfo;
+
+    // ⭐ Quản lý trực tiếp (self-referencing) — dùng cho module HQCV
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "direct_manager_id")
+    @JsonIgnoreProperties({ "subordinates", "directManager", "userInfo", "role" })
+    private User directManager;
+
+    // ⭐ Danh sách nhân viên cấp dưới trực tiếp
+    @OneToMany(mappedBy = "directManager", fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({ "subordinates", "directManager", "userInfo", "role" })
+    private List<User> subordinates;
 
     @PrePersist
     public void beforeCreate() {

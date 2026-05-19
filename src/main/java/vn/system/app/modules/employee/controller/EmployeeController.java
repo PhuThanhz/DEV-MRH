@@ -34,7 +34,7 @@ public class EmployeeController {
     // CREATE EMPLOYEE
     // ===========================================================
     @PostMapping("/employees")
-    @ApiMessage("Create a new employee")
+    @ApiMessage("Tạo mới nhân viên thành công")
     public ResponseEntity<ResCreateEmployeeDTO> create(
             @Valid @RequestBody ReqCreateEmployeeDTO req) {
 
@@ -46,7 +46,7 @@ public class EmployeeController {
     // UPDATE EMPLOYEE
     // ===========================================================
     @PutMapping("/employees")
-    @ApiMessage("Update an employee")
+    @ApiMessage("Cập nhật nhân viên thành công")
     public ResponseEntity<ResUpdateEmployeeDTO> update(
             @RequestBody ReqUpdateEmployeeDTO req) {
 
@@ -58,7 +58,7 @@ public class EmployeeController {
     // DELETE EMPLOYEE
     // ===========================================================
     @DeleteMapping("/employees/{id}")
-    @ApiMessage("Delete an employee")
+    @ApiMessage("Xóa nhân viên thành công")
     public ResponseEntity<Void> delete(@PathVariable("id") String id) {
 
         employeeService.delete(id);
@@ -69,7 +69,7 @@ public class EmployeeController {
     // GET EMPLOYEE BY ID
     // ===========================================================
     @GetMapping("/employees/{id}")
-    @ApiMessage("Fetch employee by id")
+    @ApiMessage("Lấy thông tin nhân viên thành công")
     public ResponseEntity<ResEmployeeDTO> getById(
             @PathVariable("id") String id) {
 
@@ -81,7 +81,7 @@ public class EmployeeController {
     // GET ALL EMPLOYEES (PAGINATION + FILTER)
     // ===========================================================
     @GetMapping("/employees")
-    @ApiMessage("Fetch all employees")
+    @ApiMessage("Lấy danh sách nhân viên thành công")
     public ResponseEntity<ResultPaginationDTO> getAll(
             @Filter Specification<User> spec,
             Pageable pageable) {

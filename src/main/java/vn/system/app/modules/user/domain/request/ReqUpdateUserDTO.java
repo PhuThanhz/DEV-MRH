@@ -21,6 +21,9 @@ public class ReqUpdateUserDTO {
 
     private Long roleId; // ✅ giữ Long vì Role vẫn number
 
+    // ======= Management =======
+    private String directManagerId;
+
     // ======= UserInfo (optional) =======
     private String employeeCode;
     private String phone;

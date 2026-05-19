@@ -23,6 +23,9 @@ public class ReqCreateUserDTO {
     private Boolean active;
     private Long roleId;
 
+    // ======= Management =======
+    private String directManagerId;
+
     // ======= UserInfo (optional) =======
     private String employeeCode;
     private String phone;

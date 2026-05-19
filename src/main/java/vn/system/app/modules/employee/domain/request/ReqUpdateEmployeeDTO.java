@@ -18,7 +18,10 @@ public class ReqUpdateEmployeeDTO {
     private String name;
     private Boolean active;
 
+    private String directManagerId;
+
     // ===== USER INFO =====
+    private String employeeCode;
 
     private String phone;
     private Instant dateOfBirth;

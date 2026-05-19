@@ -15,4 +15,6 @@ public interface UserInfoRepository extends JpaRepository<UserInfo, Long> {
     boolean existsByUser_Id(String userId);
 
     boolean existsByEmployeeCode(String employeeCode);
+
+    boolean existsByEmployeeCodeAndUser_IdNot(String employeeCode, String userId);
 }

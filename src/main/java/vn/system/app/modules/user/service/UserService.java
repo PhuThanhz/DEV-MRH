@@ -35,6 +35,7 @@ import vn.system.app.modules.userinfo.repository.UserInfoRepository;
 import vn.system.app.modules.userposition.domain.UserPosition;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
 import vn.system.app.modules.usersession.service.UserSessionService;
+import vn.system.app.modules.jobtitle.domain.JobTitle;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -102,6 +103,13 @@ public class UserService {
         if (req.getRoleId() != null) {
             Role r = roleService.fetchById(req.getRoleId());
             user.setRole(r);
+        }
+
+        // ⭐ THÊM CHO HQCV
+        if (req.getDirectManagerId() != null && !req.getDirectManagerId().isEmpty()) {
+            User dm = userRepository.findById(req.getDirectManagerId())
+                    .orElseThrow(() -> new IdInvalidException("Quản lý trực tiếp không tồn tại"));
+            user.setDirectManager(dm);
         }
 
         User savedUser = userRepository.save(user);
@@ -276,6 +284,15 @@ public class UserService {
             currentUser.setRole(r);
         }
 
+        // ⭐ THÊM CHO HQCV
+        if (req.getDirectManagerId() != null && !req.getDirectManagerId().isEmpty()) {
+            User dm = userRepository.findById(req.getDirectManagerId())
+                    .orElseThrow(() -> new IdInvalidException("Quản lý trực tiếp không tồn tại"));
+            currentUser.setDirectManager(dm);
+        } else {
+            currentUser.setDirectManager(null);
+        }
+
         User saved = this.userRepository.save(currentUser);
 
         UserInfo userInfo = userInfoRepository.findByUser_Id(currentUser.getId())
@@ -411,6 +428,23 @@ public class UserService {
             res.setRole(roleUser);
         }
 
+        // ⭐ THÊM CHO HQCV
+        if (user.getDirectManager() != null) {
+            User directManager = user.getDirectManager();
+            res.setDirectManager(new ResUserDTO.ManagerRef(
+                    directManager.getId(),
+                    directManager.getName(),
+                    directManager.getEmail()));
+
+            User indirectManager = directManager.getDirectManager();
+            if (indirectManager != null) {
+                res.setIndirectManager(new ResUserDTO.ManagerRef(
+                        indirectManager.getId(),
+                        indirectManager.getName(),
+                        indirectManager.getEmail()));
+            }
+        }
+
         res.setId(user.getId());
         res.setEmail(user.getEmail());
         res.setName(user.getName());
@@ -543,26 +577,19 @@ public class UserService {
         }
 
         if (companyId != null) {
-            Specification<User> companySpec = (root, query, cb) -> {
-                var sub = query.subquery(String.class);
-                var posRoot = sub.from(UserPosition.class);
-
-                sub.select(posRoot.get("user").get("id"))
-                        .where(cb.and(
-                                cb.isTrue(posRoot.get("active")),
-                                cb.or(
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "COMPANY"),
-                                                cb.equal(posRoot.get("companyJobTitle").get("company").get("id"), companyId)),
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                cb.equal(posRoot.get("departmentJobTitle").get("department").get("company").get("id"), companyId)),
-                                        cb.and(
-                                                cb.equal(posRoot.get("source"), "SECTION"),
-                                                cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("company").get("id"), companyId)))));
-
-                return root.get("id").in(sub);
-            };
+            List<String> userIds = this.userPositionRepository.findUserIdsByCompanyId(companyId);
+            if (userIds.isEmpty()) {
+                ResultPaginationDTO rs = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                mt.setPage(pageable.getPageNumber() + 1);
+                mt.setPageSize(pageable.getPageSize());
+                mt.setPages(0);
+                mt.setTotal(0L);
+                rs.setMeta(mt);
+                rs.setResult(List.of());
+                return rs;
+            }
+            Specification<User> companySpec = (root, query, cb) -> root.get("id").in(userIds);
             spec = spec.and(companySpec);
         }
 
@@ -600,6 +627,15 @@ public class UserService {
             dto.setName(user.getName());
             dto.setEmail(user.getEmail());
             
+            if (user.getUserInfo() != null) {
+                dto.setEmployeeCode(user.getUserInfo().getEmployeeCode());
+            }
+            
+            if (user.getDirectManager() != null) {
+                dto.setDirectManagerId(user.getDirectManager().getId());
+                dto.setDirectManagerName(user.getDirectManager().getName());
+            }
+            
             List<UserPosition> userPos = positionsByUser.getOrDefault(user.getId(), List.of());
             populateCompanyAndDepartment(dto, userPos);
             
@@ -626,31 +662,47 @@ public class UserService {
             chosen = positions.get(0);
         }
 
+        JobTitle jt = null;
         switch (chosen.getSource().toUpperCase()) {
             case "COMPANY" -> {
-                if (chosen.getCompanyJobTitle() != null && chosen.getCompanyJobTitle().getCompany() != null) {
-                    dto.setCompanyName(chosen.getCompanyJobTitle().getCompany().getName());
+                if (chosen.getCompanyJobTitle() != null) {
+                    jt = chosen.getCompanyJobTitle().getJobTitle();
+                    if (chosen.getCompanyJobTitle().getCompany() != null) {
+                        dto.setCompanyName(chosen.getCompanyJobTitle().getCompany().getName());
+                    }
                 }
             }
             case "DEPARTMENT" -> {
-                if (chosen.getDepartmentJobTitle() != null && chosen.getDepartmentJobTitle().getDepartment() != null) {
-                    var dept = chosen.getDepartmentJobTitle().getDepartment();
-                    dto.setDepartmentName(dept.getName());
-                    if (dept.getCompany() != null) {
-                        dto.setCompanyName(dept.getCompany().getName());
+                if (chosen.getDepartmentJobTitle() != null) {
+                    jt = chosen.getDepartmentJobTitle().getJobTitle();
+                    if (chosen.getDepartmentJobTitle().getDepartment() != null) {
+                        var dept = chosen.getDepartmentJobTitle().getDepartment();
+                        dto.setDepartmentName(dept.getName());
+                        if (dept.getCompany() != null) {
+                            dto.setCompanyName(dept.getCompany().getName());
+                        }
                     }
                 }
             }
             case "SECTION" -> {
-                if (chosen.getSectionJobTitle() != null && chosen.getSectionJobTitle().getSection() != null) {
-                    var sec = chosen.getSectionJobTitle().getSection();
-                    if (sec.getDepartment() != null) {
-                        dto.setDepartmentName(sec.getDepartment().getName());
-                        if (sec.getDepartment().getCompany() != null) {
-                            dto.setCompanyName(sec.getDepartment().getCompany().getName());
+                if (chosen.getSectionJobTitle() != null) {
+                    jt = chosen.getSectionJobTitle().getJobTitle();
+                    if (chosen.getSectionJobTitle().getSection() != null) {
+                        var sec = chosen.getSectionJobTitle().getSection();
+                        if (sec.getDepartment() != null) {
+                            dto.setDepartmentName(sec.getDepartment().getName());
+                            if (sec.getDepartment().getCompany() != null) {
+                                dto.setCompanyName(sec.getDepartment().getCompany().getName());
+                            }
                         }
                     }
                 }
+            }
+        }
+        if (jt != null) {
+            dto.setJobTitle(jt.getNameVi());
+            if (jt.getPositionLevel() != null) {
+                dto.setPositionLevel(jt.getPositionLevel().getCode());
             }
         }
     }

@@ -66,6 +66,11 @@ public class EmployeeService {
         Role role = roleService.findByName("EMPLOYEE");
         user.setRole(role);
 
+        if (req.getDirectManagerId() != null) {
+            User dm = userRepository.findById(req.getDirectManagerId()).orElse(null);
+            user.setDirectManager(dm);
+        }
+
         User savedUser = userRepository.save(user);
 
         // ===== USER INFO =====
@@ -101,6 +106,15 @@ public class EmployeeService {
             user.setActive(req.getActive());
         }
 
+        if (req.getDirectManagerId() != null) {
+            if (req.getDirectManagerId().isEmpty()) {
+                user.setDirectManager(null);
+            } else {
+                User dm = userRepository.findById(req.getDirectManagerId()).orElse(null);
+                user.setDirectManager(dm);
+            }
+        }
+
         userRepository.save(user);
 
         // ===== USER INFO =====
@@ -110,6 +124,14 @@ public class EmployeeService {
         if (userInfo == null) {
             userInfo = new UserInfo();
             userInfo.setUser(user);
+        }
+
+        if (req.getEmployeeCode() != null) {
+            boolean exists = userInfoRepository.existsByEmployeeCodeAndUser_IdNot(req.getEmployeeCode(), user.getId());
+            if (exists) {
+                throw new IdInvalidException("Mã nhân viên đã tồn tại");
+            }
+            userInfo.setEmployeeCode(req.getEmployeeCode());
         }
 
         userInfo.setPhone(req.getPhone());
@@ -233,6 +255,11 @@ public class EmployeeService {
         dto.setActive(user.isActive());
         dto.setCreatedAt(user.getCreatedAt());
         dto.setUpdatedAt(user.getUpdatedAt());
+
+        if (user.getDirectManager() != null) {
+            dto.setDirectManagerId(user.getDirectManager().getId());
+            dto.setDirectManagerName(user.getDirectManager().getName());
+        }
 
         // ===== ROLE =====
         if (user.getRole() != null) {

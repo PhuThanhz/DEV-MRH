@@ -62,38 +62,52 @@ public interface UserPositionRepository
 
         @Query("""
                             SELECT up FROM UserPosition up
+                            LEFT JOIN FETCH up.user u
                             LEFT JOIN FETCH up.companyJobTitle cjt
                             LEFT JOIN FETCH cjt.company
+                            LEFT JOIN FETCH cjt.jobTitle jt1
+                            LEFT JOIN FETCH jt1.positionLevel
 
                             LEFT JOIN FETCH up.departmentJobTitle djt
                             LEFT JOIN FETCH djt.department dept
                             LEFT JOIN FETCH dept.company
+                            LEFT JOIN FETCH djt.jobTitle jt2
+                            LEFT JOIN FETCH jt2.positionLevel
 
                             LEFT JOIN FETCH up.sectionJobTitle sjt
                             LEFT JOIN FETCH sjt.section sec
                             LEFT JOIN FETCH sec.department sdept
                             LEFT JOIN FETCH sdept.company
+                            LEFT JOIN FETCH sjt.jobTitle jt3
+                            LEFT JOIN FETCH jt3.positionLevel
 
-                            WHERE up.user.id = :userId
+                            WHERE u.id = :userId
                             AND up.active = true
                         """)
         List<UserPosition> findActiveFullByUserId(@Param("userId") String userId);
 
         @Query("""
                             SELECT up FROM UserPosition up
+                            LEFT JOIN FETCH up.user u
                             LEFT JOIN FETCH up.companyJobTitle cjt
                             LEFT JOIN FETCH cjt.company
+                            LEFT JOIN FETCH cjt.jobTitle jt1
+                            LEFT JOIN FETCH jt1.positionLevel
 
                             LEFT JOIN FETCH up.departmentJobTitle djt
                             LEFT JOIN FETCH djt.department dept
                             LEFT JOIN FETCH dept.company
+                            LEFT JOIN FETCH djt.jobTitle jt2
+                            LEFT JOIN FETCH jt2.positionLevel
 
                             LEFT JOIN FETCH up.sectionJobTitle sjt
                             LEFT JOIN FETCH sjt.section sec
                             LEFT JOIN FETCH sec.department sdept
                             LEFT JOIN FETCH sdept.company
+                            LEFT JOIN FETCH sjt.jobTitle jt3
+                            LEFT JOIN FETCH jt3.positionLevel
 
-                            WHERE up.user.id IN :userIds
+                            WHERE u.id IN :userIds
                             AND up.active = true
                         """)
         List<UserPosition> findActiveFullByUserIds(@Param("userIds") List<String> userIds);
@@ -127,4 +141,24 @@ public interface UserPositionRepository
                             )
                         """)
         List<String> findUserIdsByDepartmentId(@Param("departmentId") Long departmentId);
+
+        @Query("""
+                            SELECT DISTINCT up.user.id FROM UserPosition up
+                            LEFT JOIN up.companyJobTitle cjt
+                            LEFT JOIN cjt.company comp1
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN dept.company comp2
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            LEFT JOIN sdept.company comp3
+                            WHERE up.active = true
+                            AND (
+                                comp1.id = :companyId
+                                OR comp2.id = :companyId
+                                OR comp3.id = :companyId
+                            )
+                        """)
+        List<String> findUserIdsByCompanyId(@Param("companyId") Long companyId);
 }

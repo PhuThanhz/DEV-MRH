@@ -1,0 +1,47 @@
+package vn.system.app.modules.evaluation.domain.response;
+
+import lombok.Data;
+import vn.system.app.modules.evaluation.domain.enums.TemplateStatus;
+import vn.system.app.modules.evaluation.domain.enums.TemplateType;
+import java.time.Instant;
+import java.util.List;
+
+@Data
+public class ResTemplateDTO {
+    private Long id;
+    private String name;
+    private TemplateType type;
+    private String description;
+    private TemplateStatus status;
+    private Instant createdAt;
+    private Instant updatedAt;
+    private List<ResSectionDTO> sections;
+
+    @Data
+    public static class ResSectionDTO {
+        private Long id;
+        private String code;
+        private String name;
+        private Double weight;
+        private Integer displayOrder;
+        private List<ResCriteriaDTO> criteria;
+    }
+
+    @Data
+    public static class ResCriteriaDTO {
+        private Long id;
+        private String name;
+        private String measurementMethod;
+        private Double weight;
+        private Integer displayOrder;
+        private List<ResCriteriaDTO> subCriteria;
+        private List<ResCriteriaLevelDTO> levels;
+    }
+
+    @Data
+    public static class ResCriteriaLevelDTO {
+        private Long id;
+        private Integer level;
+        private String description;
+    }
+}

@@ -15,4 +15,9 @@ public class ResCrossCompanyUserDTO {
     private String email;
     private String companyName;
     private String departmentName;
+    private String directManagerId;
+    private String directManagerName;
+    private String employeeCode;
+    private String jobTitle;
+    private String positionLevel;
 }

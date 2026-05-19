@@ -25,6 +25,10 @@ public class ResUserDTO {
     private RoleUser role;
     private UserInfoBasic userInfo;
     private List<PositionBasic> positions; // ← THÊM
+    
+    // ⭐ THÊM CHO HQCV
+    private ManagerRef directManager;
+    private ManagerRef indirectManager;
 
     // ⭐ THÊM
     private Instant lastLoginAt;
@@ -66,5 +70,16 @@ public class ResUserDTO {
         private String departmentName;
         private String sectionName;
         private String jobTitleNameVi;
+    }
+
+    // ⭐ THÊM CHO HQCV
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class ManagerRef {
+        private String id;
+        private String name;
+        private String email;
     }
 }

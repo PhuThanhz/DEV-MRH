@@ -16,6 +16,9 @@ public class ResEmployeeDTO {
     private String avatar;
     private Boolean active;
 
+    private String directManagerId;
+    private String directManagerName;
+
     private Instant createdAt;
     private Instant updatedAt;
 
