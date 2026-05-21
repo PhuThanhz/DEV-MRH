@@ -37,7 +37,7 @@ public class DepartmentService {
 
     public void checkDepartmentScope(Department d) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (scope.isCompanyLevel()) {
                 if (!scope.companyIds().contains(d.getCompany().getId())) {
                     throw new PermissionException("Bạn không có quyền thao tác trên phòng ban của công ty này");
@@ -141,7 +141,7 @@ public class DepartmentService {
             Pageable pageable) {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (scope.isAdminLevel()) {
                 // SUPER_ADMIN, ADMIN_SUB_1 → thấy toàn bộ, không filter
                 spec = Specification.where(spec)

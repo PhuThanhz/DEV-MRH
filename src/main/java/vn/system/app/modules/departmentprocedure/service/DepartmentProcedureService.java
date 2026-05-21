@@ -299,7 +299,7 @@ public class DepartmentProcedureService {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
         // SỬA LẠI (đúng)
-        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+        if (scope != null && !scope.isAdminLevel()) {
             // Filter công ty
             spec = Specification.where(spec)
                     .and(ScopeSpec.byCompanyScope("departments.company.id"));

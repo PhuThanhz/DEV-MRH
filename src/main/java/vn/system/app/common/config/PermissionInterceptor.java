@@ -120,14 +120,25 @@ public class PermissionInterceptor implements HandlerInterceptor {
                         boolean methodMatch = item.getMethod().equalsIgnoreCase(httpMethod);
                         boolean pathMatch = false;
 
-                        try {
-                            pathMatch = antPathMatcher.match(item.getApiPath(), requestURI);
-                        } catch (Exception e) {
-                            // ignore lỗi pattern không hợp lệ
-                        }
-
-                        if (!pathMatch) {
+                        if (path != null && !path.isBlank()) {
+                            // 1. So khớp chính xác mẫu Controller của Spring Boot (ví dụ: /api/v1/evaluation/templates/{id})
                             pathMatch = item.getApiPath().equals(path);
+
+                            // 2. Nếu không khớp chính xác nhưng cấu hình có wildcard (* hoặc **), dùng AntPathMatcher
+                            if (!pathMatch && (item.getApiPath().contains("*") || item.getApiPath().contains("**"))) {
+                                try {
+                                    pathMatch = antPathMatcher.match(item.getApiPath(), path);
+                                } catch (Exception e) {
+                                    // ignore lỗi pattern
+                                }
+                            }
+                        } else {
+                            // Fallback nếu không có BEST_MATCHING_PATTERN_ATTRIBUTE
+                            try {
+                                pathMatch = antPathMatcher.match(item.getApiPath(), requestURI);
+                            } catch (Exception e) {
+                                // ignore lỗi pattern
+                            }
                         }
 
                         return methodMatch && pathMatch;

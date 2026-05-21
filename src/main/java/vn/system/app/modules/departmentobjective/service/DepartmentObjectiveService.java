@@ -186,7 +186,7 @@ public class DepartmentObjectiveService {
             Pageable pageable) {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             Specification<DepartmentObjective> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
             spec = Specification.where(spec).and(scopeSpec);
         }

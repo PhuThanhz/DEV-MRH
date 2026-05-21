@@ -35,6 +35,20 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
     /** Các kỳ mà nhân viên tham gia (lịch sử) */
     List<EvaluationRecord> findByEmployeeIdOrderByCreatedAtDesc(String employeeId);
 
+    /**
+     * Fetch record kèm template + sections + criteria (không fetch levels ở đây
+     * để tránh MultipleBagFetchException — levels sẽ được lazy load trong
+     * transaction)
+     */
+    @Query("""
+                SELECT DISTINCT r FROM EvaluationRecord r
+                LEFT JOIN FETCH r.template t
+                LEFT JOIN FETCH t.sections s
+                LEFT JOIN FETCH s.criteria c
+                WHERE r.id = :id
+            """)
+    Optional<EvaluationRecord> findByIdWithFullTemplate(@Param("id") Long id);
+
     /** Đếm theo trạng thái trong kỳ — dùng cho dashboard báo cáo */
     @Query("SELECT r.status, COUNT(r) FROM EvaluationRecord r WHERE r.period.id = :periodId GROUP BY r.status")
     List<Object[]> countByPeriodGroupByStatus(@Param("periodId") Long periodId);

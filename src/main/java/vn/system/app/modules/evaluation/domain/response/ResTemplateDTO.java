@@ -3,6 +3,7 @@ package vn.system.app.modules.evaluation.domain.response;
 import lombok.Data;
 import vn.system.app.modules.evaluation.domain.enums.TemplateStatus;
 import vn.system.app.modules.evaluation.domain.enums.TemplateType;
+import vn.system.app.modules.company.domain.response.ResCompanyDTO;
 import java.time.Instant;
 import java.util.List;
 
@@ -15,6 +16,7 @@ public class ResTemplateDTO {
     private TemplateStatus status;
     private Instant createdAt;
     private Instant updatedAt;
+    private ResCompanyDTO company;
     private List<ResSectionDTO> sections;
 
     @Data

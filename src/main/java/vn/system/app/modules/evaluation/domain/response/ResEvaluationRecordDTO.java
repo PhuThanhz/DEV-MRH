@@ -34,6 +34,8 @@ public class ResEvaluationRecordDTO {
         private String username;
         private String fullName;
         private String email;
+        private String jobTitle;
+        private String positionLevel;
     }
 
     @Data

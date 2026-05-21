@@ -608,7 +608,7 @@ public class JdFlowService {
         }
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (companyIds == null) {
                 companyIds = new ArrayList<>(scope.companyIds());
             } else {
@@ -648,7 +648,7 @@ public class JdFlowService {
         }
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (companyIds == null) {
                 companyIds = new ArrayList<>(scope.companyIds());
             } else {

@@ -204,7 +204,7 @@ public class SectionJobTitleService {
             Pageable pageable) {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (scope.isAdminLevel()) {
                 // ADMIN_SUB_1 → thấy toàn bộ, không filter
             } else if (scope.isCompanyLevel()) {

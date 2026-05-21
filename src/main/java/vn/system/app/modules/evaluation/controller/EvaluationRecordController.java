@@ -18,7 +18,8 @@ import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.error.IdInvalidException;
 
 /**
- * API Đánh giá HQCV — dùng chung cho nhân viên, quản lý trực tiếp, quản lý gián tiếp.
+ * API Đánh giá HQCV — dùng chung cho nhân viên, quản lý trực tiếp, quản lý gián
+ * tiếp.
  * Phân quyền ở logic layer dựa trên record owner.
  */
 @RestController
@@ -43,7 +44,13 @@ public class EvaluationRecordController {
     @GetMapping("/records/{id}")
     @ApiMessage("Chi tiết bản đánh giá")
     public ResponseEntity<ResEvaluationRecordDTO> fetchRecord(@PathVariable Long id) {
-        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.fetchRecordById(id)));
+        EvaluationRecord record = recordService.fetchRecordByIdWithFullTemplate(id);
+        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(
+                record,
+                recordService.fetchScores(id),
+                recordService.fetchComments(id),
+                recordService.fetchTrainingPlans(id)
+        ));
     }
 
     /** Nhân viên: danh sách bản đánh giá của mình (lịch sử) */
@@ -51,7 +58,8 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá của tôi")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchMyRecords() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsByEmployee(currentUserId).stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.fetchRecordsByEmployee(currentUserId).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     /** Quản lý trực tiếp: danh sách nhân viên trong kỳ */
@@ -59,7 +67,8 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá cho quản lý trực tiếp")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchForDirectManager(@PathVariable Long periodId) {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsForDirectManager(periodId, currentUserId).stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.fetchRecordsForDirectManager(periodId, currentUserId).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     /** Quản lý trực tiếp: danh sách chờ chấm */
@@ -67,7 +76,8 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách chờ quản lý trực tiếp chấm")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchPendingForManager() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchPendingForDirectManager(currentUserId).stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.fetchPendingForDirectManager(currentUserId).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     /** Quản lý gián tiếp: danh sách nhân viên trong kỳ */
@@ -75,7 +85,8 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá cho quản lý gián tiếp")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchForIndirectManager(@PathVariable Long periodId) {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsForIndirectManager(periodId, currentUserId).stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.fetchRecordsForIndirectManager(periodId, currentUserId).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     /** Quản lý gián tiếp: danh sách chờ phê duyệt */
@@ -83,7 +94,8 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách chờ phê duyệt")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchPendingForApproval() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchPendingForIndirectManager(currentUserId).stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.fetchPendingForIndirectManager(currentUserId).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     // ═══════════════ GIAI ĐOẠN 1: NHÂN VIÊN TỰ ĐÁNH GIÁ ═══════════════
@@ -110,7 +122,8 @@ public class EvaluationRecordController {
             @PathVariable Long recordId,
             @RequestBody Map<String, String> body) {
         User employee = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResCommentDTO(recordService.saveEmployeeSelfReview(recordId, body.get("content"), employee)));
+        return ResponseEntity.ok(
+                mapper.toResCommentDTO(recordService.saveEmployeeSelfReview(recordId, body.get("content"), employee)));
     }
 
     // ═══════════════ GIAI ĐOẠN 2: QUẢN LÝ TRỰC TIẾP CHẤM ĐIỂM ═══════════════
@@ -137,7 +150,8 @@ public class EvaluationRecordController {
             @PathVariable Long recordId,
             @RequestBody Map<String, String> body) {
         User manager = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResCommentDTO(recordService.saveManagerFeedback(recordId, body.get("content"), manager)));
+        return ResponseEntity
+                .ok(mapper.toResCommentDTO(recordService.saveManagerFeedback(recordId, body.get("content"), manager)));
     }
 
     @PostMapping("/records/{recordId}/training-plans")
@@ -163,7 +177,16 @@ public class EvaluationRecordController {
             @PathVariable Long recordId,
             @RequestBody Map<String, String> body) {
         User rejector = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.rejectRecord(recordId, body.get("reason"), rejector)));
+        return ResponseEntity.ok(
+                mapper.toResEvaluationRecordDTO(recordService.rejectRecord(recordId, body.get("reason"), rejector)));
+    }
+
+    @PostMapping("/records/{recordId}/employee-confirm")
+    @ApiMessage("Nhân viên xác nhận đã xem kết quả")
+    public ResponseEntity<ResEvaluationRecordDTO> confirmEmployeeAcknowledge(@PathVariable Long recordId) {
+        User employee = getCurrentUser();
+        return ResponseEntity
+                .ok(mapper.toResEvaluationRecordDTO(recordService.confirmEmployeeAcknowledge(recordId, employee)));
     }
 
     // ═══════════════ LỊCH SỬ & BÁO CÁO ═══════════════
@@ -171,7 +194,8 @@ public class EvaluationRecordController {
     @GetMapping("/records/{recordId}/history")
     @ApiMessage("Lịch sử thay đổi trạng thái")
     public ResponseEntity<List<ResEvaluationHistoryDTO>> fetchHistory(@PathVariable Long recordId) {
-        return ResponseEntity.ok(recordService.fetchHistory(recordId).stream().map(mapper::toResEvaluationHistoryDTO).toList());
+        return ResponseEntity
+                .ok(recordService.fetchHistory(recordId).stream().map(mapper::toResEvaluationHistoryDTO).toList());
     }
 
     @GetMapping("/records/{recordId}/rejection-count")
@@ -193,14 +217,14 @@ public class EvaluationRecordController {
         return ResponseEntity.ok(recordService.getGradeDistribution(periodId));
     }
 
-
     // ═══════════════ HELPERS ═══════════════
 
     private String getCurrentUserId() {
         String email = SecurityUtil.getCurrentUserLogin()
                 .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
         User user = userRepo.findByEmail(email);
-        if (user == null) throw new IdInvalidException("Người dùng không tồn tại");
+        if (user == null)
+            throw new IdInvalidException("Người dùng không tồn tại");
         return user.getId();
     }
 
@@ -208,7 +232,8 @@ public class EvaluationRecordController {
         String email = SecurityUtil.getCurrentUserLogin()
                 .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
         User user = userRepo.findByEmail(email);
-        if (user == null) throw new IdInvalidException("Người dùng không tồn tại");
+        if (user == null)
+            throw new IdInvalidException("Người dùng không tồn tại");
         return user;
     }
 }

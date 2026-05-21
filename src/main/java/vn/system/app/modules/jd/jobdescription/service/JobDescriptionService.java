@@ -253,7 +253,7 @@ public class JobDescriptionService {
             Pageable pageable) {
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
         }
         return buildPaginationDTO(repository.findAll(spec, pageable));
@@ -277,7 +277,7 @@ public class JobDescriptionService {
     public ResultPaginationDTO fetchPublished(Pageable pageable) {
         Specification<JobDescription> spec = (root, query, cb) -> cb.equal(root.get("status"), "PUBLISHED");
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
         }
         return buildPaginationDTO(repository.findAll(spec, pageable));
@@ -306,7 +306,7 @@ public class JobDescriptionService {
     public ResultPaginationDTO fetchAllJd(Pageable pageable) {
         Specification<JobDescription> spec = Specification.where(null);
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             spec = spec.and(ScopeSpec.byCompanyScope("company.id"));
         }
         return buildPaginationDTO(repository.findAll(spec, pageable));

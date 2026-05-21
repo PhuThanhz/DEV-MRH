@@ -5,12 +5,22 @@ import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.response.*;
 import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.company.domain.response.ResCompanyDTO;
+
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
+import vn.system.app.modules.userposition.domain.UserPosition;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
 public class EvaluationMapper {
+
+    private final UserPositionRepository userPositionRepository;
+
+    public EvaluationMapper(UserPositionRepository userPositionRepository) {
+        this.userPositionRepository = userPositionRepository;
+    }
 
     public ResTemplateDTO toResTemplateDTO(EvaluationTemplate entity) {
         if (entity == null) return null;
@@ -22,6 +32,14 @@ public class EvaluationMapper {
         dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        
+        if (entity.getCompany() != null && entity.getCompany().getId() > 0) {
+            ResCompanyDTO compDto = new ResCompanyDTO();
+            compDto.setId(entity.getCompany().getId());
+            compDto.setCode(entity.getCompany().getCode());
+            compDto.setName(entity.getCompany().getName());
+            dto.setCompany(compDto);
+        }
         
         if (entity.getSections() != null) {
             dto.setSections(entity.getSections().stream().map(this::toResSectionDTO).collect(Collectors.toList()));
@@ -156,6 +174,50 @@ public class EvaluationMapper {
         dto.setUsername(entity.getName()); // Tạm lấy Name vì model User trong dự án map Name
         dto.setFullName(entity.getName());
         dto.setEmail(entity.getEmail());
+        
+        try {
+            List<UserPosition> posList = userPositionRepository.findActiveFullByUserId(entity.getId());
+            if (posList != null && !posList.isEmpty()) {
+                UserPosition chosen = null;
+                for (UserPosition p : posList) {
+                    if ("DEPARTMENT".equalsIgnoreCase(p.getSource()) || "SECTION".equalsIgnoreCase(p.getSource())) {
+                        chosen = p;
+                        break;
+                    }
+                }
+                if (chosen == null) {
+                    chosen = posList.get(0);
+                }
+                
+                vn.system.app.modules.jobtitle.domain.JobTitle jt = null;
+                switch (chosen.getSource().toUpperCase()) {
+                    case "COMPANY" -> {
+                        if (chosen.getCompanyJobTitle() != null) {
+                            jt = chosen.getCompanyJobTitle().getJobTitle();
+                        }
+                    }
+                    case "DEPARTMENT" -> {
+                        if (chosen.getDepartmentJobTitle() != null) {
+                            jt = chosen.getDepartmentJobTitle().getJobTitle();
+                        }
+                    }
+                    case "SECTION" -> {
+                        if (chosen.getSectionJobTitle() != null) {
+                            jt = chosen.getSectionJobTitle().getJobTitle();
+                        }
+                    }
+                }
+                if (jt != null) {
+                    dto.setJobTitle(jt.getNameVi());
+                    if (jt.getPositionLevel() != null) {
+                        dto.setPositionLevel(jt.getPositionLevel().getCode());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Safe fallback
+        }
+        
         return dto;
     }
 

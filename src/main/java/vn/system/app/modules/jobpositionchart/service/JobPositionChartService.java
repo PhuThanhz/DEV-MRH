@@ -97,7 +97,7 @@ public class JobPositionChartService {
 
         // ── ADMIN_SUB_2: filter theo company ──────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
 
             if (scope.companyIds().isEmpty()) {
                 ResultPaginationDTO rs = new ResultPaginationDTO();

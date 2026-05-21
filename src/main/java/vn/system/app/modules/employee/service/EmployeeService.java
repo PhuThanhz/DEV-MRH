@@ -177,7 +177,7 @@ public class EmployeeService {
 
         // ── ADMIN_SUB_2 filter ────────────────────────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (scope.companyIds().isEmpty()) {
                 ResultPaginationDTO rs = new ResultPaginationDTO();
                 ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();

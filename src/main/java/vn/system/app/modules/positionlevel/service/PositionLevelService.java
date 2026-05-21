@@ -184,7 +184,7 @@ public class PositionLevelService {
     public ResultPaginationDTO fetchAll(Specification<PositionLevel> spec, Pageable pageable) {
         // ── ADMIN_SUB_2: filter theo company ──────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
         }
         // ⭐ THÊM LOG
@@ -194,7 +194,7 @@ public class PositionLevelService {
             System.out.println(">>> companyIds = " + scope.companyIds());
         }
 
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
         }
         Page<PositionLevel> pagePL = repo.findAll(spec, pageable);

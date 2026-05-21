@@ -204,7 +204,7 @@ public class CompanyJobTitleService {
             Pageable pageable) {
         // ── ADMIN_SUB_2 filter ────────────────────────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             Specification<CompanyJobTitle> scopeSpec = ScopeSpec.byCompanyScope("company.id");
             spec = Specification.where(spec).and(scopeSpec);
         }

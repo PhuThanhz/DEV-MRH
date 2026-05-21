@@ -62,6 +62,34 @@ public class EvaluationRecordService {
                 .orElseThrow(() -> new IdInvalidException("Bản đánh giá không tồn tại"));
     }
 
+    /**
+     * Fetch record kèm đầy đủ template sections/criteria — dùng cho API chi tiết
+     */
+    @Transactional(readOnly = true)
+    public EvaluationRecord fetchRecordByIdWithFullTemplate(Long id) {
+        EvaluationRecord record = recordRepo.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Bản đánh giá không tồn tại"));
+        // Force load subCriteria và levels trong transaction để tránh
+        // LazyInitializationException
+        if (record.getTemplate() != null && record.getTemplate().getSections() != null) {
+            record.getTemplate().getSections().forEach(section -> {
+                if (section.getCriteria() != null) {
+                    section.getCriteria().forEach(criteria -> {
+                        if (criteria.getSubCriteria() != null) {
+                            criteria.getSubCriteria().forEach(sub -> {
+                                if (sub.getLevels() != null)
+                                    sub.getLevels().size();
+                            });
+                        }
+                        if (criteria.getLevels() != null)
+                            criteria.getLevels().size();
+                    });
+                }
+            });
+        }
+        return record;
+    }
+
     /** Danh sách bản đánh giá của nhân viên (lịch sử) */
     public List<EvaluationRecord> fetchRecordsByEmployee(String employeeId) {
         return recordRepo.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
@@ -75,6 +103,18 @@ public class EvaluationRecordService {
     /** Danh sách form cho quản lý gián tiếp trong kỳ */
     public List<EvaluationRecord> fetchRecordsForIndirectManager(Long periodId, String managerId) {
         return recordRepo.findByPeriodIdAndIndirectManagerId(periodId, managerId);
+    }
+
+    public List<EvaluationScore> fetchScores(Long recordId) {
+        return scoreRepo.findByEvaluationRecordId(recordId);
+    }
+
+    public List<EvaluationComment> fetchComments(Long recordId) {
+        return commentRepo.findByEvaluationRecordId(recordId);
+    }
+
+    public List<EvaluationTrainingPlan> fetchTrainingPlans(Long recordId) {
+        return trainingPlanRepo.findByEvaluationRecordId(recordId);
     }
 
     /** Danh sách form chờ quản lý trực tiếp chấm */
@@ -214,7 +254,8 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Tiêu chí cha có sub-tiêu chí, điểm được tính tự động");
         }
 
-        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc REVISION_NEEDED
+        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc
+        // REVISION_NEEDED
         if (record.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW
                 || record.getStatus() == RecordStatus.REVISION_NEEDED) {
             RecordStatus oldStatus = record.getStatus();
@@ -309,7 +350,7 @@ public class EvaluationRecordService {
         RecordStatus oldStatus = record.getStatus();
         record.setStatus(RecordStatus.COMPLETED);
         record.setApprovedAt(Instant.now());
-        record.setCompletedAt(Instant.now());
+        // completedAt sẽ được set khi nhân viên xác nhận đã xem
         recordRepo.save(record);
 
         saveHistory(record, oldStatus, RecordStatus.COMPLETED, approver, null);
@@ -322,6 +363,37 @@ public class EvaluationRecordService {
         // Thông báo quản lý trực tiếp
         sendNotification(record.getDirectManager(), NotificationType.RESULT_AVAILABLE,
                 String.format("Đánh giá nhân viên %s đã được phê duyệt.",
+                        record.getEmployee().getName()),
+                "/evaluation/manager/records/" + record.getId());
+
+        return record;
+    }
+
+    /**
+     * Nhân viên xác nhận đã xem kết quả đánh giá.
+     * Chỉ áp dụng khi record đã COMPLETED.
+     * Ghi nhận completedAt (thời điểm nhân viên xác nhận).
+     */
+    @Transactional
+    public EvaluationRecord confirmEmployeeAcknowledge(Long recordId, User employee) {
+        EvaluationRecord record = fetchRecordById(recordId);
+
+        if (record.getStatus() != RecordStatus.COMPLETED) {
+            throw new IdInvalidException("Bản đánh giá chưa được phê duyệt hoàn tất");
+        }
+
+        // Kiểm tra đúng nhân viên
+        if (!record.getEmployee().getId().equals(employee.getId())) {
+            throw new IdInvalidException("Bạn không có quyền xác nhận bản đánh giá này");
+        }
+
+        // Set completedAt là thời điểm nhân viên xác nhận đã xem
+        record.setCompletedAt(Instant.now());
+        recordRepo.save(record);
+
+        // Thông báo quản lý trực tiếp biết nhân viên đã xem
+        sendNotification(record.getDirectManager(), NotificationType.RESULT_AVAILABLE,
+                String.format("Nhân viên %s đã xác nhận xem kết quả đánh giá.",
                         record.getEmployee().getName()),
                 "/evaluation/manager/records/" + record.getId());
 
@@ -474,17 +546,21 @@ public class EvaluationRecordService {
 
     /**
      * Xếp loại theo tổng điểm:
-     *   < 3.0  → E
-     *   3.0–3.5 → D
-     *   3.5–4.0 → C
-     *   4.0–4.5 → B
-     *   > 4.5  → A
+     * < 3.0 → E
+     * 3.0–3.5 → D
+     * 3.5–4.0 → C
+     * 4.0–4.5 → B
+     * > 4.5 → A
      */
     private String calculateGrade(double totalScore) {
-        if (totalScore > 4.5) return "A";
-        if (totalScore > 4.0) return "B";
-        if (totalScore > 3.5) return "C";
-        if (totalScore >= 3.0) return "D";
+        if (totalScore > 4.5)
+            return "A";
+        if (totalScore > 4.0)
+            return "B";
+        if (totalScore > 3.5)
+            return "C";
+        if (totalScore >= 3.0)
+            return "D";
         return "E";
     }
 
@@ -506,8 +582,8 @@ public class EvaluationRecordService {
         EvaluationTemplate template = record.getTemplate();
         List<TemplateCriteria> allCriteria = template.getSections().stream()
                 .flatMap(section -> {
-                    List<TemplateCriteria> sectionCriteria =
-                            criteriaRepo.findBySectionIdOrderByDisplayOrderAsc(section.getId());
+                    List<TemplateCriteria> sectionCriteria = criteriaRepo
+                            .findBySectionIdOrderByDisplayOrderAsc(section.getId());
                     return sectionCriteria.stream();
                 })
                 .collect(java.util.stream.Collectors.toList());

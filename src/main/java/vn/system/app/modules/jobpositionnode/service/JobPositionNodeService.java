@@ -46,7 +46,7 @@ public class JobPositionNodeService {
      */
     private void validateScope(JobPositionChart chart) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (chart.getCompanyId() != null && !scope.companyIds().contains(chart.getCompanyId())) {
                 throw new IdInvalidException("Bạn không có quyền thao tác trên sơ đồ này");
             }

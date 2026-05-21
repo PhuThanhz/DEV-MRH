@@ -35,7 +35,7 @@ public class CompanyService {
 
     private void checkCompanyScope(Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
+        if (scope != null && !scope.isAdminLevel()) {
             if (!scope.companyIds().contains(companyId)) {
                 throw new PermissionException("Bạn không có quyền thao tác trên công ty này");
             }
@@ -94,7 +94,7 @@ public class CompanyService {
             Pageable pageable) {
         // ── ADMIN_SUB_2: chỉ thấy công ty của mình ────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
-        if (scope != null && !scope.isSuperAdmin()) {
+        if (scope != null && !scope.isAdminLevel()) {
             Specification<Company> scopeSpec = ScopeSpec.byCompanyScope("id");
             spec = Specification.where(spec).and(scopeSpec);
         }
