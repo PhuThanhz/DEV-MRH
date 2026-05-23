@@ -18,6 +18,7 @@ import vn.system.app.modules.jd.jdflow.domain.response.ResJdInboxDTO;
 import vn.system.app.modules.jd.jdflow.repository.JdFlowRepository;
 import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 import vn.system.app.modules.jd.jobdescription.repository.JobDescriptionRepository;
+import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
@@ -31,6 +32,7 @@ public class JdFlowService {
     private final JdFlowLogService logService;
     private final JdPermissionService permissionService;
     private final UserPositionRepository userPositionRepository;
+    private final NotificationService notificationService;
 
     public JdFlowService(
             JdFlowRepository jdFlowRepository,
@@ -38,7 +40,8 @@ public class JdFlowService {
             JobDescriptionRepository jobDescriptionRepository,
             JdFlowLogService logService,
             JdPermissionService permissionService,
-            UserPositionRepository userPositionRepository) {
+            UserPositionRepository userPositionRepository,
+            NotificationService notificationService) {
 
         this.jdFlowRepository = jdFlowRepository;
         this.userRepository = userRepository;
@@ -46,6 +49,7 @@ public class JdFlowService {
         this.logService = logService;
         this.permissionService = permissionService;
         this.userPositionRepository = userPositionRepository;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -213,6 +217,14 @@ public class JdFlowService {
             logService.saveLog(jd, fromUser, toUser, "SUBMIT", finalComment);
         }
 
+        if (Boolean.TRUE.equals(returnToPrevious) && isReturningToCreator) {
+            notificationService.sendNotification(toUser.getId(), "JD_FLOW", "JD_REJECTED", 
+                "Mô tả công việc (" + jd.getCode() + ") đã bị trả về với lý do: " + comment, "/admin/job-descriptions?tab=inbox");
+        } else {
+            notificationService.sendNotification(toUser.getId(), "JD_FLOW", "JD_SUBMITTED", 
+                "Bạn có một bản Mô tả công việc (" + (jd.getCode() != null ? jd.getCode() : "Mới") + ") cần phê duyệt.", "/admin/job-descriptions?tab=inbox");
+        }
+
         return flow;
     }
 
@@ -273,6 +285,9 @@ public class JdFlowService {
 
             logService.saveLog(jd, fromUser, issuer, "APPROVE_FINAL", null);
 
+            notificationService.sendNotification(issuer.getId(), "JD_FLOW", "JD_APPROVED", 
+                "Bản Mô tả công việc (" + (jd.getCode() != null ? jd.getCode() : "Mới") + ") đã được duyệt và đang chờ bạn ban hành.", "/admin/job-descriptions?tab=inbox");
+
             return flow;
         }
 
@@ -304,6 +319,9 @@ public class JdFlowService {
         jdFlowRepository.save(flow);
 
         logService.saveLog(jd, fromUser, toUser, "APPROVE", null);
+
+        notificationService.sendNotification(toUser.getId(), "JD_FLOW", "JD_APPROVED", 
+            "Bản Mô tả công việc (" + (jd.getCode() != null ? jd.getCode() : "Mới") + ") đã được duyệt ở bước trước và đang chờ bạn xử lý.", "/admin/job-descriptions?tab=inbox");
 
         return flow;
     }
@@ -354,6 +372,9 @@ public class JdFlowService {
 
         logService.saveLog(jd, rejectUser, previousSender, "REJECT", comment);
 
+        notificationService.sendNotification(previousSender.getId(), "JD_FLOW", "JD_REJECTED", 
+            "Bản Mô tả công việc (" + (jd.getCode() != null ? jd.getCode() : "Mới") + ") đã bị trả về với lý do: " + comment, "/admin/job-descriptions?tab=inbox");
+
         return flow;
     }
 
@@ -400,6 +421,12 @@ public class JdFlowService {
         jdFlowRepository.save(flow);
 
         logService.saveLog(jd, fromUser, null, "ISSUE", null);
+
+        User submitUser = logService.findSubmitUser(jdId);
+        if (submitUser != null) {
+            notificationService.sendNotification(submitUser.getId(), "JD_FLOW", "JD_ISSUED", 
+                "Bản Mô tả công việc (" + (jd.getCode() != null ? jd.getCode() : "Mới") + ") của bạn đã được ban hành chính thức.", "/jd/my-jd");
+        }
 
         return flow;
     }
@@ -598,6 +625,7 @@ public class JdFlowService {
     }
 
     // Thành:
+    @Transactional(readOnly = true)
     public List<ResJdApproverDTO> fetchApprovers(Long jdId) {
         List<Long> companyIds = null;
         if (jdId != null) {
@@ -619,9 +647,14 @@ public class JdFlowService {
             }
         }
 
+        System.out.println("DEBUG fetchApprovers jdId=" + jdId + " companyIds=" + companyIds);
+        if (companyIds != null && companyIds.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        List<Long> queryCompanyIds = (companyIds == null) ? List.of(-1L) : companyIds;
         List<User> approvers = userRepository.findUsersByPermissionAndCompany(
                 List.of("JD_APPROVE", "JD_APPROVE_FINAL"),
-                companyIds);
+                queryCompanyIds, companyIds != null);
 
         return approvers.stream()
                 .map(u -> {
@@ -638,6 +671,7 @@ public class JdFlowService {
     }
 
     // Thành:
+    @Transactional(readOnly = true)
     public List<ResJdApproverDTO> fetchIssuers(Long jdId) {
         List<Long> companyIds = null;
         if (jdId != null) {
@@ -658,9 +692,15 @@ public class JdFlowService {
             }
         }
 
+        if (companyIds != null && companyIds.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        
+        List<Long> queryCompanyIds = (companyIds == null) ? List.of(-1L) : companyIds;
+
         List<User> issuers = userRepository.findUsersByPermissionAndCompany(
                 List.of("JD_ISSUE"),
-                companyIds);
+                queryCompanyIds, companyIds != null);
 
         return issuers.stream()
                 .map(u -> {

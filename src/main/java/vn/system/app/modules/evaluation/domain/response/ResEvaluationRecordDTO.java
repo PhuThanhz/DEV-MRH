@@ -23,6 +23,7 @@ public class ResEvaluationRecordDTO {
     private Instant completedAt;
     private Double employeeTotalScore;
     private Double managerTotalScore;
+    private Double approverTotalScore;
     private String finalGrade;
     private List<ResScoreDTO> scores;
     private List<ResCommentDTO> comments;

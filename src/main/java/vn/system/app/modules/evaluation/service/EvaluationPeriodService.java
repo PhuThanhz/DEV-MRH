@@ -13,6 +13,7 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.enums.*;
 import vn.system.app.modules.evaluation.repository.*;
+import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
 
@@ -28,7 +29,7 @@ public class EvaluationPeriodService {
     private final PeriodEmployeeRepository periodEmployeeRepo;
     private final EvaluationTemplateRepository templateRepo;
     private final EvaluationRecordRepository recordRepo;
-    private final EvaluationNotificationRepository notificationRepo;
+    private final NotificationService notificationService;
     private final UserRepository userRepo;
 
     public EvaluationPeriodService(
@@ -37,14 +38,14 @@ public class EvaluationPeriodService {
             PeriodEmployeeRepository periodEmployeeRepo,
             EvaluationTemplateRepository templateRepo,
             EvaluationRecordRepository recordRepo,
-            EvaluationNotificationRepository notificationRepo,
+            NotificationService notificationService,
             UserRepository userRepo) {
         this.periodRepo = periodRepo;
         this.periodTemplateRepo = periodTemplateRepo;
         this.periodEmployeeRepo = periodEmployeeRepo;
         this.templateRepo = templateRepo;
         this.recordRepo = recordRepo;
-        this.notificationRepo = notificationRepo;
+        this.notificationService = notificationService;
         this.userRepo = userRepo;
     }
 
@@ -221,13 +222,7 @@ public class EvaluationPeriodService {
             recordRepo.save(record);
 
             // Gửi thông báo cho nhân viên
-            EvaluationNotification notification = new EvaluationNotification();
-            notification.setRecipient(pe.getEmployee());
-            notification.setNotificationType(NotificationType.PERIOD_OPENED);
-            notification.setContent(String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.",
-                    period.getName()));
-            notification.setActionLink("/evaluation/my-records");
-            notificationRepo.save(notification);
+            sendNotification(pe.getEmployee(), "PERIOD_OPENED", String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.", period.getName()), "/evaluation/my-records");
         }
 
         period.setStatus(PeriodStatus.ACTIVE);
@@ -272,5 +267,9 @@ public class EvaluationPeriodService {
         if (period.getManagerDeadline().isAfter(period.getApprovalDeadline())) {
             throw new IdInvalidException("Hạn chót Quản lý chấm xong phải diễn ra trước Hạn chót Ban lãnh đạo duyệt!");
         }
+    }
+    private void sendNotification(User recipient, String type, String content, String actionLink) {
+        if (recipient == null) return;
+        notificationService.sendNotification(recipient.getId(), "EVALUATION", type, content, actionLink);
     }
 }

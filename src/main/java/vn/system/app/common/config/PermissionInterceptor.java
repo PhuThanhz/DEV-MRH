@@ -117,7 +117,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
                     List<Permission> permissions = role.getPermissions();
                     boolean isAllow = permissions.stream().anyMatch(item -> {
-                        boolean methodMatch = item.getMethod().equalsIgnoreCase(httpMethod);
+                        boolean methodMatch = "*".equals(item.getMethod()) || item.getMethod().equalsIgnoreCase(httpMethod);
                         boolean pathMatch = false;
 
                         if (path != null && !path.isBlank()) {

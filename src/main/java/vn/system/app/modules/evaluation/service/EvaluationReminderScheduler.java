@@ -6,13 +6,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import vn.system.app.modules.evaluation.domain.EvaluationPeriod;
 import vn.system.app.modules.evaluation.domain.EvaluationRecord;
-import vn.system.app.modules.evaluation.domain.enums.NotificationType;
 import vn.system.app.modules.evaluation.domain.enums.PeriodStatus;
 import vn.system.app.modules.evaluation.domain.enums.RecordStatus;
 import vn.system.app.modules.evaluation.repository.EvaluationPeriodRepository;
 import vn.system.app.modules.evaluation.repository.EvaluationRecordRepository;
-import vn.system.app.modules.evaluation.domain.EvaluationNotification;
-import vn.system.app.modules.evaluation.repository.EvaluationNotificationRepository;
+import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.repository.UserRepository;
 
 import java.time.Instant;
@@ -26,7 +24,7 @@ public class EvaluationReminderScheduler {
 
     private final EvaluationPeriodRepository periodRepo;
     private final EvaluationRecordRepository recordRepo;
-    private final EvaluationNotificationRepository notificationRepo;
+    private final NotificationService notificationService;
     private final UserRepository userRepo;
 
     // Chạy mỗi ngày lúc 00:00 (midnight)
@@ -44,7 +42,7 @@ public class EvaluationReminderScheduler {
                 if (daysLeft == 3 || daysLeft == 1) {
                     List<EvaluationRecord> unsubmitted = recordRepo.findByPeriodIdAndStatus(period.getId(), RecordStatus.EMPLOYEE_DRAFTING);
                     for (EvaluationRecord record : unsubmitted) {
-                        sendNotification(record.getEmployee().getId(), NotificationType.REMINDER_DEADLINE,
+                        sendNotification(record.getEmployee().getId(), "REMINDER_DEADLINE",
                                 String.format("Chỉ còn %d ngày để nộp bản tự đánh giá HQCV. Vui lòng hoàn thành sớm.", daysLeft),
                                 "/evaluation/my-records/" + record.getId());
                     }
@@ -60,7 +58,7 @@ public class EvaluationReminderScheduler {
                     
                     // Group by manager to avoid spamming
                     pendingManager.stream().map(r -> r.getDirectManager().getId()).distinct().forEach(managerId -> {
-                        sendNotification(managerId, NotificationType.REMINDER_DEADLINE,
+                        sendNotification(managerId, "REMINDER_DEADLINE",
                                 "Bạn có nhân viên chưa được chấm điểm. Vui lòng hoàn thành trong vòng 2 ngày tới.",
                                 "/evaluation/manager/dashboard");
                     });
@@ -74,7 +72,7 @@ public class EvaluationReminderScheduler {
                     List<EvaluationRecord> pendingApproval = recordRepo.findByPeriodIdAndStatus(period.getId(), RecordStatus.PENDING_APPROVAL);
                     
                     pendingApproval.stream().map(r -> r.getIndirectManager().getId()).distinct().forEach(managerId -> {
-                        sendNotification(managerId, NotificationType.REMINDER_DEADLINE,
+                        sendNotification(managerId, "REMINDER_DEADLINE",
                                 "Bạn có bản đánh giá cần phê duyệt. Vui lòng hoàn thành trong vòng 2 ngày tới.",
                                 "/evaluation/approval/dashboard");
                     });
@@ -85,14 +83,7 @@ public class EvaluationReminderScheduler {
         log.info("Đã hoàn thành cron job nhắc nhở đánh giá HQCV.");
     }
 
-    private void sendNotification(String userId, NotificationType type, String content, String actionLink) {
-        userRepo.findById(userId).ifPresent(user -> {
-            EvaluationNotification notification = new EvaluationNotification();
-            notification.setRecipient(user);
-            notification.setNotificationType(type);
-            notification.setContent(content);
-            notification.setActionLink(actionLink);
-            notificationRepo.save(notification);
-        });
+    private void sendNotification(String userId, String type, String content, String actionLink) {
+        notificationService.sendNotification(userId, "EVALUATION", type, content, actionLink);
     }
 }

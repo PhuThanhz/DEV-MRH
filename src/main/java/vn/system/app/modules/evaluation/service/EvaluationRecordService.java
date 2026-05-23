@@ -10,8 +10,10 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.enums.*;
 import vn.system.app.modules.evaluation.repository.*;
+import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 /**
  * Service xử lý luồng đánh giá HQCV (Giai đoạn 1 → 4).
@@ -30,9 +32,10 @@ public class EvaluationRecordService {
     private final EvaluationCommentRepository commentRepo;
     private final EvaluationTrainingPlanRepository trainingPlanRepo;
     private final EvaluationHistoryRepository historyRepo;
-    private final EvaluationNotificationRepository notificationRepo;
+    private final NotificationService notificationService;
     private final TemplateCriteriaRepository criteriaRepo;
     private final UserRepository userRepo;
+    private final UserPositionRepository userPositionRepo;
 
     public EvaluationRecordService(
             EvaluationRecordRepository recordRepo,
@@ -40,17 +43,19 @@ public class EvaluationRecordService {
             EvaluationCommentRepository commentRepo,
             EvaluationTrainingPlanRepository trainingPlanRepo,
             EvaluationHistoryRepository historyRepo,
-            EvaluationNotificationRepository notificationRepo,
+            NotificationService notificationService,
             TemplateCriteriaRepository criteriaRepo,
-            UserRepository userRepo) {
+            UserRepository userRepo,
+            UserPositionRepository userPositionRepo) {
         this.recordRepo = recordRepo;
         this.scoreRepo = scoreRepo;
         this.commentRepo = commentRepo;
         this.trainingPlanRepo = trainingPlanRepo;
         this.historyRepo = historyRepo;
-        this.notificationRepo = notificationRepo;
+        this.notificationService = notificationService;
         this.criteriaRepo = criteriaRepo;
         this.userRepo = userRepo;
+        this.userPositionRepo = userPositionRepo;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -119,12 +124,43 @@ public class EvaluationRecordService {
 
     /** Danh sách form chờ quản lý trực tiếp chấm */
     public List<EvaluationRecord> fetchPendingForDirectManager(String managerId) {
-        return recordRepo.findByDirectManagerIdAndStatus(managerId, RecordStatus.PENDING_MANAGER_REVIEW);
+        return recordRepo.findByDirectManagerIdAndStatusIn(managerId,
+                List.of(RecordStatus.PENDING_MANAGER_REVIEW, RecordStatus.MANAGER_REVIEWING, RecordStatus.REVISION_NEEDED));
+    }
+
+    // Lịch sử (tất cả các bản đánh giá) của quản lý trực tiếp
+    public List<EvaluationRecord> fetchHistoryForDirectManager(String managerId) {
+        return recordRepo.findByDirectManagerIdOrderByCreatedAtDesc(managerId);
+    }
+
+    // Lịch sử (tất cả các bản đánh giá) của quản lý gián tiếp
+    public List<EvaluationRecord> fetchHistoryForIndirectManager(String approverId) {
+        return recordRepo.findByIndirectManagerIdOrderByCreatedAtDesc(approverId);
     }
 
     /** Danh sách form chờ quản lý gián tiếp phê duyệt */
     public List<EvaluationRecord> fetchPendingForIndirectManager(String managerId) {
-        return recordRepo.findByIndirectManagerIdAndStatus(managerId, RecordStatus.PENDING_APPROVAL);
+        return recordRepo.findByIndirectManagerIdAndStatusIn(managerId, 
+            List.of(RecordStatus.PENDING_APPROVAL));
+    }
+
+    public List<EvaluationRecord> fetchCompletedSummary(Long periodId, Long departmentId, Long companyId) {
+        List<EvaluationRecord> records;
+        if (periodId != null) {
+            records = recordRepo.findByPeriodId(periodId);
+        } else {
+            records = recordRepo.findAll();
+        }
+
+        if (departmentId != null) {
+            List<String> userIds = userPositionRepo.findUserIdsByDepartmentId(departmentId);
+            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+        } else if (companyId != null) {
+            List<String> userIds = userPositionRepo.findUserIdsByCompanyId(companyId);
+            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+        }
+
+        return records;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -136,8 +172,13 @@ public class EvaluationRecordService {
      * Có thể gọi nhiều lần (SAVE DRAFT).
      */
     @Transactional
-    public EvaluationScore saveEmployeeScore(Long recordId, Long criteriaId, Double score) {
+    public EvaluationScore saveEmployeeScore(Long recordId, Long criteriaId, Double score, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (!record.getEmployee().getId().equals(employee.getId())) {
+            throw new IdInvalidException("Bạn không có quyền chấm điểm bản đánh giá này");
+        }
 
         if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
             throw new IdInvalidException("Bạn không thể chấm điểm ở trạng thái hiện tại");
@@ -163,8 +204,13 @@ public class EvaluationRecordService {
      * Chuyển trạng thái: EMPLOYEE_DRAFTING → PENDING_MANAGER_REVIEW.
      */
     @Transactional
-    public EvaluationRecord submitEmployeeEvaluation(Long recordId) {
+    public EvaluationRecord submitEmployeeEvaluation(Long recordId, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (!record.getEmployee().getId().equals(employee.getId())) {
+            throw new IdInvalidException("Bạn không có quyền nộp bản đánh giá này");
+        }
 
         if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
             throw new IdInvalidException("Bạn không thể nộp đánh giá ở trạng thái hiện tại");
@@ -190,7 +236,7 @@ public class EvaluationRecordService {
         saveHistory(record, oldStatus, RecordStatus.PENDING_MANAGER_REVIEW, record.getEmployee(), null);
 
         // Thông báo quản lý trực tiếp
-        sendNotification(record.getDirectManager(), NotificationType.MANAGER_REVIEW_NEEDED,
+        sendNotification(record.getDirectManager(), "MANAGER_REVIEW_NEEDED",
                 String.format("Nhân viên %s đã nộp tự đánh giá. Vui lòng chấm điểm.",
                         record.getEmployee().getName()),
                 "/evaluation/manager/records/" + record.getId());
@@ -202,6 +248,11 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationComment saveEmployeeSelfReview(Long recordId, String content, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (!record.getEmployee().getId().equals(employee.getId())) {
+            throw new IdInvalidException("Bạn không có quyền nhận xét bản đánh giá này");
+        }
 
         if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
             throw new IdInvalidException("Bạn không thể nhận xét ở trạng thái hiện tại");
@@ -235,12 +286,18 @@ public class EvaluationRecordService {
      * Lần đầu lưu sẽ chuyển status sang MANAGER_REVIEWING.
      */
     @Transactional
-    public EvaluationScore saveManagerScore(Long recordId, Long criteriaId, Double score) {
+    public EvaluationScore saveManagerScore(Long recordId, Long criteriaId, Double score, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
+            throw new IdInvalidException("Bạn không có quyền chấm điểm bản đánh giá này");
+        }
 
         if (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
                 && record.getStatus() != RecordStatus.MANAGER_REVIEWING
-                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
+                && record.getStatus() != RecordStatus.REVISION_NEEDED
+                && record.getStatus() != RecordStatus.PENDING_APPROVAL) {
             throw new IdInvalidException("Quản lý không thể chấm điểm ở trạng thái hiện tại");
         }
 
@@ -273,8 +330,13 @@ public class EvaluationRecordService {
      * Chuyển: MANAGER_REVIEWING → PENDING_APPROVAL.
      */
     @Transactional
-    public EvaluationRecord submitManagerReview(Long recordId) {
+    public EvaluationRecord submitManagerReview(Long recordId, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
+            throw new IdInvalidException("Bạn không có quyền gửi phê duyệt bản đánh giá này");
+        }
 
         if (record.getStatus() != RecordStatus.MANAGER_REVIEWING) {
             throw new IdInvalidException("Bạn không thể gửi phê duyệt ở trạng thái hiện tại");
@@ -295,7 +357,7 @@ public class EvaluationRecordService {
         saveHistory(record, oldStatus, RecordStatus.PENDING_APPROVAL, record.getDirectManager(), null);
 
         // Thông báo quản lý gián tiếp
-        sendNotification(record.getIndirectManager(), NotificationType.APPROVAL_NEEDED,
+        sendNotification(record.getIndirectManager(), "APPROVAL_NEEDED",
                 String.format("Đánh giá nhân viên %s đã được chấm điểm. Vui lòng phê duyệt.",
                         record.getEmployee().getName()),
                 "/evaluation/approval/records/" + record.getId());
@@ -307,6 +369,11 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationComment saveManagerFeedback(Long recordId, String content, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
+            throw new IdInvalidException("Bạn không có quyền nhận xét bản đánh giá này");
+        }
 
         List<EvaluationComment> existing = commentRepo.findByEvaluationRecordIdAndCommentType(
                 recordId, CommentType.MANAGER_FEEDBACK);
@@ -328,8 +395,14 @@ public class EvaluationRecordService {
 
     /** Quản lý trực tiếp lưu kế hoạch đào tạo */
     @Transactional
-    public EvaluationTrainingPlan saveTrainingPlan(Long recordId, EvaluationTrainingPlan plan) {
+    public EvaluationTrainingPlan saveTrainingPlan(Long recordId, EvaluationTrainingPlan plan, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        // --- IDOR CHECK ---
+        if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
+            throw new IdInvalidException("Bạn không có quyền thêm kế hoạch đào tạo cho bản đánh giá này");
+        }
+
         plan.setEvaluationRecord(record);
         return trainingPlanRepo.save(plan);
     }
@@ -337,6 +410,40 @@ public class EvaluationRecordService {
     // ═══════════════════════════════════════════════════════════════════════════
     // GIAI ĐOẠN 3: QUẢN LÝ GIÁN TIẾP PHÊ DUYỆT
     // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Người phê duyệt lưu điểm cho một tiêu chí.
+     * Copy toàn bộ điểm của quản lý sang nếu đây là lần đầu sửa.
+     */
+    @Transactional
+    public EvaluationScore saveApproverScore(Long recordId, Long criteriaId, Double score, User approver) {
+        EvaluationRecord record = fetchRecordById(recordId);
+
+        if (record.getStatus() != RecordStatus.PENDING_APPROVAL) {
+            throw new IdInvalidException("Người phê duyệt chỉ có thể chấm điểm khi bản đánh giá ở trạng thái chờ phê duyệt");
+        }
+
+        validateScore(score);
+
+        TemplateCriteria criteria = criteriaRepo.findById(criteriaId)
+                .orElseThrow(() -> new IdInvalidException("Tiêu chí không tồn tại"));
+
+        List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(criteriaId);
+        if (!subs.isEmpty()) {
+            throw new IdInvalidException("Tiêu chí cha có sub-tiêu chí, điểm được tính tự động");
+        }
+
+        // Copy điểm MANAGER sang APPROVER nếu chưa có điểm APPROVER nào
+        List<EvaluationScore> existingApproverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId, ScoredBy.APPROVER);
+        if (existingApproverScores.isEmpty()) {
+            List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId, ScoredBy.MANAGER);
+            for (EvaluationScore ms : managerScores) {
+                saveOrUpdateScore(record, ms.getCriteria(), ScoredBy.APPROVER, ms.getScore());
+            }
+        }
+
+        return saveOrUpdateScore(record, criteria, ScoredBy.APPROVER, score);
+    }
 
     /** Phê duyệt: PENDING_APPROVAL → COMPLETED */
     @Transactional
@@ -351,22 +458,44 @@ public class EvaluationRecordService {
         record.setStatus(RecordStatus.COMPLETED);
         record.setApprovedAt(Instant.now());
         // completedAt sẽ được set khi nhân viên xác nhận đã xem
+
+        // Tính toán điểm của người phê duyệt (nếu có)
+        List<EvaluationScore> approverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.APPROVER);
+        if (!approverScores.isEmpty()) {
+            recalculateParentScores(record, ScoredBy.APPROVER);
+            double approverTotal = calculateTotalScore(record, ScoredBy.APPROVER);
+            record.setApproverTotalScore(approverTotal);
+            record.setFinalGrade(calculateGrade(approverTotal));
+        } else {
+            record.setFinalGrade(calculateGrade(record.getManagerTotalScore()));
+        }
+
         recordRepo.save(record);
 
         saveHistory(record, oldStatus, RecordStatus.COMPLETED, approver, null);
 
         // Thông báo nhân viên
-        sendNotification(record.getEmployee(), NotificationType.RESULT_AVAILABLE,
+        sendNotification(record.getEmployee(), "RESULT_AVAILABLE",
                 "Kết quả đánh giá HQCV đã có. Nhấn để xem chi tiết.",
                 "/evaluation/my-records/" + record.getId());
 
         // Thông báo quản lý trực tiếp
-        sendNotification(record.getDirectManager(), NotificationType.RESULT_AVAILABLE,
+        sendNotification(record.getDirectManager(), "RESULT_AVAILABLE",
                 String.format("Đánh giá nhân viên %s đã được phê duyệt.",
                         record.getEmployee().getName()),
                 "/evaluation/manager/records/" + record.getId());
 
         return record;
+    }
+
+    /** Phê duyệt hàng loạt */
+    @Transactional
+    public List<EvaluationRecord> batchApproveRecords(List<Long> recordIds, User approver) {
+        List<EvaluationRecord> approved = new java.util.ArrayList<>();
+        for (Long id : recordIds) {
+            approved.add(approveRecord(id, approver));
+        }
+        return approved;
     }
 
     /**
@@ -392,7 +521,7 @@ public class EvaluationRecordService {
         recordRepo.save(record);
 
         // Thông báo quản lý trực tiếp biết nhân viên đã xem
-        sendNotification(record.getDirectManager(), NotificationType.RESULT_AVAILABLE,
+        sendNotification(record.getDirectManager(), "RESULT_AVAILABLE",
                 String.format("Nhân viên %s đã xác nhận xem kết quả đánh giá.",
                         record.getEmployee().getName()),
                 "/evaluation/manager/records/" + record.getId());
@@ -431,7 +560,7 @@ public class EvaluationRecordService {
         commentRepo.save(comment);
 
         // Thông báo quản lý trực tiếp
-        sendNotification(record.getDirectManager(), NotificationType.REVISION_NEEDED,
+        sendNotification(record.getDirectManager(), "REVISION_NEEDED",
                 String.format("Đánh giá nhân viên %s đã bị trả lại. Lý do: %s",
                         record.getEmployee().getName(), reason),
                 "/evaluation/manager/records/" + record.getId());
@@ -484,7 +613,7 @@ public class EvaluationRecordService {
         evalScore.setScore(score);
 
         // Tính weighted score
-        double sectionWeight = criteria.getSection().getWeight();
+        // KHÔNG nhân với sectionWeight vì criteriaWeight đã là trọng số tuyệt đối (theo frontend)
         double criteriaWeight = criteria.getWeight();
 
         // Nếu là sub-tiêu chí → lấy weight của tiêu chí cha
@@ -493,10 +622,10 @@ public class EvaluationRecordService {
             // Sub-tiêu chí chia đều weight cha (trung bình)
             List<TemplateCriteria> siblings = criteriaRepo.findByParentCriteriaId(
                     criteria.getParentCriteria().getId());
-            // weighted score cho sub = score × parentWeight × sectionWeight / numSubs
-            evalScore.setWeightedScore(score * criteriaWeight * sectionWeight / siblings.size());
+            // weighted score cho sub = score × parentWeight / numSubs
+            evalScore.setWeightedScore(score * criteriaWeight / siblings.size());
         } else {
-            evalScore.setWeightedScore(score * criteriaWeight * sectionWeight);
+            evalScore.setWeightedScore(score * criteriaWeight);
         }
 
         return scoreRepo.save(evalScore);
@@ -620,12 +749,8 @@ public class EvaluationRecordService {
         historyRepo.save(history);
     }
 
-    private void sendNotification(User recipient, NotificationType type, String content, String actionLink) {
-        EvaluationNotification notification = new EvaluationNotification();
-        notification.setRecipient(recipient);
-        notification.setNotificationType(type);
-        notification.setContent(content);
-        notification.setActionLink(actionLink);
-        notificationRepo.save(notification);
+    private void sendNotification(User recipient, String type, String content, String actionLink) {
+        if (recipient == null) return;
+        notificationService.sendNotification(recipient.getId(), "EVALUATION", type, content, actionLink);
     }
 }

@@ -70,15 +70,28 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
             "JOIN r.permissions p " +
             "JOIN UserPosition up ON up.user.id = u.id " +
             "LEFT JOIN up.companyJobTitle cjt " +
+            "LEFT JOIN cjt.company cjt_company " +
             "LEFT JOIN up.departmentJobTitle djt " +
+            "LEFT JOIN djt.department djt_department " +
+            "LEFT JOIN djt_department.company djt_company " +
             "LEFT JOIN up.sectionJobTitle sjt " +
+            "LEFT JOIN sjt.section sjt_section " +
+            "LEFT JOIN sjt_section.department sjt_department " +
+            "LEFT JOIN sjt_department.company sjt_company " +
             "WHERE p.name IN :permissionNames " +
             "AND up.active = true " +
-            "AND (:companyIds IS NULL OR " +
-            "     cjt.company.id IN :companyIds OR " +
-            "     djt.department.company.id IN :companyIds OR " +
-            "     sjt.section.department.company.id IN :companyIds)")
+            "AND (:checkCompany = false OR " +
+            "     cjt_company.id IN :companyIds OR " +
+            "     djt_company.id IN :companyIds OR " +
+            "     sjt_company.id IN :companyIds)")
     List<User> findUsersByPermissionAndCompany(
             @Param("permissionNames") List<String> permissionNames,
-            @Param("companyIds") List<Long> companyIds);
+            @Param("companyIds") List<Long> companyIds,
+            @Param("checkCompany") boolean checkCompany);
+
+    @Query("SELECT DISTINCT u FROM User u " +
+            "JOIN u.role r " +
+            "JOIN r.permissions p " +
+            "WHERE p.name IN :permissionNames")
+    List<User> findUsersByPermissionNames(@Param("permissionNames") List<String> permissionNames);
 }

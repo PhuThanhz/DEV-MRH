@@ -109,9 +109,13 @@ public class EvaluationRecord {
     @Column(name = "manager_total_score")
     private Double managerTotalScore;
 
+    /** Tổng điểm sau khi người phê duyệt chấm (tính tự động) */
+    @Column(name = "approver_total_score")
+    private Double approverTotalScore;
+
     /**
      * Xếp loại cuối: A / B / C / D / E
-     * Tính theo managerTotalScore khi record được COMPLETED.
+     * Tính theo approverTotalScore (nếu có) hoặc managerTotalScore khi record được COMPLETED.
      */
     @Column(name = "final_grade", length = 1)
     private String finalGrade;

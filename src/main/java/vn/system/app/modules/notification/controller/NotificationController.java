@@ -1,25 +1,25 @@
-package vn.system.app.modules.evaluation.controller;
+package vn.system.app.modules.notification.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
-import vn.system.app.modules.evaluation.domain.EvaluationNotification;
-import vn.system.app.modules.evaluation.domain.response.ResNotificationDTO;
-import vn.system.app.modules.evaluation.service.EvaluationNotificationService;
+import vn.system.app.modules.notification.domain.AppNotification;
+import vn.system.app.modules.notification.domain.response.ResNotificationDTO;
+import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.common.util.SecurityUtil;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/evaluation/notifications")
-public class EvaluationNotificationController {
+@RequestMapping("/api/v1/notifications")
+public class NotificationController {
 
-    private final EvaluationNotificationService notificationService;
+    private final NotificationService notificationService;
 
-    public EvaluationNotificationController(EvaluationNotificationService notificationService) {
+    public NotificationController(NotificationService notificationService) {
         this.notificationService = notificationService;
     }
 
@@ -27,9 +27,11 @@ public class EvaluationNotificationController {
     @ApiMessage("Lấy danh sách thông báo")
     public ResponseEntity<List<ResNotificationDTO>> fetchMyNotifications() {
         String userId = getCurrentUserId();
-        List<EvaluationNotification> notifications = notificationService.fetchByUser(userId);
+        List<AppNotification> notifications = notificationService.fetchByUser(userId);
         
-        List<ResNotificationDTO> res = notifications.stream().map(this::mapToDTO).collect(Collectors.toList());
+        List<ResNotificationDTO> res = notifications.stream()
+                .map(notificationService::mapToDTO)
+                .collect(Collectors.toList());
         return ResponseEntity.ok(res);
     }
 
@@ -37,9 +39,11 @@ public class EvaluationNotificationController {
     @ApiMessage("Lấy danh sách thông báo chưa đọc")
     public ResponseEntity<List<ResNotificationDTO>> fetchMyUnreadNotifications() {
         String userId = getCurrentUserId();
-        List<EvaluationNotification> notifications = notificationService.fetchUnreadByUser(userId);
+        List<AppNotification> notifications = notificationService.fetchUnreadByUser(userId);
         
-        List<ResNotificationDTO> res = notifications.stream().map(this::mapToDTO).collect(Collectors.toList());
+        List<ResNotificationDTO> res = notifications.stream()
+                .map(notificationService::mapToDTO)
+                .collect(Collectors.toList());
         return ResponseEntity.ok(res);
     }
 
@@ -53,8 +57,8 @@ public class EvaluationNotificationController {
     @PatchMapping("/{id}/read")
     @ApiMessage("Đánh dấu 1 thông báo đã đọc")
     public ResponseEntity<ResNotificationDTO> markAsRead(@PathVariable Long id) {
-        EvaluationNotification notification = notificationService.markAsRead(id, getCurrentUserId());
-        return ResponseEntity.ok(mapToDTO(notification));
+        AppNotification notification = notificationService.markAsRead(id, getCurrentUserId());
+        return ResponseEntity.ok(notificationService.mapToDTO(notification));
     }
 
     @PatchMapping("/read-all")
@@ -68,16 +72,5 @@ public class EvaluationNotificationController {
     private String getCurrentUserId() {
         return SecurityUtil.getCurrentUserId()
                 .orElseThrow(() -> new IdInvalidException("Chưa đăng nhập"));
-    }
-
-    private ResNotificationDTO mapToDTO(EvaluationNotification entity) {
-        ResNotificationDTO dto = new ResNotificationDTO();
-        dto.setId(entity.getId());
-        dto.setNotificationType(entity.getNotificationType());
-        dto.setContent(entity.getContent());
-        dto.setActionLink(entity.getActionLink());
-        dto.setRead(entity.isRead());
-        dto.setCreatedAt(entity.getCreatedAt());
-        return dto;
     }
 }

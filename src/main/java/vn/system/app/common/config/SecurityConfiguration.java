@@ -50,14 +50,15 @@ public class SecurityConfiguration {
                 "/v3/api-docs/**",
                 "/swagger-ui/**", "/api/v1/users/request-password-code",
                 "/api/v1/users/confirm-reset-password",
-                "/swagger-ui.html", "/public/view/**", "/api/public/view/**", // ← thêm dòng này
-
+                "/swagger-ui.html", "/public/view/**", "/api/public/view/**",
+                "/api/v1/ws-endpoint/**"
         };
         http
                 .csrf(c -> c.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(
                         authz -> authz
+                                .requestMatchers(org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher("/api/v1/ws-endpoint/**")).permitAll()
                                 .requestMatchers(whiteList).permitAll()
                                 .anyRequest().authenticated())
                 .oauth2ResourceServer((oauth2) -> oauth2.jwt(Customizer.withDefaults())

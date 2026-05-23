@@ -21,16 +21,22 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
     List<EvaluationRecord> findByPeriodIdAndStatus(Long periodId, RecordStatus status);
 
     /** Danh sách form nhân viên mà quản lý trực tiếp cần chấm */
-    List<EvaluationRecord> findByDirectManagerIdAndStatus(String directManagerId, RecordStatus status);
+    List<EvaluationRecord> findByDirectManagerIdAndStatusIn(String directManagerId, List<RecordStatus> statuses);
 
     /** Tất cả form của quản lý trực tiếp trong kỳ */
     List<EvaluationRecord> findByPeriodIdAndDirectManagerId(Long periodId, String directManagerId);
 
+    /** Tất cả form của quản lý trực tiếp */
+    List<EvaluationRecord> findByDirectManagerIdOrderByCreatedAtDesc(String directManagerId);
+
     /** Danh sách form mà quản lý gián tiếp cần phê duyệt */
-    List<EvaluationRecord> findByIndirectManagerIdAndStatus(String indirectManagerId, RecordStatus status);
+    List<EvaluationRecord> findByIndirectManagerIdAndStatusIn(String indirectManagerId, List<RecordStatus> statuses);
 
     /** Tất cả form của quản lý gián tiếp trong kỳ */
     List<EvaluationRecord> findByPeriodIdAndIndirectManagerId(Long periodId, String indirectManagerId);
+
+    /** Tất cả form của quản lý gián tiếp (lịch sử) */
+    List<EvaluationRecord> findByIndirectManagerIdOrderByCreatedAtDesc(String indirectManagerId);
 
     /** Các kỳ mà nhân viên tham gia (lịch sử) */
     List<EvaluationRecord> findByEmployeeIdOrderByCreatedAtDesc(String employeeId);

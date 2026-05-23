@@ -1,0 +1,12 @@
+--- src/main/java/vn/system/app/common/config/PermissionInterceptorConfiguration.java
++++ src/main/java/vn/system/app/common/config/PermissionInterceptorConfiguration.java
+@@ -20,7 +20,8 @@
+                 "/api/v1/document-categories/active",
+                 // --- EVALUATION: Notifications (Skipping Permission Check) ---
+                 "/api/v1/evaluation/notifications/**",
+-                "/api/v1/notifications/**", "/api/v1/notifications"
++                "/api/v1/notifications/**", "/api/v1/notifications",
++                "/api/v1/ws-endpoint/**", "/api/v1/ws-endpoint"
+         };
+         registry.addInterceptor(getPermissionInterceptor())
+                 .excludePathPatterns(whiteList);

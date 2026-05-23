@@ -152,6 +152,7 @@ public class EvaluationMapper {
         dto.setCompletedAt(entity.getCompletedAt());
         dto.setEmployeeTotalScore(entity.getEmployeeTotalScore());
         dto.setManagerTotalScore(entity.getManagerTotalScore());
+        dto.setApproverTotalScore(entity.getApproverTotalScore());
         dto.setFinalGrade(entity.getFinalGrade());
         
         if (scores != null) {
