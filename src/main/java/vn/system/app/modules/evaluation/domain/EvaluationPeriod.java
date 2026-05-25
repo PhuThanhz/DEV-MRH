@@ -60,6 +60,11 @@ public class EvaluationPeriod {
     private Instant approvalDeadline;
 
     // ── Quan hệ ────────────────────────────────────────────────────────────────
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    @JsonIgnoreProperties({ "departments" })
+    private vn.system.app.modules.company.domain.Company company;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")

@@ -16,8 +16,18 @@ public class ResTemplateDTO {
     private TemplateStatus status;
     private Instant createdAt;
     private Instant updatedAt;
+    private String createdBy;
+    private String updatedBy;
     private ResCompanyDTO company;
+    private List<ResTargetJobTitleDTO> targetJobTitles;
     private List<ResSectionDTO> sections;
+
+    @Data
+    public static class ResTargetJobTitleDTO {
+        private Long id;
+        private String nameVi;
+        private String nameEn;
+    }
 
     @Data
     public static class ResSectionDTO {

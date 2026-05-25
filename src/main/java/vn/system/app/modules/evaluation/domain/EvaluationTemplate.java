@@ -15,6 +15,7 @@ import vn.system.app.modules.evaluation.domain.enums.TemplateStatus;
 import vn.system.app.modules.evaluation.domain.enums.TemplateType;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.company.domain.Company;
+import vn.system.app.modules.jobtitle.domain.JobTitle;
 
 
 /**
@@ -55,6 +56,16 @@ public class EvaluationTemplate {
     @OneToMany(mappedBy = "template", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JsonIgnoreProperties("template")
     private List<TemplateSection> sections;
+
+    // Danh sách chức danh áp dụng cụ thể (Tùy chọn, để trống = áp dụng cho tất cả)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "evaluation_template_target_job_titles",
+        joinColumns = @JoinColumn(name = "template_id"),
+        inverseJoinColumns = @JoinColumn(name = "job_title_id")
+    )
+    @JsonIgnoreProperties({"company", "positionLevel"})
+    private List<JobTitle> targetJobTitles;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")

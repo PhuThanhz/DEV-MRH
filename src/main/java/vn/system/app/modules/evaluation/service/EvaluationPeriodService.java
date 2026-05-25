@@ -16,6 +16,10 @@ import vn.system.app.modules.evaluation.repository.*;
 import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.company.domain.Company;
+import vn.system.app.modules.company.repository.CompanyRepository;
+import vn.system.app.modules.userposition.domain.UserPosition;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 /**
  * Service quản lý Kỳ đánh giá (Period) và nhân viên tham gia kỳ.
@@ -31,6 +35,8 @@ public class EvaluationPeriodService {
     private final EvaluationRecordRepository recordRepo;
     private final NotificationService notificationService;
     private final UserRepository userRepo;
+    private final CompanyRepository companyRepo;
+    private final UserPositionRepository userPositionRepo;
 
     public EvaluationPeriodService(
             EvaluationPeriodRepository periodRepo,
@@ -39,7 +45,9 @@ public class EvaluationPeriodService {
             EvaluationTemplateRepository templateRepo,
             EvaluationRecordRepository recordRepo,
             NotificationService notificationService,
-            UserRepository userRepo) {
+            UserRepository userRepo,
+            CompanyRepository companyRepo,
+            UserPositionRepository userPositionRepo) {
         this.periodRepo = periodRepo;
         this.periodTemplateRepo = periodTemplateRepo;
         this.periodEmployeeRepo = periodEmployeeRepo;
@@ -47,6 +55,8 @@ public class EvaluationPeriodService {
         this.recordRepo = recordRepo;
         this.notificationService = notificationService;
         this.userRepo = userRepo;
+        this.companyRepo = companyRepo;
+        this.userPositionRepo = userPositionRepo;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -55,8 +65,17 @@ public class EvaluationPeriodService {
 
     @Transactional
     public EvaluationPeriod createPeriod(EvaluationPeriod period) {
-        validatePeriodDates(period);
+        validatePeriodDates(period, true);
         period.setStatus(PeriodStatus.DRAFT);
+        
+        // Gắn Company bắt buộc
+        if (period.getCompany() == null || period.getCompany().getId() == 0) {
+            throw new IdInvalidException("Vui lòng chọn Công ty áp dụng cho kỳ đánh giá");
+        }
+        Company comp = companyRepo.findById(period.getCompany().getId())
+                .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
+        period.setCompany(comp);
+        
         return periodRepo.save(period);
     }
 
@@ -67,12 +86,20 @@ public class EvaluationPeriodService {
 
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getDescription() != null) existing.setDescription(updates.getDescription());
+        boolean employeeStartDateChanged = updates.getEmployeeStartDate() != null
+                && !updates.getEmployeeStartDate().equals(existing.getEmployeeStartDate());
         if (updates.getEmployeeStartDate() != null) existing.setEmployeeStartDate(updates.getEmployeeStartDate());
         if (updates.getEmployeeDeadline() != null) existing.setEmployeeDeadline(updates.getEmployeeDeadline());
         if (updates.getManagerDeadline() != null) existing.setManagerDeadline(updates.getManagerDeadline());
         if (updates.getApprovalDeadline() != null) existing.setApprovalDeadline(updates.getApprovalDeadline());
 
-        validatePeriodDates(existing);
+        if (updates.getCompany() != null && updates.getCompany().getId() > 0) {
+            Company comp = companyRepo.findById(updates.getCompany().getId())
+                    .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
+            existing.setCompany(comp);
+        }
+
+        validatePeriodDates(existing, employeeStartDateChanged);
         return periodRepo.save(existing);
     }
 
@@ -100,7 +127,7 @@ public class EvaluationPeriodService {
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Transactional
-    public PeriodTemplate addTemplateToPeriod(Long periodId, Long templateId, TemplateType applyToRole) {
+    public PeriodTemplate addTemplateToPeriod(Long periodId, Long templateId) {
         EvaluationPeriod period = fetchPeriodById(periodId);
         checkPeriodEditable(period);
 
@@ -111,10 +138,15 @@ public class EvaluationPeriodService {
             throw new IdInvalidException("Chỉ có thể dùng template đã ACTIVE");
         }
 
+        if (template.getCompany() == null || template.getCompany().getId() != period.getCompany().getId()) {
+            throw new IdInvalidException("Template không thuộc công ty của kỳ đánh giá này");
+        }
+
         PeriodTemplate pt = new PeriodTemplate();
         pt.setPeriod(period);
         pt.setTemplate(template);
-        pt.setApplyToRole(applyToRole);
+        pt.setApplyToRole(template.getType());
+
         return periodTemplateRepo.save(pt);
     }
 
@@ -139,6 +171,25 @@ public class EvaluationPeriodService {
 
         User employee = userRepo.findById(employeeId)
                 .orElseThrow(() -> new IdInvalidException("Nhân viên không tồn tại"));
+                
+        boolean belongsToCompany = userPositionRepo.findActiveFullByUserId(employeeId).stream()
+                .anyMatch(up -> {
+                    if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
+                        return up.getCompanyJobTitle().getCompany().getId() == period.getCompany().getId();
+                    }
+                    if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
+                        return up.getDepartmentJobTitle().getDepartment().getCompany().getId() == period.getCompany().getId();
+                    }
+                    if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
+                        return up.getSectionJobTitle().getSection().getDepartment().getCompany().getId() == period.getCompany().getId();
+                    }
+                    return false;
+                });
+                
+        if (!belongsToCompany) {
+            throw new IdInvalidException("Nhân viên không thuộc công ty của kỳ đánh giá này");
+        }
+        
         User directManager = userRepo.findById(directManagerId)
                 .orElseThrow(() -> new IdInvalidException("Quản lý trực tiếp không tồn tại"));
                 
@@ -149,6 +200,33 @@ public class EvaluationPeriodService {
         }
         EvaluationTemplate template = templateRepo.findById(templateId)
                 .orElseThrow(() -> new IdInvalidException("Template không tồn tại"));
+
+        // Validate Template Target Job Titles
+        if (template.getTargetJobTitles() != null && !template.getTargetJobTitles().isEmpty()) {
+            boolean hasMatchingJobTitle = false;
+            List<UserPosition> positions = userPositionRepo.findActiveFullByUserId(employeeId);
+            for (UserPosition p : positions) {
+                Long empJobTitleId = null;
+                if ("COMPANY".equals(p.getSource()) && p.getCompanyJobTitle() != null) {
+                    empJobTitleId = p.getCompanyJobTitle().getJobTitle().getId();
+                } else if ("DEPARTMENT".equals(p.getSource()) && p.getDepartmentJobTitle() != null) {
+                    empJobTitleId = p.getDepartmentJobTitle().getJobTitle().getId();
+                } else if ("SECTION".equals(p.getSource()) && p.getSectionJobTitle() != null) {
+                    empJobTitleId = p.getSectionJobTitle().getJobTitle().getId();
+                }
+                
+                if (empJobTitleId != null) {
+                    final Long finalJobTitleId = empJobTitleId;
+                    if (template.getTargetJobTitles().stream().anyMatch(jt -> jt.getId().equals(finalJobTitleId))) {
+                        hasMatchingJobTitle = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasMatchingJobTitle) {
+                throw new IdInvalidException("Chức danh của nhân viên không nằm trong danh sách chức danh áp dụng của Mẫu đánh giá này");
+            }
+        }
 
         PeriodEmployee pe = new PeriodEmployee();
         pe.setPeriod(period);
@@ -252,10 +330,14 @@ public class EvaluationPeriodService {
         }
     }
 
-    private void validatePeriodDates(EvaluationPeriod period) {
+    private void validatePeriodDates(EvaluationPeriod period, boolean validateStartDateNotPast) {
         if (period.getEmployeeStartDate() == null || period.getEmployeeDeadline() == null
                 || period.getManagerDeadline() == null || period.getApprovalDeadline() == null) {
             return; // allowed to be null in draft before full configuration
+        }
+
+        if (validateStartDateNotPast && period.getEmployeeStartDate().isBefore(java.time.Instant.now())) {
+            throw new IdInvalidException("Ngày mở cổng tự đánh giá không được nằm trong quá khứ!");
         }
 
         if (period.getEmployeeStartDate().isAfter(period.getEmployeeDeadline())) {

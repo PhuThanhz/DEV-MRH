@@ -12,6 +12,7 @@ import java.util.List;
 public class ResEvaluationRecordDTO {
     private Long id;
     private Long periodId;
+    private ResPeriodDTO period;
     private ResEmployeeInfo employee;
     private ResEmployeeInfo directManager;
     private ResEmployeeInfo indirectManager;

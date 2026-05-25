@@ -18,6 +18,8 @@ import vn.system.app.modules.evaluation.domain.enums.TemplateType;
 import vn.system.app.modules.evaluation.repository.*;
 import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.repository.CompanyRepository;
+import vn.system.app.modules.jobtitle.domain.JobTitle;
+import vn.system.app.modules.jobtitle.repository.JobTitleRepository;
 
 /**
  * Service quản lý Template đánh giá HQCV.
@@ -32,6 +34,7 @@ public class EvaluationTemplateService {
     private final TemplateCriteriaLevelRepository levelRepo;
     private final PeriodTemplateRepository periodTemplateRepo;
     private final CompanyRepository companyRepo;
+    private final JobTitleRepository jobTitleRepo;
 
     public EvaluationTemplateService(
             EvaluationTemplateRepository templateRepo,
@@ -39,13 +42,15 @@ public class EvaluationTemplateService {
             TemplateCriteriaRepository criteriaRepo,
             TemplateCriteriaLevelRepository levelRepo,
             PeriodTemplateRepository periodTemplateRepo,
-            CompanyRepository companyRepo) {
+            CompanyRepository companyRepo,
+            JobTitleRepository jobTitleRepo) {
         this.templateRepo = templateRepo;
         this.sectionRepo = sectionRepo;
         this.criteriaRepo = criteriaRepo;
         this.levelRepo = levelRepo;
         this.periodTemplateRepo = periodTemplateRepo;
         this.companyRepo = companyRepo;
+        this.jobTitleRepo = jobTitleRepo;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -63,6 +68,15 @@ public class EvaluationTemplateService {
         Company comp = companyRepo.findById(template.getCompany().getId())
                 .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
         template.setCompany(comp);
+
+        // Xử lý targetJobTitles
+        if (template.getTargetJobTitles() != null && !template.getTargetJobTitles().isEmpty()) {
+            List<Long> titleIds = template.getTargetJobTitles().stream().map(JobTitle::getId).collect(Collectors.toList());
+            List<JobTitle> titles = jobTitleRepo.findAllById(titleIds);
+            template.setTargetJobTitles(titles);
+        } else {
+            template.setTargetJobTitles(null);
+        }
 
         return templateRepo.save(template);
     }
@@ -87,6 +101,17 @@ public class EvaluationTemplateService {
             Company comp = companyRepo.findById(updates.getCompany().getId())
                     .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
             existing.setCompany(comp);
+        }
+
+        // Cập nhật targetJobTitles
+        if (updates.getTargetJobTitles() != null) {
+            if (updates.getTargetJobTitles().isEmpty()) {
+                existing.setTargetJobTitles(null);
+            } else {
+                List<Long> titleIds = updates.getTargetJobTitles().stream().map(JobTitle::getId).collect(Collectors.toList());
+                List<JobTitle> titles = jobTitleRepo.findAllById(titleIds);
+                existing.setTargetJobTitles(titles);
+            }
         }
 
         return templateRepo.save(existing);
@@ -129,7 +154,9 @@ public class EvaluationTemplateService {
     }
 
     public List<EvaluationTemplate> fetchActiveTemplates() {
-        return templateRepo.findByStatus(TemplateStatus.ACTIVE);
+        Specification<EvaluationTemplate> spec = (root, query, cb) -> cb.equal(root.get("status"), TemplateStatus.ACTIVE);
+        spec = spec.and(vn.system.app.common.util.ScopeSpec.byCompanyScope("company.id"));
+        return templateRepo.findAll(spec);
     }
 
     public ResultPaginationDTO fetchAllTemplates(Specification<EvaluationTemplate> spec, Pageable pageable) {

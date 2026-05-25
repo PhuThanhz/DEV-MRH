@@ -36,12 +36,8 @@ public class PeriodTemplate {
     @JsonIgnoreProperties("sections")
     private EvaluationTemplate template;
 
-    /**
-     * Template này áp dụng cho role nào trong kỳ.
-     * STAFF → dùng cho nhân viên thường.
-     * MANAGER → dùng cho cấp quản lý.
-     */
     @Enumerated(EnumType.STRING)
-    @Column(name = "apply_to_role", nullable = false, length = 20)
+    @Column(name = "apply_to_role", length = 20)
     private TemplateType applyToRole;
+
 }

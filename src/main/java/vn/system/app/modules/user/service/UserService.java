@@ -565,6 +565,53 @@ public class UserService {
     public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, Pageable pageable) {
         Specification<User> spec = (root, query, cb) -> cb.equal(root.get("active"), true);
 
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && !scope.isAdminLevel()) {
+            if (scope.companyIds().isEmpty()) {
+                ResultPaginationDTO rs = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                mt.setPage(pageable.getPageNumber() + 1);
+                mt.setPageSize(pageable.getPageSize());
+                mt.setPages(0);
+                mt.setTotal(0L);
+                rs.setMeta(mt);
+                rs.setResult(List.of());
+                return rs;
+            }
+            if (companyId != null) {
+                if (!scope.companyIds().contains(companyId)) {
+                    throw new IdInvalidException("Bạn không có quyền truy cập dữ liệu nhân sự của công ty này");
+                }
+            } else {
+                Specification<User> scopeSpec = (root, query, cb) -> {
+                    var sub = query.subquery(String.class);
+                    var posRoot = sub.from(UserPosition.class);
+
+                    sub.select(posRoot.get("user").get("id"))
+                            .where(cb.and(
+                                    cb.isTrue(posRoot.get("active")),
+                                    cb.or(
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "COMPANY"),
+                                                    posRoot.get("companyJobTitle").get("company").get("id")
+                                                            .in(scope.companyIds())),
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                    posRoot.get("departmentJobTitle").get("department").get("company")
+                                                            .get("id")
+                                                            .in(scope.companyIds())),
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "SECTION"),
+                                                    posRoot.get("sectionJobTitle").get("section").get("department")
+                                                            .get("company").get("id")
+                                                            .in(scope.companyIds())))));
+
+                    return root.get("id").in(sub);
+                };
+                spec = Specification.where(spec).and(scopeSpec);
+            }
+        }
+
         if (search != null && !search.trim().isEmpty()) {
             Specification<User> searchSpec = (root, query, cb) -> {
                 String likeSearch = "%" + search.trim().toLowerCase() + "%";

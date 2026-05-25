@@ -59,6 +59,7 @@ public class EvaluationPeriodController {
     @ApiMessage("Danh sách kỳ đánh giá")
     public ResponseEntity<ResultPaginationDTO> fetchAllPeriods(
             @Filter Specification<EvaluationPeriod> spec, Pageable pageable) {
+        spec = spec.and(vn.system.app.common.util.ScopeSpec.byCompanyScope("company.id"));
         ResultPaginationDTO page = periodService.fetchAllPeriods(spec, pageable);
         @SuppressWarnings("unchecked")
         List<EvaluationPeriod> periods = (List<EvaluationPeriod>) page.getResult();
@@ -75,9 +76,8 @@ public class EvaluationPeriodController {
             @PathVariable Long periodId,
             @RequestBody Map<String, Object> body) {
         Long templateId = Long.valueOf(body.get("templateId").toString());
-        TemplateType applyToRole = TemplateType.valueOf(body.get("applyToRole").toString());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(mapper.toResPeriodTemplateDTO(periodService.addTemplateToPeriod(periodId, templateId, applyToRole)));
+                .body(mapper.toResPeriodTemplateDTO(periodService.addTemplateToPeriod(periodId, templateId)));
     }
 
     @GetMapping("/periods/{periodId}/templates")

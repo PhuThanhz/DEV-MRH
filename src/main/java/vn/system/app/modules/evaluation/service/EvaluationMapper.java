@@ -32,6 +32,8 @@ public class EvaluationMapper {
         dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
         
         if (entity.getCompany() != null && entity.getCompany().getId() > 0) {
             ResCompanyDTO compDto = new ResCompanyDTO();
@@ -39,6 +41,16 @@ public class EvaluationMapper {
             compDto.setCode(entity.getCompany().getCode());
             compDto.setName(entity.getCompany().getName());
             dto.setCompany(compDto);
+        }
+        
+        if (entity.getTargetJobTitles() != null) {
+            dto.setTargetJobTitles(entity.getTargetJobTitles().stream().map(jt -> {
+                ResTemplateDTO.ResTargetJobTitleDTO targetDto = new ResTemplateDTO.ResTargetJobTitleDTO();
+                targetDto.setId(jt.getId());
+                targetDto.setNameVi(jt.getNameVi());
+                targetDto.setNameEn(jt.getNameEn());
+                return targetDto;
+            }).collect(Collectors.toList()));
         }
         
         if (entity.getSections() != null) {
@@ -106,6 +118,14 @@ public class EvaluationMapper {
         dto.setApprovalDeadline(entity.getApprovalDeadline());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        
+        if (entity.getCompany() != null && entity.getCompany().getId() > 0) {
+            ResPeriodDTO.CompanyDTO compDto = new ResPeriodDTO.CompanyDTO();
+            compDto.setId(entity.getCompany().getId());
+            compDto.setName(entity.getCompany().getName());
+            dto.setCompany(compDto);
+        }
+        
         return dto;
     }
 
@@ -114,7 +134,6 @@ public class EvaluationMapper {
         ResPeriodTemplateDTO dto = new ResPeriodTemplateDTO();
         dto.setId(entity.getId());
         dto.setPeriodId(entity.getPeriod() != null ? entity.getPeriod().getId() : null);
-        dto.setApplyToRole(entity.getApplyToRole());
         dto.setTemplate(toResTemplateDTO(entity.getTemplate()));
         return dto;
     }
@@ -141,6 +160,7 @@ public class EvaluationMapper {
         ResEvaluationRecordDTO dto = new ResEvaluationRecordDTO();
         dto.setId(entity.getId());
         dto.setPeriodId(entity.getPeriod().getId());
+        dto.setPeriod(toResPeriodDTO(entity.getPeriod()));
         dto.setEmployee(toResEmployeeInfo(entity.getEmployee()));
         dto.setDirectManager(toResEmployeeInfo(entity.getDirectManager()));
         dto.setIndirectManager(toResEmployeeInfo(entity.getIndirectManager()));

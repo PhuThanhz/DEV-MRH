@@ -16,4 +16,12 @@ public class ResPeriodDTO {
     private Instant approvalDeadline;
     private Instant createdAt;
     private Instant updatedAt;
+    
+    private CompanyDTO company;
+
+    @Data
+    public static class CompanyDTO {
+        private Long id;
+        private String name;
+    }
 }

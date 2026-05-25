@@ -70,6 +70,7 @@ public class EvaluationTemplateController {
     @ApiMessage("Danh sách template")
     public ResponseEntity<ResultPaginationDTO> fetchAllTemplates(
             @Filter Specification<EvaluationTemplate> spec, Pageable pageable) {
+        spec = spec.and(vn.system.app.common.util.ScopeSpec.byCompanyScope("company.id"));
         ResultPaginationDTO page = templateService.fetchAllTemplates(spec, pageable);
         @SuppressWarnings("unchecked")
         List<EvaluationTemplate> templates = (List<EvaluationTemplate>) page.getResult();
