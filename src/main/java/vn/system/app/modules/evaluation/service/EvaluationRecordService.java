@@ -1,14 +1,19 @@
 package vn.system.app.modules.evaluation.service;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.enums.*;
+import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineRequest;
 import vn.system.app.modules.evaluation.repository.*;
 import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
@@ -65,6 +70,13 @@ public class EvaluationRecordService {
     public EvaluationRecord fetchRecordById(Long id) {
         return recordRepo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Bản đánh giá không tồn tại"));
+    }
+
+    @Transactional(readOnly = true)
+    public EvaluationRecord fetchRecordByIdWithFullTemplateForUser(Long id, User requester) {
+        EvaluationRecord record = fetchRecordByIdWithFullTemplate(id);
+        assertCanViewRecord(record, requester);
+        return record;
     }
 
     /**
@@ -144,7 +156,13 @@ public class EvaluationRecordService {
             List.of(RecordStatus.PENDING_APPROVAL));
     }
 
-    public List<EvaluationRecord> fetchCompletedSummary(Long periodId, Long departmentId, Long companyId) {
+    @Transactional(readOnly = true)
+    public List<EvaluationRecord> fetchCompletedSummary(
+            Long periodId,
+            Long departmentId,
+            Long companyId,
+            Long sectionId,
+            User requester) {
         List<EvaluationRecord> records;
         if (periodId != null) {
             records = recordRepo.findByPeriodId(periodId);
@@ -152,11 +170,19 @@ public class EvaluationRecordService {
             records = recordRepo.findAll();
         }
 
-        if (departmentId != null) {
-            List<String> userIds = userPositionRepo.findUserIdsByDepartmentId(departmentId);
+        records = records.stream()
+                .filter(r -> r.getStatus() == RecordStatus.COMPLETED)
+                .filter(r -> canViewRecord(r, requester))
+                .toList();
+
+        if (sectionId != null) {
+            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsBySectionId(sectionId));
+            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+        } else if (departmentId != null) {
+            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsByDepartmentId(departmentId));
             records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
         } else if (companyId != null) {
-            List<String> userIds = userPositionRepo.findUserIdsByCompanyId(companyId);
+            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsByCompanyId(companyId));
             records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
         }
 
@@ -174,6 +200,7 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationScore saveEmployeeScore(Long recordId, Long criteriaId, Double score, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertEmployeePhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (!record.getEmployee().getId().equals(employee.getId())) {
@@ -189,6 +216,7 @@ public class EvaluationRecordService {
         // Kiểm tra tiêu chí có sub không → nếu có thì không cho nhập tay
         TemplateCriteria criteria = criteriaRepo.findById(criteriaId)
                 .orElseThrow(() -> new IdInvalidException("Tiêu chí không tồn tại"));
+        assertCriteriaBelongsToRecordTemplate(record, criteria);
 
         List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(criteriaId);
         if (!subs.isEmpty()) {
@@ -206,13 +234,14 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationRecord submitEmployeeEvaluation(Long recordId, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertEmployeePhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (!record.getEmployee().getId().equals(employee.getId())) {
             throw new IdInvalidException("Bạn không có quyền nộp bản đánh giá này");
         }
 
-        if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
+        if (record.getStatus() != RecordStatus.NOT_STARTED && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
             throw new IdInvalidException("Bạn không thể nộp đánh giá ở trạng thái hiện tại");
         }
 
@@ -239,7 +268,7 @@ public class EvaluationRecordService {
         sendNotification(record.getDirectManager(), "MANAGER_REVIEW_NEEDED",
                 String.format("Nhân viên %s đã nộp tự đánh giá. Vui lòng chấm điểm.",
                         record.getEmployee().getName()),
-                "/evaluation/manager/records/" + record.getId());
+                "/admin/evaluation/manager/records/" + record.getId());
 
         return record;
     }
@@ -248,14 +277,23 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationComment saveEmployeeSelfReview(Long recordId, String content, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertEmployeePhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (!record.getEmployee().getId().equals(employee.getId())) {
             throw new IdInvalidException("Bạn không có quyền nhận xét bản đánh giá này");
         }
 
-        if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
+        if (record.getStatus() != RecordStatus.NOT_STARTED && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
             throw new IdInvalidException("Bạn không thể nhận xét ở trạng thái hiện tại");
+        }
+
+        // Chuyển trạng thái sang DRAFTING nếu đang NOT_STARTED
+        if (record.getStatus() == RecordStatus.NOT_STARTED) {
+            RecordStatus oldStatus = record.getStatus();
+            record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+            recordRepo.save(record);
+            saveHistory(record, oldStatus, RecordStatus.EMPLOYEE_DRAFTING, record.getEmployee(), null);
         }
 
         // Tìm comment cũ hoặc tạo mới
@@ -288,6 +326,7 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationScore saveManagerScore(Long recordId, Long criteriaId, Double score, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertManagerPhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
@@ -296,8 +335,7 @@ public class EvaluationRecordService {
 
         if (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
                 && record.getStatus() != RecordStatus.MANAGER_REVIEWING
-                && record.getStatus() != RecordStatus.REVISION_NEEDED
-                && record.getStatus() != RecordStatus.PENDING_APPROVAL) {
+                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
             throw new IdInvalidException("Quản lý không thể chấm điểm ở trạng thái hiện tại");
         }
 
@@ -305,6 +343,7 @@ public class EvaluationRecordService {
 
         TemplateCriteria criteria = criteriaRepo.findById(criteriaId)
                 .orElseThrow(() -> new IdInvalidException("Tiêu chí không tồn tại"));
+        assertCriteriaBelongsToRecordTemplate(record, criteria);
 
         List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(criteriaId);
         if (!subs.isEmpty()) {
@@ -332,13 +371,16 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationRecord submitManagerReview(Long recordId, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertManagerPhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
             throw new IdInvalidException("Bạn không có quyền gửi phê duyệt bản đánh giá này");
         }
 
-        if (record.getStatus() != RecordStatus.MANAGER_REVIEWING) {
+        if (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
+                && record.getStatus() != RecordStatus.MANAGER_REVIEWING
+                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
             throw new IdInvalidException("Bạn không thể gửi phê duyệt ở trạng thái hiện tại");
         }
 
@@ -360,7 +402,7 @@ public class EvaluationRecordService {
         sendNotification(record.getIndirectManager(), "APPROVAL_NEEDED",
                 String.format("Đánh giá nhân viên %s đã được chấm điểm. Vui lòng phê duyệt.",
                         record.getEmployee().getName()),
-                "/evaluation/approval/records/" + record.getId());
+                "/admin/evaluation/approval/records/" + record.getId());
 
         return record;
     }
@@ -369,10 +411,26 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationComment saveManagerFeedback(Long recordId, String content, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertManagerPhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
             throw new IdInvalidException("Bạn không có quyền nhận xét bản đánh giá này");
+        }
+
+        if (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
+                && record.getStatus() != RecordStatus.MANAGER_REVIEWING
+                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
+            throw new IdInvalidException("Quản lý không thể nhận xét ở trạng thái hiện tại");
+        }
+
+        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc REVISION_NEEDED
+        if (record.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW
+                || record.getStatus() == RecordStatus.REVISION_NEEDED) {
+            RecordStatus oldStatus = record.getStatus();
+            record.setStatus(RecordStatus.MANAGER_REVIEWING);
+            recordRepo.save(record);
+            saveHistory(record, oldStatus, RecordStatus.MANAGER_REVIEWING, record.getDirectManager(), null);
         }
 
         List<EvaluationComment> existing = commentRepo.findByEvaluationRecordIdAndCommentType(
@@ -397,10 +455,26 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationTrainingPlan saveTrainingPlan(Long recordId, EvaluationTrainingPlan plan, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertManagerPhaseOpen(record);
 
         // --- IDOR CHECK ---
         if (record.getDirectManager() == null || !record.getDirectManager().getId().equals(manager.getId())) {
             throw new IdInvalidException("Bạn không có quyền thêm kế hoạch đào tạo cho bản đánh giá này");
+        }
+
+        if (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
+                && record.getStatus() != RecordStatus.MANAGER_REVIEWING
+                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
+            throw new IdInvalidException("Quản lý không thể thêm kế hoạch đào tạo ở trạng thái hiện tại");
+        }
+
+        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc REVISION_NEEDED
+        if (record.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW
+                || record.getStatus() == RecordStatus.REVISION_NEEDED) {
+            RecordStatus oldStatus = record.getStatus();
+            record.setStatus(RecordStatus.MANAGER_REVIEWING);
+            recordRepo.save(record);
+            saveHistory(record, oldStatus, RecordStatus.MANAGER_REVIEWING, record.getDirectManager(), null);
         }
 
         plan.setEvaluationRecord(record);
@@ -418,6 +492,8 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationScore saveApproverScore(Long recordId, Long criteriaId, Double score, User approver) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertApprover(record, approver);
+        assertApprovalPhaseOpen(record);
 
         if (record.getStatus() != RecordStatus.PENDING_APPROVAL) {
             throw new IdInvalidException("Người phê duyệt chỉ có thể chấm điểm khi bản đánh giá ở trạng thái chờ phê duyệt");
@@ -427,6 +503,7 @@ public class EvaluationRecordService {
 
         TemplateCriteria criteria = criteriaRepo.findById(criteriaId)
                 .orElseThrow(() -> new IdInvalidException("Tiêu chí không tồn tại"));
+        assertCriteriaBelongsToRecordTemplate(record, criteria);
 
         List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(criteriaId);
         if (!subs.isEmpty()) {
@@ -449,6 +526,8 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationRecord approveRecord(Long recordId, User approver) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertApprover(record, approver);
+        assertApprovalPhaseOpen(record);
 
         if (record.getStatus() != RecordStatus.PENDING_APPROVAL) {
             throw new IdInvalidException("Bản đánh giá không ở trạng thái chờ phê duyệt");
@@ -477,13 +556,13 @@ public class EvaluationRecordService {
         // Thông báo nhân viên
         sendNotification(record.getEmployee(), "RESULT_AVAILABLE",
                 "Kết quả đánh giá HQCV đã có. Nhấn để xem chi tiết.",
-                "/evaluation/my-records/" + record.getId());
+                "/admin/evaluation/my-records/" + record.getId());
 
         // Thông báo quản lý trực tiếp
         sendNotification(record.getDirectManager(), "RESULT_AVAILABLE",
                 String.format("Đánh giá nhân viên %s đã được phê duyệt.",
                         record.getEmployee().getName()),
-                "/evaluation/manager/records/" + record.getId());
+                "/admin/evaluation/manager/records/" + record.getId());
 
         return record;
     }
@@ -524,7 +603,7 @@ public class EvaluationRecordService {
         sendNotification(record.getDirectManager(), "RESULT_AVAILABLE",
                 String.format("Nhân viên %s đã xác nhận xem kết quả đánh giá.",
                         record.getEmployee().getName()),
-                "/evaluation/manager/records/" + record.getId());
+                "/admin/evaluation/manager/records/" + record.getId());
 
         return record;
     }
@@ -536,6 +615,8 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationRecord rejectRecord(Long recordId, String reason, User rejector) {
         EvaluationRecord record = fetchRecordById(recordId);
+        assertApprover(record, rejector);
+        assertApprovalPhaseOpen(record);
 
         if (record.getStatus() != RecordStatus.PENDING_APPROVAL) {
             throw new IdInvalidException("Bản đánh giá không ở trạng thái chờ phê duyệt");
@@ -563,18 +644,70 @@ public class EvaluationRecordService {
         sendNotification(record.getDirectManager(), "REVISION_NEEDED",
                 String.format("Đánh giá nhân viên %s đã bị trả lại. Lý do: %s",
                         record.getEmployee().getName(), reason),
-                "/evaluation/manager/records/" + record.getId());
+                "/admin/evaluation/manager/records/" + record.getId());
 
         return record;
     }
 
     /** Đếm số lần bị trả lại */
-    public long countRejections(Long recordId) {
+    public long countRejections(Long recordId, User requester) {
+        EvaluationRecord record = fetchRecordById(recordId);
+        assertCanViewRecord(record, requester);
         return historyRepo.countByEvaluationRecordIdAndToStatus(recordId, RecordStatus.REVISION_NEEDED);
     }
 
+    /** Admin gia hạn deadline riêng cho một hoặc nhiều bản đánh giá. */
+    @Transactional
+    public List<EvaluationRecord> extendRecordDeadlines(
+            List<Long> recordIds,
+            ExtendRecordDeadlineRequest.Phase phase,
+            Instant deadline,
+            String reason,
+            boolean cascade,
+            User performer) {
+        if (recordIds == null || recordIds.isEmpty()) {
+            throw new IdInvalidException("Danh sách bản đánh giá không được để trống");
+        }
+        if (phase == null) {
+            throw new IdInvalidException("Giai đoạn gia hạn không hợp lệ");
+        }
+        if (deadline == null || !deadline.isAfter(Instant.now())) {
+            throw new IdInvalidException("Hạn mới phải lớn hơn thời điểm hiện tại");
+        }
+
+        List<EvaluationRecord> records = recordRepo.findAllById(recordIds);
+        if (records.size() != new HashSet<>(recordIds).size()) {
+            throw new IdInvalidException("Một hoặc nhiều bản đánh giá không tồn tại");
+        }
+
+        for (EvaluationRecord record : records) {
+            if (record.getPeriod() == null || record.getPeriod().getStatus() != PeriodStatus.ACTIVE) {
+                throw new IdInvalidException("Chỉ có thể gia hạn bản đánh giá thuộc kỳ đang hoạt động");
+            }
+            if (record.getStatus() == RecordStatus.COMPLETED) {
+                throw new IdInvalidException("Không thể gia hạn bản đánh giá đã hoàn tất");
+            }
+
+            switch (phase) {
+                case EMPLOYEE -> extendEmployeeDeadline(record, deadline, cascade);
+                case MANAGER -> extendManagerDeadline(record, deadline, cascade);
+                case APPROVAL -> extendApprovalDeadline(record, deadline);
+            }
+
+            String note = String.format("Gia hạn giai đoạn %s tới %s%s",
+                    phase,
+                    deadline,
+                    reason != null && !reason.isBlank() ? ". Lý do: " + reason.trim() : "");
+            saveHistory(record, record.getStatus(), record.getStatus(), performer, note);
+        }
+
+        return recordRepo.saveAll(records);
+    }
+
     /** Lịch sử thay đổi trạng thái */
-    public List<EvaluationHistory> fetchHistory(Long recordId) {
+    public List<EvaluationHistory> fetchHistory(Long recordId, User requester) {
+        EvaluationRecord record = fetchRecordById(recordId);
+        assertCanViewRecord(record, requester);
         return historyRepo.findByEvaluationRecordIdOrderByPerformedAtDesc(recordId);
     }
 
@@ -700,6 +833,249 @@ public class EvaluationRecordService {
     private void validateScore(Double score) {
         if (score == null || score < 1 || score > 5) {
             throw new IdInvalidException("Điểm phải từ 1 đến 5");
+        }
+    }
+
+    private void assertCanViewRecord(EvaluationRecord record, User requester) {
+        if (!canViewRecord(record, requester)) {
+            throw new IdInvalidException("Bạn không có quyền xem bản đánh giá này");
+        }
+    }
+
+    private boolean canViewRecord(EvaluationRecord record, User requester) {
+        if (record == null || requester == null) {
+            return false;
+        }
+
+        String requesterId = requester.getId();
+        if (record.getEmployee() != null && requesterId.equals(record.getEmployee().getId())) {
+            return true;
+        }
+        if (record.getDirectManager() != null && requesterId.equals(record.getDirectManager().getId())) {
+            return true;
+        }
+        if (record.getIndirectManager() != null && requesterId.equals(record.getIndirectManager().getId())) {
+            return true;
+        }
+
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            return false;
+        }
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return true;
+        }
+
+        String employeeId = record.getEmployee() != null ? record.getEmployee().getId() : null;
+        if (employeeId == null) {
+            return false;
+        }
+
+        if (scope.companyIds() != null && !scope.companyIds().isEmpty()) {
+            for (Long companyId : scope.companyIds()) {
+                if (userPositionRepo.findUserIdsByCompanyId(companyId).contains(employeeId)) {
+                    return true;
+                }
+            }
+        }
+
+        if (!scope.isCompanyLevel() && scope.departmentIds() != null && !scope.departmentIds().isEmpty()) {
+            for (Long departmentId : scope.departmentIds()) {
+                if (userPositionRepo.findUserIdsByDepartmentId(departmentId).contains(employeeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private void assertApprover(EvaluationRecord record, User approver) {
+        if (record.getIndirectManager() == null || approver == null
+                || !record.getIndirectManager().getId().equals(approver.getId())) {
+            throw new IdInvalidException("Bạn không có quyền phê duyệt bản đánh giá này");
+        }
+    }
+
+    private void assertCriteriaBelongsToRecordTemplate(EvaluationRecord record, TemplateCriteria criteria) {
+        Long recordTemplateId = record.getTemplate() != null ? record.getTemplate().getId() : null;
+        Long criteriaTemplateId = criteria.getSection() != null
+                && criteria.getSection().getTemplate() != null
+                        ? criteria.getSection().getTemplate().getId()
+                        : null;
+
+        if (recordTemplateId == null || !Objects.equals(recordTemplateId, criteriaTemplateId)) {
+            throw new IdInvalidException("Tiêu chí không thuộc mẫu đánh giá của bản đánh giá này");
+        }
+    }
+
+    private void assertEmployeePhaseOpen(EvaluationRecord record) {
+        EvaluationPeriod period = record.getPeriod();
+        Instant now = Instant.now();
+
+        if (period == null || period.getStatus() != PeriodStatus.ACTIVE) {
+            throw new IdInvalidException("Kỳ đánh giá hiện không mở");
+        }
+        if (period.getEmployeeStartDate() != null && now.isBefore(period.getEmployeeStartDate())) {
+            throw new IdInvalidException("Chưa đến thời gian nhân viên tự đánh giá");
+        }
+        Instant employeeDeadline = record.getEmployeeDeadlineOverride() != null
+                ? record.getEmployeeDeadlineOverride()
+                : period.getEmployeeDeadline();
+        if (employeeDeadline != null && now.isAfter(employeeDeadline)) {
+            throw new IdInvalidException("Đã quá hạn nhân viên tự đánh giá");
+        }
+    }
+
+    private void assertManagerPhaseOpen(EvaluationRecord record) {
+        EvaluationPeriod period = record.getPeriod();
+        Instant now = Instant.now();
+
+        if (period == null || period.getStatus() != PeriodStatus.ACTIVE) {
+            throw new IdInvalidException("Kỳ đánh giá hiện không mở");
+        }
+        Instant managerDeadline = record.getManagerDeadlineOverride() != null
+                ? record.getManagerDeadlineOverride()
+                : period.getManagerDeadline();
+        if (managerDeadline != null && now.isAfter(managerDeadline)) {
+            throw new IdInvalidException("Đã quá hạn quản lý chấm điểm");
+        }
+    }
+
+    private void assertApprovalPhaseOpen(EvaluationRecord record) {
+        EvaluationPeriod period = record.getPeriod();
+        Instant now = Instant.now();
+
+        if (period == null || period.getStatus() != PeriodStatus.ACTIVE) {
+            throw new IdInvalidException("Kỳ đánh giá hiện không mở");
+        }
+        Instant approvalDeadline = record.getApprovalDeadlineOverride() != null
+                ? record.getApprovalDeadlineOverride()
+                : period.getApprovalDeadline();
+        if (approvalDeadline != null && now.isAfter(approvalDeadline)) {
+            throw new IdInvalidException("Đã quá hạn phê duyệt đánh giá");
+        }
+    }
+
+    private Instant getEffectiveEmployeeDeadline(EvaluationRecord record) {
+        return record.getEmployeeDeadlineOverride() != null
+                ? record.getEmployeeDeadlineOverride()
+                : record.getPeriod().getEmployeeDeadline();
+    }
+
+    private Instant getEffectiveManagerDeadline(EvaluationRecord record) {
+        return record.getManagerDeadlineOverride() != null
+                ? record.getManagerDeadlineOverride()
+                : record.getPeriod().getManagerDeadline();
+    }
+
+    private Instant getEffectiveApprovalDeadline(EvaluationRecord record) {
+        return record.getApprovalDeadlineOverride() != null
+                ? record.getApprovalDeadlineOverride()
+                : record.getPeriod().getApprovalDeadline();
+    }
+
+    private String formatInstant(Instant instant) {
+        if (instant == null) return "";
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                .withZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        return formatter.format(instant);
+    }
+
+    private void extendEmployeeDeadline(EvaluationRecord record, Instant deadline, boolean cascade) {
+        if (record.getEmployeeSubmittedAt() != null 
+                || (record.getStatus() != RecordStatus.NOT_STARTED 
+                    && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING)) {
+            throw new IdInvalidException("Chỉ có thể gia hạn nhân viên khi bản đánh giá còn ở bước nhân viên tự đánh giá");
+        }
+        
+        if (cascade) {
+            Instant oldEmployeeDeadline = getEffectiveEmployeeDeadline(record);
+            if (oldEmployeeDeadline != null && deadline.isAfter(oldEmployeeDeadline)) {
+                java.time.Duration diff = java.time.Duration.between(oldEmployeeDeadline, deadline);
+                
+                // Tự động tịnh tiến hạn của Quản lý
+                Instant oldManagerDeadline = getEffectiveManagerDeadline(record);
+                if (oldManagerDeadline != null) {
+                    record.setManagerDeadlineOverride(oldManagerDeadline.plus(diff));
+                }
+                
+                // Tự động tịnh tiến hạn của Người duyệt
+                Instant oldApprovalDeadline = getEffectiveApprovalDeadline(record);
+                if (oldApprovalDeadline != null) {
+                    record.setApprovalDeadlineOverride(oldApprovalDeadline.plus(diff));
+                }
+            }
+        }
+        
+        record.setEmployeeDeadlineOverride(deadline);
+
+        // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
+        Instant finalEmployee = getEffectiveEmployeeDeadline(record);
+        Instant finalManager = getEffectiveManagerDeadline(record);
+        if (finalEmployee != null && finalManager != null && finalEmployee.isAfter(finalManager)) {
+            throw new IdInvalidException(String.format(
+                    "Lỗi logic: Hạn mới của Nhân viên (%s) không được trễ hơn hạn của Quản lý (%s). Vui lòng tích chọn 'Tự động tịnh tiến các hạn chót tiếp theo'.",
+                    formatInstant(finalEmployee), formatInstant(finalManager)));
+        }
+    }
+
+    private void extendManagerDeadline(EvaluationRecord record, Instant deadline, boolean cascade) {
+        if (record.getManagerSubmittedAt() != null
+                || (record.getStatus() != RecordStatus.PENDING_MANAGER_REVIEW
+                        && record.getStatus() != RecordStatus.MANAGER_REVIEWING
+                        && record.getStatus() != RecordStatus.REVISION_NEEDED)) {
+            throw new IdInvalidException("Chỉ có thể gia hạn quản lý khi bản đánh giá đang ở bước quản lý chấm/sửa");
+        }
+        
+        if (cascade) {
+            Instant oldManagerDeadline = getEffectiveManagerDeadline(record);
+            if (oldManagerDeadline != null && deadline.isAfter(oldManagerDeadline)) {
+                java.time.Duration diff = java.time.Duration.between(oldManagerDeadline, deadline);
+                
+                // Tự động tịnh tiến hạn của Người duyệt
+                Instant oldApprovalDeadline = getEffectiveApprovalDeadline(record);
+                if (oldApprovalDeadline != null) {
+                    record.setApprovalDeadlineOverride(oldApprovalDeadline.plus(diff));
+                }
+            }
+        }
+        
+        record.setManagerDeadlineOverride(deadline);
+
+        // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
+        Instant finalEmployee = getEffectiveEmployeeDeadline(record);
+        Instant finalManager = getEffectiveManagerDeadline(record);
+        Instant finalApproval = getEffectiveApprovalDeadline(record);
+
+        if (finalEmployee != null && finalManager != null && finalManager.isBefore(finalEmployee)) {
+            throw new IdInvalidException(String.format(
+                    "Lỗi logic: Hạn mới của Quản lý (%s) không được sớm hơn hạn của Nhân viên (%s).",
+                    formatInstant(finalManager), formatInstant(finalEmployee)));
+        }
+
+        if (finalManager != null && finalApproval != null && finalManager.isAfter(finalApproval)) {
+            throw new IdInvalidException(String.format(
+                    "Lỗi logic: Hạn mới của Quản lý (%s) không được trễ hơn hạn của Người duyệt (%s). Vui lòng tích chọn 'Tự động tịnh tiến các hạn chót tiếp theo'.",
+                    formatInstant(finalManager), formatInstant(finalApproval)));
+        }
+    }
+
+    private void extendApprovalDeadline(EvaluationRecord record, Instant deadline) {
+        if (record.getApprovedAt() != null || record.getStatus() != RecordStatus.PENDING_APPROVAL) {
+            throw new IdInvalidException("Chỉ có thể gia hạn phê duyệt khi bản đánh giá đang chờ phê duyệt");
+        }
+        
+        record.setApprovalDeadlineOverride(deadline);
+
+        // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
+        Instant finalManager = getEffectiveManagerDeadline(record);
+        Instant finalApproval = getEffectiveApprovalDeadline(record);
+
+        if (finalManager != null && finalApproval != null && finalApproval.isBefore(finalManager)) {
+            throw new IdInvalidException(String.format(
+                    "Lỗi logic: Hạn mới của Người duyệt (%s) không được sớm hơn hạn của Quản lý (%s).",
+                    formatInstant(finalApproval), formatInstant(finalManager)));
         }
     }
 

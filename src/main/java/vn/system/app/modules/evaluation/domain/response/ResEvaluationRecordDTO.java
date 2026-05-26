@@ -22,6 +22,12 @@ public class ResEvaluationRecordDTO {
     private Instant managerSubmittedAt;
     private Instant approvedAt;
     private Instant completedAt;
+    private Instant employeeDeadlineOverride;
+    private Instant managerDeadlineOverride;
+    private Instant approvalDeadlineOverride;
+    private Instant effectiveEmployeeDeadline;
+    private Instant effectiveManagerDeadline;
+    private Instant effectiveApprovalDeadline;
     private Double employeeTotalScore;
     private Double managerTotalScore;
     private Double approverTotalScore;
@@ -34,10 +40,17 @@ public class ResEvaluationRecordDTO {
     public static class ResEmployeeInfo {
         private String id;
         private String username;
+        private String employeeCode;
         private String fullName;
         private String email;
         private String jobTitle;
         private String positionLevel;
+        private Long companyId;
+        private String companyName;
+        private Long departmentId;
+        private String departmentName;
+        private Long sectionId;
+        private String sectionName;
     }
 
     @Data

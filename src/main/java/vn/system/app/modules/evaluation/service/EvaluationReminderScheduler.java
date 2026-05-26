@@ -36,6 +36,19 @@ public class EvaluationReminderScheduler {
         Instant now = Instant.now();
 
         for (EvaluationPeriod period : activePeriods) {
+            if (period.getEmployeeStartDate() != null && !now.isBefore(period.getEmployeeStartDate())) {
+                List<EvaluationRecord> notStartedRecords = recordRepo.findByPeriodIdAndStatus(period.getId(), RecordStatus.NOT_STARTED);
+                for (EvaluationRecord record : notStartedRecords) {
+                    record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+                    sendNotification(record.getEmployee().getId(), "PERIOD_OPENED",
+                            String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.", period.getName()),
+                            "/admin/evaluation/my-records/" + record.getId());
+                }
+                if (!notStartedRecords.isEmpty()) {
+                    recordRepo.saveAll(notStartedRecords);
+                }
+            }
+
             // 1. Nhắc nhở nhân viên chưa nộp (còn 3 ngày và 1 ngày)
             if (period.getEmployeeDeadline() != null) {
                 long daysLeft = ChronoUnit.DAYS.between(now, period.getEmployeeDeadline());
@@ -44,7 +57,7 @@ public class EvaluationReminderScheduler {
                     for (EvaluationRecord record : unsubmitted) {
                         sendNotification(record.getEmployee().getId(), "REMINDER_DEADLINE",
                                 String.format("Chỉ còn %d ngày để nộp bản tự đánh giá HQCV. Vui lòng hoàn thành sớm.", daysLeft),
-                                "/evaluation/my-records/" + record.getId());
+                                "/admin/evaluation/my-records/" + record.getId());
                     }
                 }
             }
@@ -60,7 +73,7 @@ public class EvaluationReminderScheduler {
                     pendingManager.stream().map(r -> r.getDirectManager().getId()).distinct().forEach(managerId -> {
                         sendNotification(managerId, "REMINDER_DEADLINE",
                                 "Bạn có nhân viên chưa được chấm điểm. Vui lòng hoàn thành trong vòng 2 ngày tới.",
-                                "/evaluation/manager/dashboard");
+                                "/admin/evaluation/manager/pending");
                     });
                 }
             }
@@ -74,7 +87,7 @@ public class EvaluationReminderScheduler {
                     pendingApproval.stream().map(r -> r.getIndirectManager().getId()).distinct().forEach(managerId -> {
                         sendNotification(managerId, "REMINDER_DEADLINE",
                                 "Bạn có bản đánh giá cần phê duyệt. Vui lòng hoàn thành trong vòng 2 ngày tới.",
-                                "/evaluation/approval/dashboard");
+                                "/admin/evaluation/approval/pending");
                     });
                 }
             }

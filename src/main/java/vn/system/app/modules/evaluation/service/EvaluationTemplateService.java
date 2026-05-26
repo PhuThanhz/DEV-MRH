@@ -263,23 +263,33 @@ public class EvaluationTemplateService {
                 .orElseThrow(() -> new IdInvalidException("Section không tồn tại"));
         checkTemplateEditable(section.getTemplate());
 
-        if (criteria.getWeight() == null) {
-            throw new IdInvalidException("Trọng số của tiêu chí không được để trống");
-        }
-        if (criteria.getWeight() < 0 || criteria.getWeight() > 1.0) {
-            throw new IdInvalidException("Trọng số của tiêu chí phải từ 0% đến 100%");
-        }
+        if (criteria.getParentCriteria() != null && criteria.getParentCriteria().getId() != null) {
+            TemplateCriteria parent = criteriaRepo.findById(criteria.getParentCriteria().getId())
+                    .orElseThrow(() -> new IdInvalidException("Tiêu chí cha không tồn tại"));
+            if (parent.getSection() == null || !parent.getSection().getId().equals(sectionId)) {
+                throw new IdInvalidException("Tiêu chí cha không thuộc cùng phần đánh giá");
+            }
+            criteria.setParentCriteria(parent);
+            criteria.setWeight(0.0);
+        } else {
+            if (criteria.getWeight() == null) {
+                throw new IdInvalidException("Trọng số của tiêu chí không được để trống");
+            }
+            if (criteria.getWeight() < 0 || criteria.getWeight() > 1.0) {
+                throw new IdInvalidException("Trọng số của tiêu chí phải từ 0% đến 100%");
+            }
 
-        // Validate total weight of criteria doesn't exceed section weight
-        List<TemplateCriteria> existingCriteria = criteriaRepo.findBySectionIdOrderByDisplayOrderAsc(sectionId);
-        double totalWeight = existingCriteria.stream()
-                .mapToDouble(c -> c.getWeight() != null ? c.getWeight() : 0.0)
-                .sum();
-        totalWeight += criteria.getWeight();
-        double maxWeight = section.getWeight() != null ? section.getWeight() : 0.0;
-        if (totalWeight > maxWeight + 0.0001) {
-            throw new IdInvalidException("Tổng trọng số của các tiêu chí không được vượt quá trọng số của phần ("
-                    + Math.round(maxWeight * 100) + "%)");
+            // Validate total weight of criteria doesn't exceed section weight
+            List<TemplateCriteria> existingCriteria = criteriaRepo.findBySectionIdAndParentCriteriaIsNullOrderByDisplayOrderAsc(sectionId);
+            double totalWeight = existingCriteria.stream()
+                    .mapToDouble(c -> c.getWeight() != null ? c.getWeight() : 0.0)
+                    .sum();
+            totalWeight += criteria.getWeight();
+            double maxWeight = section.getWeight() != null ? section.getWeight() : 0.0;
+            if (totalWeight > maxWeight + 0.0001) {
+                throw new IdInvalidException("Tổng trọng số của các tiêu chí gốc không được vượt quá trọng số của phần ("
+                        + Math.round(maxWeight * 100) + "%)");
+            }
         }
 
         criteria.setSection(section);
@@ -292,26 +302,28 @@ public class EvaluationTemplateService {
                 .orElseThrow(() -> new IdInvalidException("Tiêu chí không tồn tại"));
         checkTemplateEditable(existing.getSection().getTemplate());
 
-        if (updates.getWeight() != null && (updates.getWeight() < 0 || updates.getWeight() > 1.0)) {
-            throw new IdInvalidException("Trọng số của tiêu chí phải từ 0% đến 100%");
-        }
-
-        if (updates.getWeight() != null) {
-            // Validate total weight of criteria doesn't exceed section weight
-            TemplateSection section = existing.getSection();
-            List<TemplateCriteria> existingCriteria = criteriaRepo
-                    .findBySectionIdOrderByDisplayOrderAsc(section.getId());
-            double totalWeight = 0.0;
-            for (TemplateCriteria c : existingCriteria) {
-                if (!c.getId().equals(criteriaId)) {
-                    totalWeight += c.getWeight() != null ? c.getWeight() : 0.0;
-                }
+        if (existing.getParentCriteria() == null) {
+            if (updates.getWeight() != null && (updates.getWeight() < 0 || updates.getWeight() > 1.0)) {
+                throw new IdInvalidException("Trọng số của tiêu chí phải từ 0% đến 100%");
             }
-            totalWeight += updates.getWeight();
-            double maxWeight = section.getWeight() != null ? section.getWeight() : 0.0;
-            if (totalWeight > maxWeight + 0.0001) {
-                throw new IdInvalidException("Tổng trọng số của các tiêu chí không được vượt quá trọng số của phần ("
-                        + Math.round(maxWeight * 100) + "%)");
+
+            if (updates.getWeight() != null) {
+                // Validate total weight of criteria doesn't exceed section weight
+                TemplateSection section = existing.getSection();
+                List<TemplateCriteria> existingCriteria = criteriaRepo
+                        .findBySectionIdAndParentCriteriaIsNullOrderByDisplayOrderAsc(section.getId());
+                double totalWeight = 0.0;
+                for (TemplateCriteria c : existingCriteria) {
+                    if (!c.getId().equals(criteriaId)) {
+                        totalWeight += c.getWeight() != null ? c.getWeight() : 0.0;
+                    }
+                }
+                totalWeight += updates.getWeight();
+                double maxWeight = section.getWeight() != null ? section.getWeight() : 0.0;
+                if (totalWeight > maxWeight + 0.0001) {
+                    throw new IdInvalidException("Tổng trọng số của các tiêu chí gốc không được vượt quá trọng số của phần ("
+                            + Math.round(maxWeight * 100) + "%)");
+                }
             }
         }
 
@@ -319,7 +331,9 @@ public class EvaluationTemplateService {
             existing.setName(updates.getName());
         if (updates.getMeasurementMethod() != null)
             existing.setMeasurementMethod(updates.getMeasurementMethod());
-        if (updates.getWeight() != null)
+        if (updates.getDescription() != null)
+            existing.setDescription(updates.getDescription());
+        if (updates.getWeight() != null && existing.getParentCriteria() == null)
             existing.setWeight(updates.getWeight());
         if (updates.getDisplayOrder() != null)
             existing.setDisplayOrder(updates.getDisplayOrder());
@@ -417,16 +431,15 @@ public class EvaluationTemplateService {
             for (TemplateCriteria crit : rootCriteria) {
                 criteriaWeightSum += crit.getWeight();
 
-                // Validate 5 levels must be fully configured
-                List<TemplateCriteriaLevel> levels = levelRepo.findByCriteriaIdOrderByLevelAsc(crit.getId());
-                long validLevelCount = levels.stream()
-                        .filter(l -> l.getDescription() != null && !l.getDescription().trim().isEmpty())
-                        .count();
-                if (validLevelCount < 5) {
-                    throw new IdInvalidException(
-                            String.format(
-                                    "Tiêu chí '%s' trong phần '%s' chưa được cấu hình đầy đủ 5 mức điểm. Vui lòng thiết lập mô tả mức điểm trước khi kích hoạt.",
-                                    crit.getName(), section.getName()));
+                // Validate 5 levels: if it has sub-criteria, validate leaf criteria instead.
+                // Query explicitly so publish behaves the same from every UI entry point.
+                List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaIdOrderByDisplayOrderAsc(crit.getId());
+                if (subs != null && !subs.isEmpty()) {
+                    for (TemplateCriteria sub : subs) {
+                        validateCriteriaLevels(sub, section.getName(), crit.getName());
+                    }
+                } else {
+                    validateCriteriaLevels(crit, section.getName(), null);
                 }
             }
 
@@ -435,6 +448,22 @@ public class EvaluationTemplateService {
                         String.format("Tổng trọng số tiêu chí trong phần '%s' phải bằng %.1f%%. Hiện tại: %.1f%%",
                                 section.getName(), section.getWeight() * 100, criteriaWeightSum * 100));
             }
+        }
+    }
+
+    private void validateCriteriaLevels(TemplateCriteria crit, String sectionName, String parentCriteriaName) {
+        List<TemplateCriteriaLevel> levels = levelRepo.findByCriteriaIdOrderByLevelAsc(crit.getId());
+        long validLevelCount = levels.stream()
+                .filter(l -> l.getDescription() != null && !l.getDescription().trim().isEmpty())
+                .count();
+        if (validLevelCount < 5) {
+            String criteriaLabel = parentCriteriaName != null
+                    ? String.format("Mục con '%s' của tiêu chí '%s'", crit.getName(), parentCriteriaName)
+                    : String.format("Tiêu chí '%s'", crit.getName());
+            throw new IdInvalidException(
+                    String.format(
+                            "%s trong phần '%s' chưa được cấu hình đầy đủ 5 mức điểm. Vui lòng thiết lập mô tả mức điểm trước khi kích hoạt.",
+                            criteriaLabel, sectionName));
         }
     }
 }

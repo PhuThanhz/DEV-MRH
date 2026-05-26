@@ -11,4 +11,6 @@ import vn.system.app.modules.evaluation.domain.PeriodTemplate;
 public interface PeriodTemplateRepository extends JpaRepository<PeriodTemplate, Long> {
 
     List<PeriodTemplate> findByPeriodId(Long periodId);
+
+    boolean existsByPeriodIdAndTemplateId(Long periodId, Long templateId);
 }

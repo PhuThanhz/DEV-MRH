@@ -13,13 +13,17 @@ import vn.system.app.modules.userposition.domain.UserPosition;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import vn.system.app.modules.evaluation.repository.EvaluationRecordRepository;
+
 @Component
 public class EvaluationMapper {
 
     private final UserPositionRepository userPositionRepository;
+    private final EvaluationRecordRepository recordRepo;
 
-    public EvaluationMapper(UserPositionRepository userPositionRepository) {
+    public EvaluationMapper(UserPositionRepository userPositionRepository, EvaluationRecordRepository recordRepo) {
         this.userPositionRepository = userPositionRepository;
+        this.recordRepo = recordRepo;
     }
 
     public ResTemplateDTO toResTemplateDTO(EvaluationTemplate entity) {
@@ -83,6 +87,7 @@ public class EvaluationMapper {
         dto.setId(entity.getId());
         dto.setName(entity.getName());
         dto.setMeasurementMethod(entity.getMeasurementMethod());
+        dto.setDescription(entity.getDescription());
         dto.setWeight(entity.getWeight());
         dto.setDisplayOrder(entity.getDisplayOrder());
         
@@ -148,6 +153,18 @@ public class EvaluationMapper {
         dto.setIndirectManager(toResEmployeeInfo(entity.getIndirectManager()));
         dto.setTemplate(toResTemplateDTO(entity.getTemplate()));
         dto.setStatus(entity.getStatus());
+        
+        if (entity.getPeriod() != null && entity.getEmployee() != null) {
+            recordRepo.findByPeriodIdAndEmployeeId(entity.getPeriod().getId(), entity.getEmployee().getId())
+                    .ifPresent(record -> {
+                        dto.setRecordId(record.getId());
+                        dto.setRecordStatus(record.getStatus() != null ? record.getStatus().toString() : null);
+                        dto.setEmployeeDeadlineOverride(record.getEmployeeDeadlineOverride());
+                        dto.setManagerDeadlineOverride(record.getManagerDeadlineOverride());
+                        dto.setApprovalDeadlineOverride(record.getApprovalDeadlineOverride());
+                    });
+        }
+        
         return dto;
     }
 
@@ -170,6 +187,18 @@ public class EvaluationMapper {
         dto.setManagerSubmittedAt(entity.getManagerSubmittedAt());
         dto.setApprovedAt(entity.getApprovedAt());
         dto.setCompletedAt(entity.getCompletedAt());
+        dto.setEmployeeDeadlineOverride(entity.getEmployeeDeadlineOverride());
+        dto.setManagerDeadlineOverride(entity.getManagerDeadlineOverride());
+        dto.setApprovalDeadlineOverride(entity.getApprovalDeadlineOverride());
+        dto.setEffectiveEmployeeDeadline(entity.getEmployeeDeadlineOverride() != null
+                ? entity.getEmployeeDeadlineOverride()
+                : entity.getPeriod().getEmployeeDeadline());
+        dto.setEffectiveManagerDeadline(entity.getManagerDeadlineOverride() != null
+                ? entity.getManagerDeadlineOverride()
+                : entity.getPeriod().getManagerDeadline());
+        dto.setEffectiveApprovalDeadline(entity.getApprovalDeadlineOverride() != null
+                ? entity.getApprovalDeadlineOverride()
+                : entity.getPeriod().getApprovalDeadline());
         dto.setEmployeeTotalScore(entity.getEmployeeTotalScore());
         dto.setManagerTotalScore(entity.getManagerTotalScore());
         dto.setApproverTotalScore(entity.getApproverTotalScore());
@@ -193,6 +222,9 @@ public class EvaluationMapper {
         ResEvaluationRecordDTO.ResEmployeeInfo dto = new ResEvaluationRecordDTO.ResEmployeeInfo();
         dto.setId(entity.getId());
         dto.setUsername(entity.getName()); // Tạm lấy Name vì model User trong dự án map Name
+        if (entity.getUserInfo() != null) {
+            dto.setEmployeeCode(entity.getUserInfo().getEmployeeCode());
+        }
         dto.setFullName(entity.getName());
         dto.setEmail(entity.getEmail());
         
@@ -201,9 +233,17 @@ public class EvaluationMapper {
             if (posList != null && !posList.isEmpty()) {
                 UserPosition chosen = null;
                 for (UserPosition p : posList) {
-                    if ("DEPARTMENT".equalsIgnoreCase(p.getSource()) || "SECTION".equalsIgnoreCase(p.getSource())) {
+                    if ("SECTION".equalsIgnoreCase(p.getSource())) {
                         chosen = p;
                         break;
+                    }
+                }
+                if (chosen == null) {
+                    for (UserPosition p : posList) {
+                        if ("DEPARTMENT".equalsIgnoreCase(p.getSource())) {
+                            chosen = p;
+                            break;
+                        }
                     }
                 }
                 if (chosen == null) {
@@ -215,16 +255,40 @@ public class EvaluationMapper {
                     case "COMPANY" -> {
                         if (chosen.getCompanyJobTitle() != null) {
                             jt = chosen.getCompanyJobTitle().getJobTitle();
+                            if (chosen.getCompanyJobTitle().getCompany() != null) {
+                                dto.setCompanyId(chosen.getCompanyJobTitle().getCompany().getId());
+                                dto.setCompanyName(chosen.getCompanyJobTitle().getCompany().getName());
+                            }
                         }
                     }
                     case "DEPARTMENT" -> {
                         if (chosen.getDepartmentJobTitle() != null) {
                             jt = chosen.getDepartmentJobTitle().getJobTitle();
+                            if (chosen.getDepartmentJobTitle().getDepartment() != null) {
+                                dto.setDepartmentId(chosen.getDepartmentJobTitle().getDepartment().getId());
+                                dto.setDepartmentName(chosen.getDepartmentJobTitle().getDepartment().getName());
+                                if (chosen.getDepartmentJobTitle().getDepartment().getCompany() != null) {
+                                    dto.setCompanyId(chosen.getDepartmentJobTitle().getDepartment().getCompany().getId());
+                                    dto.setCompanyName(chosen.getDepartmentJobTitle().getDepartment().getCompany().getName());
+                                }
+                            }
                         }
                     }
                     case "SECTION" -> {
                         if (chosen.getSectionJobTitle() != null) {
                             jt = chosen.getSectionJobTitle().getJobTitle();
+                            if (chosen.getSectionJobTitle().getSection() != null) {
+                                dto.setSectionId(chosen.getSectionJobTitle().getSection().getId());
+                                dto.setSectionName(chosen.getSectionJobTitle().getSection().getName());
+                                if (chosen.getSectionJobTitle().getSection().getDepartment() != null) {
+                                    dto.setDepartmentId(chosen.getSectionJobTitle().getSection().getDepartment().getId());
+                                    dto.setDepartmentName(chosen.getSectionJobTitle().getSection().getDepartment().getName());
+                                    if (chosen.getSectionJobTitle().getSection().getDepartment().getCompany() != null) {
+                                        dto.setCompanyId(chosen.getSectionJobTitle().getSection().getDepartment().getCompany().getId());
+                                        dto.setCompanyName(chosen.getSectionJobTitle().getSection().getDepartment().getCompany().getName());
+                                    }
+                                }
+                            }
                         }
                     }
                 }

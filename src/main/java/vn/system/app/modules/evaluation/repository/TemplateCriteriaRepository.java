@@ -14,6 +14,8 @@ public interface TemplateCriteriaRepository extends JpaRepository<TemplateCriter
 
     List<TemplateCriteria> findByParentCriteriaId(Long parentId);
 
+    List<TemplateCriteria> findByParentCriteriaIdOrderByDisplayOrderAsc(Long parentId);
+
     /** Tìm tất cả tiêu chí gốc (không có parent) trong một section */
     List<TemplateCriteria> findBySectionIdAndParentCriteriaIsNullOrderByDisplayOrderAsc(Long sectionId);
 }

@@ -99,6 +99,18 @@ public class EvaluationRecord {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    /** Hạn riêng cho nhân viên tự đánh giá, nếu admin gia hạn cá nhân */
+    @Column(name = "employee_deadline_override")
+    private Instant employeeDeadlineOverride;
+
+    /** Hạn riêng cho quản lý trực tiếp chấm, nếu admin gia hạn cá nhân */
+    @Column(name = "manager_deadline_override")
+    private Instant managerDeadlineOverride;
+
+    /** Hạn riêng cho quản lý gián tiếp phê duyệt, nếu admin gia hạn cá nhân */
+    @Column(name = "approval_deadline_override")
+    private Instant approvalDeadlineOverride;
+
     // ── Kết quả ────────────────────────────────────────────────────────────────
 
     /** Tổng điểm sau khi nhân viên tự chấm (tính tự động) */

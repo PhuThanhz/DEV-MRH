@@ -41,6 +41,10 @@ public class TemplateCriteria {
     @Column(name = "measurement_method", columnDefinition = "TEXT")
     private String measurementMethod;
 
+    /** Nội dung chi tiết của tiêu chí / sub-tiêu chí */
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     /**
      * Trọng số của tiêu chí này trong section.
      * Chỉ áp dụng cho tiêu chí cha (parentCriteria = null).

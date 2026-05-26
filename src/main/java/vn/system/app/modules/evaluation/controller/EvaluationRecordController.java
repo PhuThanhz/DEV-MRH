@@ -6,8 +6,12 @@ import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.evaluation.domain.*;
+import vn.system.app.modules.evaluation.domain.request.BatchApproveRequest;
+import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineRequest;
+import vn.system.app.modules.evaluation.domain.request.ScoreRequest;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationHistoryDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationRecordDTO;
 import vn.system.app.modules.evaluation.service.EvaluationMapper;
@@ -44,7 +48,8 @@ public class EvaluationRecordController {
     @GetMapping("/records/{id}")
     @ApiMessage("Chi tiết bản đánh giá")
     public ResponseEntity<ResEvaluationRecordDTO> fetchRecord(@PathVariable Long id) {
-        EvaluationRecord record = recordService.fetchRecordByIdWithFullTemplate(id);
+        User currentUser = getCurrentUser();
+        EvaluationRecord record = recordService.fetchRecordByIdWithFullTemplateForUser(id, currentUser);
         return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(
                 record,
                 recordService.fetchScores(id),
@@ -117,9 +122,26 @@ public class EvaluationRecordController {
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchCompletedSummary(
             @RequestParam(required = false) Long periodId,
             @RequestParam(required = false) Long departmentId,
-            @RequestParam(required = false) Long companyId) {
-        List<EvaluationRecord> records = recordService.fetchCompletedSummary(periodId, departmentId, companyId);
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long sectionId) {
+        User currentUser = getCurrentUser();
+        List<EvaluationRecord> records = recordService.fetchCompletedSummary(
+                periodId, departmentId, companyId, sectionId, currentUser);
         return ResponseEntity.ok(records.stream().map(mapper::toResEvaluationRecordDTO).toList());
+    }
+
+    @PatchMapping("/records/deadline-extension")
+    @ApiMessage("Gia hạn deadline riêng cho bản đánh giá")
+    public ResponseEntity<List<ResEvaluationRecordDTO>> extendRecordDeadline(
+            @Valid @RequestBody ExtendRecordDeadlineRequest body) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(recordService.extendRecordDeadlines(
+                body.getRecordIds(),
+                body.getPhase(),
+                body.getDeadline(),
+                body.getReason(),
+                body.isCascade(),
+                currentUser).stream().map(mapper::toResEvaluationRecordDTO).toList());
     }
 
     // ═══════════════ GIAI ĐOẠN 1: NHÂN VIÊN TỰ ĐÁNH GIÁ ═══════════════
@@ -128,11 +150,10 @@ public class EvaluationRecordController {
     @ApiMessage("Nhân viên chấm điểm tiêu chí")
     public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveEmployeeScore(
             @PathVariable Long recordId,
-            @RequestBody Map<String, Object> body) {
-        Long criteriaId = Long.valueOf(body.get("criteriaId").toString());
-        Double score = Double.valueOf(body.get("score").toString());
+            @Valid @RequestBody ScoreRequest body) {
         User employee = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(recordService.saveEmployeeScore(recordId, criteriaId, score, employee)));
+        return ResponseEntity.ok(mapper.toResScoreDTO(
+                recordService.saveEmployeeScore(recordId, body.getCriteriaId(), body.getScore(), employee)));
     }
 
     @PostMapping("/records/{recordId}/employee-submit")
@@ -158,11 +179,10 @@ public class EvaluationRecordController {
     @ApiMessage("Quản lý chấm điểm tiêu chí")
     public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveManagerScore(
             @PathVariable Long recordId,
-            @RequestBody Map<String, Object> body) {
-        Long criteriaId = Long.valueOf(body.get("criteriaId").toString());
-        Double score = Double.valueOf(body.get("score").toString());
+            @Valid @RequestBody ScoreRequest body) {
         User manager = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(recordService.saveManagerScore(recordId, criteriaId, score, manager)));
+        return ResponseEntity.ok(mapper.toResScoreDTO(
+                recordService.saveManagerScore(recordId, body.getCriteriaId(), body.getScore(), manager)));
     }
 
     @PostMapping("/records/{recordId}/manager-submit")
@@ -197,11 +217,10 @@ public class EvaluationRecordController {
     @ApiMessage("Người phê duyệt chấm điểm tiêu chí")
     public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveApproverScore(
             @PathVariable Long recordId,
-            @RequestBody Map<String, Object> body) {
-        Long criteriaId = Long.valueOf(body.get("criteriaId").toString());
-        Double score = Double.valueOf(body.get("score").toString());
+            @Valid @RequestBody ScoreRequest body) {
         User approver = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(recordService.saveApproverScore(recordId, criteriaId, score, approver)));
+        return ResponseEntity.ok(mapper.toResScoreDTO(
+                recordService.saveApproverScore(recordId, body.getCriteriaId(), body.getScore(), approver)));
     }
 
     @PostMapping("/records/{recordId}/approve")
@@ -213,9 +232,10 @@ public class EvaluationRecordController {
 
     @PostMapping("/records/batch-approve")
     @ApiMessage("Phê duyệt hàng loạt")
-    public ResponseEntity<List<ResEvaluationRecordDTO>> batchApproveRecords(@RequestBody List<Long> recordIds) {
+    public ResponseEntity<List<ResEvaluationRecordDTO>> batchApproveRecords(
+            @Valid @RequestBody BatchApproveRequest req) {
         User approver = getCurrentUser();
-        List<EvaluationRecord> approved = recordService.batchApproveRecords(recordIds, approver);
+        List<EvaluationRecord> approved = recordService.batchApproveRecords(req.getRecordIds(), approver);
         return ResponseEntity.ok(approved.stream().map(mapper::toResEvaluationRecordDTO).toList());
     }
 
@@ -242,14 +262,17 @@ public class EvaluationRecordController {
     @GetMapping("/records/{recordId}/history")
     @ApiMessage("Lịch sử thay đổi trạng thái")
     public ResponseEntity<List<ResEvaluationHistoryDTO>> fetchHistory(@PathVariable Long recordId) {
+        User currentUser = getCurrentUser();
         return ResponseEntity
-                .ok(recordService.fetchHistory(recordId).stream().map(mapper::toResEvaluationHistoryDTO).toList());
+                .ok(recordService.fetchHistory(recordId, currentUser).stream()
+                        .map(mapper::toResEvaluationHistoryDTO).toList());
     }
 
     @GetMapping("/records/{recordId}/rejection-count")
     @ApiMessage("Số lần bị trả lại")
     public ResponseEntity<Map<String, Long>> countRejections(@PathVariable Long recordId) {
-        long count = recordService.countRejections(recordId);
+        User currentUser = getCurrentUser();
+        long count = recordService.countRejections(recordId, currentUser);
         return ResponseEntity.ok(Map.of("rejectionCount", count));
     }
 

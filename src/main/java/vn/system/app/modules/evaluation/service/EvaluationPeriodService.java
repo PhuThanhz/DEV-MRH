@@ -1,6 +1,8 @@
 package vn.system.app.modules.evaluation.service;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -138,8 +140,13 @@ public class EvaluationPeriodService {
             throw new IdInvalidException("Chỉ có thể dùng template đã ACTIVE");
         }
 
-        if (template.getCompany() == null || template.getCompany().getId() != period.getCompany().getId()) {
+        if (template.getCompany() == null
+                || !Objects.equals(template.getCompany().getId(), period.getCompany().getId())) {
             throw new IdInvalidException("Template không thuộc công ty của kỳ đánh giá này");
+        }
+
+        if (periodTemplateRepo.existsByPeriodIdAndTemplateId(periodId, templateId)) {
+            throw new IdInvalidException("Template đã được gắn vào kỳ đánh giá này");
         }
 
         PeriodTemplate pt = new PeriodTemplate();
@@ -175,13 +182,13 @@ public class EvaluationPeriodService {
         boolean belongsToCompany = userPositionRepo.findActiveFullByUserId(employeeId).stream()
                 .anyMatch(up -> {
                     if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
-                        return up.getCompanyJobTitle().getCompany().getId() == period.getCompany().getId();
+                        return Objects.equals(up.getCompanyJobTitle().getCompany().getId(), period.getCompany().getId());
                     }
                     if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
-                        return up.getDepartmentJobTitle().getDepartment().getCompany().getId() == period.getCompany().getId();
+                        return Objects.equals(up.getDepartmentJobTitle().getDepartment().getCompany().getId(), period.getCompany().getId());
                     }
                     if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
-                        return up.getSectionJobTitle().getSection().getDepartment().getCompany().getId() == period.getCompany().getId();
+                        return Objects.equals(up.getSectionJobTitle().getSection().getDepartment().getCompany().getId(), period.getCompany().getId());
                     }
                     return false;
                 });
@@ -192,6 +199,24 @@ public class EvaluationPeriodService {
         
         User directManager = userRepo.findById(directManagerId)
                 .orElseThrow(() -> new IdInvalidException("Quản lý trực tiếp không tồn tại"));
+
+        boolean managerBelongsToCompany = userPositionRepo.findActiveFullByUserId(directManagerId).stream()
+                .anyMatch(up -> {
+                    if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
+                        return Objects.equals(up.getCompanyJobTitle().getCompany().getId(), period.getCompany().getId());
+                    }
+                    if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
+                        return Objects.equals(up.getDepartmentJobTitle().getDepartment().getCompany().getId(), period.getCompany().getId());
+                    }
+                    if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
+                        return Objects.equals(up.getSectionJobTitle().getSection().getDepartment().getCompany().getId(), period.getCompany().getId());
+                    }
+                    return false;
+                });
+
+        if (!managerBelongsToCompany) {
+            throw new IdInvalidException("Quản lý trực tiếp không thuộc công ty của kỳ đánh giá này");
+        }
                 
         // Tự động xác định quản lý gián tiếp là cấp trên của quản lý trực tiếp
         User indirectManager = directManager.getDirectManager();
@@ -200,6 +225,19 @@ public class EvaluationPeriodService {
         }
         EvaluationTemplate template = templateRepo.findById(templateId)
                 .orElseThrow(() -> new IdInvalidException("Template không tồn tại"));
+
+        if (template.getStatus() != TemplateStatus.ACTIVE) {
+            throw new IdInvalidException("Chỉ có thể dùng template đã ACTIVE");
+        }
+
+        if (template.getCompany() == null
+                || !Objects.equals(template.getCompany().getId(), period.getCompany().getId())) {
+            throw new IdInvalidException("Template không thuộc công ty của kỳ đánh giá này");
+        }
+
+        if (!periodTemplateRepo.existsByPeriodIdAndTemplateId(periodId, templateId)) {
+            throw new IdInvalidException("Template chưa được gắn vào kỳ đánh giá này");
+        }
 
         // Validate Template Target Job Titles
         if (template.getTargetJobTitles() != null && !template.getTargetJobTitles().isEmpty()) {
@@ -288,6 +326,9 @@ public class EvaluationPeriodService {
             throw new IdInvalidException("Vui lòng thiết lập đầy đủ các mốc deadline trước khi kích hoạt");
         }
 
+        Instant now = Instant.now();
+        boolean employeePhaseStarted = !now.isBefore(period.getEmployeeStartDate());
+
         // Sinh evaluation_record cho từng nhân viên
         for (PeriodEmployee pe : employees) {
             EvaluationRecord record = new EvaluationRecord();
@@ -296,11 +337,12 @@ public class EvaluationPeriodService {
             record.setDirectManager(pe.getDirectManager());
             record.setIndirectManager(pe.getIndirectManager());
             record.setTemplate(pe.getTemplate());
-            record.setStatus(RecordStatus.EMPLOYEE_DRAFTING); // Bắt đầu luôn
+            record.setStatus(employeePhaseStarted ? RecordStatus.EMPLOYEE_DRAFTING : RecordStatus.NOT_STARTED);
             recordRepo.save(record);
 
-            // Gửi thông báo cho nhân viên
-            sendNotification(pe.getEmployee(), "PERIOD_OPENED", String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.", period.getName()), "/evaluation/my-records");
+            if (employeePhaseStarted) {
+                sendNotification(pe.getEmployee(), "PERIOD_OPENED", String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.", period.getName()), "/admin/evaluation/my-records");
+            }
         }
 
         period.setStatus(PeriodStatus.ACTIVE);

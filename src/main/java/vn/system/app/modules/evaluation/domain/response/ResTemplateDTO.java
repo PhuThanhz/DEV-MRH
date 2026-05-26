@@ -44,6 +44,7 @@ public class ResTemplateDTO {
         private Long id;
         private String name;
         private String measurementMethod;
+        private String description;
         private Double weight;
         private Integer displayOrder;
         private List<ResCriteriaDTO> subCriteria;

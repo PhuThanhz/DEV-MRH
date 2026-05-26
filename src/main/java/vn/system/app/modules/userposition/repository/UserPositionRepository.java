@@ -144,6 +144,16 @@ public interface UserPositionRepository
 
         @Query("""
                             SELECT DISTINCT up.user.id FROM UserPosition up
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section s
+                            WHERE up.active = true
+                            AND up.source = 'SECTION'
+                            AND s.id = :sectionId
+                        """)
+        List<String> findUserIdsBySectionId(@Param("sectionId") Long sectionId);
+
+        @Query("""
+                            SELECT DISTINCT up.user.id FROM UserPosition up
                             LEFT JOIN up.companyJobTitle cjt
                             LEFT JOIN cjt.company comp1
                             LEFT JOIN up.departmentJobTitle djt
