@@ -558,26 +558,30 @@ public class UserService {
                 .map(opt -> convertToResUserDTO(opt.get()))
                 .collect(Collectors.toList());
     }
+    private ResultPaginationDTO emptyPagination(Pageable pageable) {
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+        mt.setPage(pageable.getPageNumber() + 1);
+        mt.setPageSize(pageable.getPageSize());
+        mt.setPages(0);
+        mt.setTotal(0L);
+        rs.setMeta(mt);
+        rs.setResult(List.of());
+        return rs;
+    }
 
     // ======================================================
     // FETCH CROSS COMPANY USERS WITH PAGINATION
     // ======================================================
-    public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, Pageable pageable) {
+    public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, Long departmentId, Long sectionId, Pageable pageable) {
         Specification<User> spec = (root, query, cb) -> cb.equal(root.get("active"), true);
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isAdminLevel()) {
             if (scope.companyIds().isEmpty()) {
-                ResultPaginationDTO rs = new ResultPaginationDTO();
-                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
-                mt.setPage(pageable.getPageNumber() + 1);
-                mt.setPageSize(pageable.getPageSize());
-                mt.setPages(0);
-                mt.setTotal(0L);
-                rs.setMeta(mt);
-                rs.setResult(List.of());
-                return rs;
+                return emptyPagination(pageable);
             }
+
             if (companyId != null) {
                 if (!scope.companyIds().contains(companyId)) {
                     throw new IdInvalidException("Bạn không có quyền truy cập dữ liệu nhân sự của công ty này");
@@ -624,20 +628,53 @@ public class UserService {
         }
 
         if (companyId != null) {
-            List<String> userIds = this.userPositionRepository.findUserIdsByCompanyId(companyId);
-            if (userIds.isEmpty()) {
-                ResultPaginationDTO rs = new ResultPaginationDTO();
-                ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
-                mt.setPage(pageable.getPageNumber() + 1);
-                mt.setPageSize(pageable.getPageSize());
-                mt.setPages(0);
-                mt.setTotal(0L);
-                rs.setMeta(mt);
-                rs.setResult(List.of());
-                return rs;
-            }
-            Specification<User> companySpec = (root, query, cb) -> root.get("id").in(userIds);
+            Specification<User> companySpec = (root, query, cb) -> {
+                var sub = query.subquery(String.class);
+                var posRoot = sub.from(UserPosition.class);
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.or(
+                                        cb.and(cb.equal(posRoot.get("source"), "COMPANY"), cb.equal(posRoot.get("companyJobTitle").get("company").get("id"), companyId)),
+                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), cb.equal(posRoot.get("departmentJobTitle").get("department").get("company").get("id"), companyId)),
+                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("company").get("id"), companyId))
+                                )
+                        ));
+                return root.get("id").in(sub);
+            };
             spec = spec.and(companySpec);
+        }
+
+        if (departmentId != null) {
+            Specification<User> deptSpec = (root, query, cb) -> {
+                var sub = query.subquery(String.class);
+                var posRoot = sub.from(UserPosition.class);
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.or(
+                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), cb.equal(posRoot.get("departmentJobTitle").get("department").get("id"), departmentId)),
+                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("id"), departmentId))
+                                )
+                        ));
+                return root.get("id").in(sub);
+            };
+            spec = spec.and(deptSpec);
+        }
+
+        if (sectionId != null) {
+            Specification<User> sectionSpec = (root, query, cb) -> {
+                var sub = query.subquery(String.class);
+                var posRoot = sub.from(UserPosition.class);
+                sub.select(posRoot.get("user").get("id"))
+                        .where(cb.and(
+                                cb.isTrue(posRoot.get("active")),
+                                cb.equal(posRoot.get("source"), "SECTION"),
+                                cb.equal(posRoot.get("sectionJobTitle").get("section").get("id"), sectionId)
+                        ));
+                return root.get("id").in(sub);
+            };
+            spec = spec.and(sectionSpec);
         }
 
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
@@ -673,6 +710,7 @@ public class UserService {
             dto.setId(user.getId());
             dto.setName(user.getName());
             dto.setEmail(user.getEmail());
+            dto.setAvatar(user.getAvatar());
             
             if (user.getUserInfo() != null) {
                 dto.setEmployeeCode(user.getUserInfo().getEmployeeCode());

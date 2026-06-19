@@ -171,4 +171,19 @@ public interface UserPositionRepository
                             )
                         """)
         List<String> findUserIdsByCompanyId(@Param("companyId") Long companyId);
+
+        @Query("""
+                            SELECT DISTINCT up.user.id FROM UserPosition up
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            WHERE up.active = true
+                            AND (
+                                dept.id = :departmentId
+                                OR sdept.id = :departmentId
+                            )
+                        """)
+        List<String> findUserIdsByDepartmentIdWithSubSections(@Param("departmentId") Long departmentId);
 }

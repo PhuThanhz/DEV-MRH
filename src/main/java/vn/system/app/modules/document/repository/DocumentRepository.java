@@ -31,5 +31,9 @@ public interface DocumentRepository extends
 
     boolean existsByCategory_Id(Long categoryId);
 
+    boolean existsByAccountingCategory_Id(Long accountingCategoryId);
+
+    List<Document> findByFolder_Id(Long folderId);
+
     Optional<Document> findByQrToken(String qrToken);
 }

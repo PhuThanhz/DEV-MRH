@@ -29,6 +29,9 @@ import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
 import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
 import vn.system.app.modules.sharetoken.domain.response.ResShareTokenDTO;
 import vn.system.app.modules.sharetoken.service.ProcedureShareTokenService;
+import vn.system.app.modules.procedure.enums.ProcedureType;
+import vn.system.app.modules.documentfolder.domain.DocumentFolder;
+import vn.system.app.modules.user.domain.User;
 
 @RestController
 @RequestMapping("/api/v1/documents")
@@ -117,12 +120,15 @@ public class DocumentController {
             Specification<Document> accessSpec = buildAccessSpec();
             spec = spec.and(companySpec.or(accessSpec));
         } else {
-            // User bình thường (INDIVIDUAL): Filter by createdBy OR accessList
+            // User bình thường (INDIVIDUAL): Filter by createdBy OR accessList OR company/department scope for non-confidential documents
             Specification<Document> individualSpec = (root, query, cb) -> {
                 String currentUserLogin = SecurityUtil.getCurrentUserLogin().orElse("");
                 String currentUserId = SecurityUtil.getCurrentUserId().orElse("");
+                
+                // 1. Created by me
                 jakarta.persistence.criteria.Predicate createdByPred = cb.equal(root.get("createdBy"), currentUserLogin);
                 
+                // 2. In access list
                 Subquery<Integer> subquery = query.subquery(Integer.class);
                 Root<DocumentAccess> accessRoot = subquery.from(DocumentAccess.class);
                 subquery.select(cb.literal(1));
@@ -132,7 +138,44 @@ public class DocumentController {
                 );
                 jakarta.persistence.criteria.Predicate accessPred = cb.exists(subquery);
                 
-                return cb.or(createdByPred, accessPred);
+                // Use explicit left joins to prevent filtering out documents with null department (e.g. personal drive documents)
+                jakarta.persistence.criteria.Join<Document, vn.system.app.modules.department.domain.Department> deptJoin = 
+                    root.join("department", jakarta.persistence.criteria.JoinType.LEFT);
+
+                // 3. Company level document (COMPANY)
+                jakarta.persistence.criteria.Predicate companyLevelPred = cb.disjunction();
+                if (scope != null && scope.companyIds() != null && !scope.companyIds().isEmpty()) {
+                    jakarta.persistence.criteria.Join<vn.system.app.modules.department.domain.Department, vn.system.app.modules.company.domain.Company> companyJoin = 
+                        deptJoin.join("company", jakarta.persistence.criteria.JoinType.LEFT);
+                    companyLevelPred = cb.and(
+                        cb.equal(root.get("procedureType"), ProcedureType.COMPANY),
+                        companyJoin.get("id").in(scope.companyIds())
+                    );
+                }
+                
+                // 4. Department level document (DEPARTMENT)
+                jakarta.persistence.criteria.Predicate deptLevelPred = cb.disjunction();
+                if (scope != null && scope.departmentIds() != null && !scope.departmentIds().isEmpty()) {
+                    deptLevelPred = cb.and(
+                        cb.equal(root.get("procedureType"), ProcedureType.DEPARTMENT),
+                        deptJoin.get("id").in(scope.departmentIds())
+                    );
+                }
+
+                // 5 & 6. Folder owner or folder owner's manager
+                jakarta.persistence.criteria.Join<Document, DocumentFolder> folderJoin = root.join("folder", jakarta.persistence.criteria.JoinType.LEFT);
+                jakarta.persistence.criteria.Predicate folderOwnerPred = cb.equal(folderJoin.get("ownerId"), currentUserId);
+                
+                Subquery<Integer> managerSubquery = query.subquery(Integer.class);
+                Root<User> userRoot = managerSubquery.from(User.class);
+                managerSubquery.select(cb.literal(1));
+                managerSubquery.where(
+                    cb.equal(userRoot.get("id"), folderJoin.get("ownerId")),
+                    cb.equal(userRoot.get("directManager").get("id"), currentUserId)
+                );
+                jakarta.persistence.criteria.Predicate folderManagerPred = cb.exists(managerSubquery);
+                
+                return cb.or(createdByPred, accessPred, companyLevelPred, deptLevelPred, folderOwnerPred, folderManagerPred);
             };
             spec = spec.and(individualSpec);
         }
@@ -248,5 +291,26 @@ public class DocumentController {
     public ResponseEntity<List<ShareTokenAccessLog>> getAccessLogs(
             @PathVariable Long tokenId) {
         return ResponseEntity.ok(shareTokenService.fetchAccessLogs(tokenId));
+    }
+
+    // =====================================================
+    // MANAGE SHORTCUTS
+    // =====================================================
+    @PostMapping("/{id}/shortcut")
+    @ApiMessage("Tạo lối tắt tài liệu")
+    public ResponseEntity<Void> createShortcut(
+            @PathVariable Long id,
+            @RequestParam Long folderId) {
+        service.createShortcut(id, folderId);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @DeleteMapping("/{id}/shortcut")
+    @ApiMessage("Xóa lối tắt tài liệu")
+    public ResponseEntity<Void> deleteShortcut(
+            @PathVariable Long id,
+            @RequestParam Long folderId) {
+        service.deleteShortcut(id, folderId);
+        return ResponseEntity.ok().build();
     }
 }

@@ -201,9 +201,11 @@ public class UserController {
                         @RequestParam(value = "page", defaultValue = "1") int page,
                         @RequestParam(value = "size", defaultValue = "10") int size,
                         @RequestParam(value = "search", required = false) String search,
-                        @RequestParam(value = "companyId", required = false) Long companyId) {
+                        @RequestParam(value = "companyId", required = false) Long companyId,
+                        @RequestParam(value = "departmentId", required = false) Long departmentId,
+                        @RequestParam(value = "sectionId", required = false) Long sectionId) {
                 Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, size);
-                return ResponseEntity.ok(this.userService.fetchCrossCompanyUsers(search, companyId, pageable));
+                return ResponseEntity.ok(this.userService.fetchCrossCompanyUsers(search, companyId, departmentId, sectionId, pageable));
         }
 
         // ===========================================================

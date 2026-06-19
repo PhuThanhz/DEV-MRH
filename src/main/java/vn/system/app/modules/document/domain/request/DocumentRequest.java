@@ -23,6 +23,7 @@ public class DocumentRequest {
     private String documentName;
     @NotNull(message = "Loại văn bản không được để trống")
     private Long categoryId;
+    private Long accountingCategoryId;
     private Long departmentId;
     private Long sectionId;
     private String status;
@@ -33,5 +34,6 @@ public class DocumentRequest {
     private Long procedureId;
     private List<Long> departmentIds;
     private List<String> userIds;
+    private Long folderId;
 
 }

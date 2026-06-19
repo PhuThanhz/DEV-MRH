@@ -20,4 +20,5 @@ public class ResCrossCompanyUserDTO {
     private String employeeCode;
     private String jobTitle;
     private String positionLevel;
+    private String avatar;
 }

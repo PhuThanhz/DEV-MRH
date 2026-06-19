@@ -20,6 +20,8 @@ import vn.system.app.modules.documentcategory.repository.DocumentCategoryReposit
 @Service
 public class DocumentCategoryService {
 
+    private static final String ACCOUNTING_CATEGORY_CODE = "ACCOUNTING_DOC";
+
     private final DocumentCategoryRepository repository;
     private final DocumentRepository documentRepository;
 
@@ -36,6 +38,10 @@ public class DocumentCategoryService {
     @Transactional
     public ResDocumentCategoryDTO handleCreate(DocumentCategoryRequest req) {
         String code = req.getCategoryCode().trim().toUpperCase();
+
+        if (ACCOUNTING_CATEGORY_CODE.equals(code)) {
+            throw new IdInvalidException("Mã danh mục này được hệ thống dùng riêng cho chứng từ kế toán");
+        }
 
         if (repository.existsByCategoryCode(code)) {
             throw new IdInvalidException("Mã danh mục đã tồn tại: " + code);
@@ -62,6 +68,10 @@ public class DocumentCategoryService {
     public ResDocumentCategoryDTO handleUpdate(Long id, DocumentCategoryRequest req) {
         DocumentCategory current = fetchById(id);
         String code = req.getCategoryCode().trim().toUpperCase();
+
+        if (ACCOUNTING_CATEGORY_CODE.equals(code)) {
+            throw new IdInvalidException("Mã danh mục này được hệ thống dùng riêng cho chứng từ kế toán");
+        }
 
         if (repository.existsByCategoryCodeAndIdNot(code, id)) {
             throw new IdInvalidException("Mã danh mục đã tồn tại: " + code);
@@ -118,14 +128,20 @@ public class DocumentCategoryService {
     // FETCH ONE
     // =====================================================
     public DocumentCategory fetchById(Long id) {
-        return repository.findById(id)
+        DocumentCategory category = repository.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Danh mục loại văn bản không tồn tại"));
+        ensureUserManagedCategory(category);
+        return category;
     }
 
     // =====================================================
     // FETCH ALL (paginated)
     // =====================================================
     public ResultPaginationDTO fetchAll(Specification<DocumentCategory> spec, Pageable pageable) {
+        Specification<DocumentCategory> userManagedSpec = (root, query, cb) ->
+                cb.notEqual(root.get("categoryCode"), ACCOUNTING_CATEGORY_CODE);
+        spec = spec == null ? userManagedSpec : spec.and(userManagedSpec);
+
         Page<DocumentCategory> page = repository.findAll(spec, pageable);
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
@@ -147,7 +163,9 @@ public class DocumentCategoryService {
     // =====================================================
     public List<ResDocumentCategoryDTO> fetchAllActive() {
         return repository.findByActiveTrue()
-                .stream().map(this::convertToDTO).collect(Collectors.toList());
+                .stream()
+                .filter(category -> !ACCOUNTING_CATEGORY_CODE.equals(category.getCategoryCode()))
+                .map(this::convertToDTO).collect(Collectors.toList());
     }
 
     // =====================================================
@@ -155,12 +173,17 @@ public class DocumentCategoryService {
     // =====================================================
     public List<ResDocumentCategoryDTO> fetchMappingProcedure() {
         return repository.findByMappingProcedureTrue()
-                .stream().map(this::convertToDTO).collect(Collectors.toList());
+                .stream()
+                .filter(category -> !ACCOUNTING_CATEGORY_CODE.equals(category.getCategoryCode()))
+                .map(this::convertToDTO).collect(Collectors.toList());
     }
 
-    // =====================================================
-    // CONVERT TO DTO
-    // =====================================================
+    private void ensureUserManagedCategory(DocumentCategory category) {
+        if (ACCOUNTING_CATEGORY_CODE.equals(category.getCategoryCode())) {
+            throw new IdInvalidException("Danh mục này thuộc hệ thống chứng từ kế toán");
+        }
+    }
+
     public ResDocumentCategoryDTO convertToDTO(DocumentCategory e) {
         ResDocumentCategoryDTO dto = new ResDocumentCategoryDTO();
         dto.setId(e.getId());

@@ -15,6 +15,7 @@ import vn.system.app.modules.documentcategory.domain.DocumentCategory;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.procedure.enums.ProcedureType;
+import vn.system.app.modules.documentfolder.domain.DocumentFolder;
 
 @Entity
 @Table(name = "document")
@@ -37,6 +38,11 @@ public class Document {
     @JoinColumn(name = "category_id", nullable = false)
     @JsonIgnoreProperties({ "documents" })
     private DocumentCategory category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "accounting_category_id")
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
+    private AccountingDocumentCategory accountingCategory;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id")
@@ -71,6 +77,11 @@ public class Document {
 
     @Column(name = "qr_token", length = 36, unique = true)
     private String qrToken;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
+    @JsonIgnoreProperties({ "children", "parent" })
+    private DocumentFolder folder;
 
     @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
     private String qrCode;
