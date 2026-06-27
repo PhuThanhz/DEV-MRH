@@ -350,7 +350,7 @@ public class UserService {
     // LOGIN SUPPORT
     // ======================================================
     public User handleGetUserByUsername(String username) {
-        return this.userRepository.findByEmail(username);
+        return this.userRepository.findWithAuthByEmail(username);
     }
 
     public boolean isEmailExist(String email) {

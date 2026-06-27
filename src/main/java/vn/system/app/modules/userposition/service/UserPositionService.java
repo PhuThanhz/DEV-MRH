@@ -190,14 +190,8 @@ public class UserPositionService {
     // GET COMPANY IDs BY USER
     // =====================================================
     public Set<Long> getCompanyIdsByUser(String userId) {
-        return repo.findActiveFullByUserId(userId)
+        return repo.findActiveCompanyIdsByUserId(userId)
                 .stream()
-                .map(pos -> switch (pos.getSource().toUpperCase()) {
-                    case "COMPANY" -> pos.getCompanyJobTitle().getCompany().getId();
-                    case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getCompany().getId();
-                    case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
-                    default -> null;
-                })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }
@@ -206,13 +200,8 @@ public class UserPositionService {
     // GET DEPARTMENT IDs BY USER
     // =====================================================
     public Set<Long> getDepartmentIdsByUser(String userId) {
-        return repo.findActiveFullByUserId(userId)
+        return repo.findActiveDepartmentIdsByUserId(userId)
                 .stream()
-                .map(pos -> switch (pos.getSource().toUpperCase()) {
-                    case "DEPARTMENT" -> pos.getDepartmentJobTitle().getDepartment().getId();
-                    case "SECTION" -> pos.getSectionJobTitle().getSection().getDepartment().getId();
-                    default -> null;
-                })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }

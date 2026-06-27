@@ -62,6 +62,15 @@ public class Document {
 
     private String note;
 
+    @Column(name = "is_locked")
+    private Boolean isLocked = false;
+
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     @Column(nullable = false)
     private boolean active = true;
 

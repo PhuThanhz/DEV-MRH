@@ -94,6 +94,39 @@ public class DatabaseInitializer implements CommandLineRunner {
             }
         }
 
+        String dossierModule = "ACCOUNTING_DOSSIERS";
+        List<Permission> newPerms = new ArrayList<>();
+        addPermissionIfMissing(newPerms, "Danh sách bộ chứng từ kế toán", "/api/v1/accounting-dossiers", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Chi tiết bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Tạo mới bộ chứng từ kế toán", "/api/v1/accounting-dossiers", "POST", dossierModule);
+        addPermissionIfMissing(newPerms, "Cập nhật bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}", "PUT", dossierModule);
+        addPermissionIfMissing(newPerms, "Xóa bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}", "DELETE", dossierModule);
+        addPermissionIfMissing(newPerms, "Chuyển xử lý bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}/submit", "POST", dossierModule);
+        addPermissionIfMissing(newPerms, "Yêu cầu hoàn bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}/request-return", "POST", dossierModule);
+        addPermissionIfMissing(newPerms, "Xem lịch sử bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}/logs", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Danh sách mẫu bộ chứng từ kế toán", "/api/v1/accounting-dossiers/categories", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Danh sách mẫu bộ chứng từ kế toán đang dùng", "/api/v1/accounting-dossiers/categories/active", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Tạo mẫu bộ chứng từ kế toán", "/api/v1/accounting-dossiers/categories", "POST", dossierModule);
+        addPermissionIfMissing(newPerms, "Cập nhật mẫu bộ chứng từ kế toán", "/api/v1/accounting-dossiers/categories/{categoryId}", "PUT", dossierModule);
+        addPermissionIfMissing(newPerms, "Bật/tắt mẫu bộ chứng từ kế toán", "/api/v1/accounting-dossiers/categories/{categoryId}/active", "PUT", dossierModule);
+        addPermissionIfMissing(newPerms, "Danh sách chứng từ con trong bộ", "/api/v1/accounting-dossiers/{id}/documents", "GET", dossierModule);
+        addPermissionIfMissing(newPerms, "Thêm chứng từ con vào bộ", "/api/v1/accounting-dossiers/{id}/documents", "POST", dossierModule);
+        addPermissionIfMissing(newPerms, "Sửa chứng từ con trong bộ", "/api/v1/accounting-dossiers/{id}/documents/{docId}", "PUT", dossierModule);
+        addPermissionIfMissing(newPerms, "Xóa chứng từ con trong bộ", "/api/v1/accounting-dossiers/{id}/documents/{docId}", "DELETE", dossierModule);
+
+        if (!newPerms.isEmpty()) {
+            this.permissionRepository.saveAll(newPerms);
+            System.out.println(">>> SEED: ACCOUNTING_DOSSIERS permissions created");
+
+            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            if (adminRole != null) {
+                List<Permission> allPerms = new ArrayList<>(adminRole.getPermissions());
+                allPerms.addAll(newPerms);
+                adminRole.setPermissions(allPerms);
+                this.roleRepository.save(adminRole);
+            }
+        }
+
         if (countRoles == 0) {
             List<Permission> allPermissions = this.permissionRepository.findAll();
 
@@ -134,5 +167,11 @@ public class DatabaseInitializer implements CommandLineRunner {
         p.setMethod(method);
         p.setModule(module);
         return p;
+    }
+
+    private void addPermissionIfMissing(List<Permission> target, String name, String apiPath, String method, String module) {
+        if (!this.permissionRepository.existsByModuleAndApiPathAndMethod(module, apiPath, method)) {
+            target.add(createPermission(name, apiPath, method, module));
+        }
     }
 }

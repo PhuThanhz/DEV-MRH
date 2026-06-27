@@ -112,6 +112,37 @@ public interface UserPositionRepository
                         """)
         List<UserPosition> findActiveFullByUserIds(@Param("userIds") List<String> userIds);
 
+        @Query("""
+                            SELECT DISTINCT COALESCE(comp1.id, comp2.id, comp3.id)
+                            FROM UserPosition up
+                            LEFT JOIN up.companyJobTitle cjt
+                            LEFT JOIN cjt.company comp1
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN dept.company comp2
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            LEFT JOIN sdept.company comp3
+                            WHERE up.user.id = :userId
+                            AND up.active = true
+                        """)
+        List<Long> findActiveCompanyIdsByUserId(@Param("userId") String userId);
+
+        @Query("""
+                            SELECT DISTINCT COALESCE(dept.id, sdept.id)
+                            FROM UserPosition up
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            WHERE up.user.id = :userId
+                            AND up.active = true
+                            AND up.source IN ('DEPARTMENT', 'SECTION')
+                        """)
+        List<Long> findActiveDepartmentIdsByUserId(@Param("userId") String userId);
+
 
         @Query("""
                             SELECT CASE WHEN COUNT(up) > 0 THEN true ELSE false END

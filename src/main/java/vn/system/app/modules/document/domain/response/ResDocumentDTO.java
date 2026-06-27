@@ -42,12 +42,16 @@ public class ResDocumentDTO {
 
     // Danh sách userId được xem — chỉ có khi category.mappingProcedure = false
     private List<String> userIds;
+    private List<Long> targetCompanyIds;
     private List<UserAccessRef> accessDetails;
 
     private Instant createdAt;
     private Instant updatedAt;
     private String createdBy;
     private String updatedBy;
+    private Boolean isLocked;
+    private Instant lockedAt;
+    private String lockedBy;
 
     @Getter
     @Setter

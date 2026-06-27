@@ -90,9 +90,13 @@ public class ProcedureShareTokenService {
     // =====================================================
     // THU HỒI TOKEN
     // =====================================================
-    public void handleRevoke(Long tokenId) {
-        ProcedureShareToken entity = shareTokenRepository.findById(tokenId)
+    public ProcedureShareToken fetchById(Long tokenId) {
+        return shareTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy token: " + tokenId));
+    }
+
+    public void handleRevoke(Long tokenId) {
+        ProcedureShareToken entity = fetchById(tokenId);
 
         entity.setIsRevoked(true);
         shareTokenRepository.save(entity);

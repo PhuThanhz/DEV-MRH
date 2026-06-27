@@ -9,14 +9,15 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.common.util.annotation.ApiMessage;
 
+import vn.system.app.modules.sharetoken.domain.ProcedureShareToken;
 import vn.system.app.modules.sharetoken.domain.ShareTokenAccessLog;
 import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
 import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
 import vn.system.app.modules.sharetoken.domain.response.ResShareTokenDTO;
 import vn.system.app.modules.sharetoken.service.ProcedureShareTokenService;
-import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
 
 @RestController
 @RequestMapping("/api/v1/procedures")
@@ -34,6 +35,7 @@ public class ShareTokenController {
             @PathVariable Long id,
             @Valid @RequestBody CreateShareTokenRequest req) {
 
+        rejectDocumentToken(req.getProcedureType());
         ResShareTokenDTO res = shareTokenService.handleCreate(id, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
@@ -47,6 +49,7 @@ public class ShareTokenController {
             @PathVariable Long id,
             @RequestParam String procedureType) {
 
+        rejectDocumentToken(procedureType);
         List<ResShareTokenDTO> res = shareTokenService.fetchByProcedure(id, procedureType);
         return ResponseEntity.ok(res);
     }
@@ -57,6 +60,7 @@ public class ShareTokenController {
     @PatchMapping("/share-tokens/{tokenId}/revoke")
     @ApiMessage("Thu hồi link chia sẻ")
     public ResponseEntity<Void> revokeShareToken(@PathVariable Long tokenId) {
+        rejectDocumentToken(tokenId);
         shareTokenService.handleRevoke(tokenId);
         return ResponseEntity.ok().build();
     }
@@ -69,6 +73,7 @@ public class ShareTokenController {
     public ResponseEntity<List<ShareTokenAccessLog>> getAccessLogs(
             @PathVariable Long tokenId) {
 
+        rejectDocumentToken(tokenId);
         List<ShareTokenAccessLog> logs = shareTokenService.fetchAccessLogs(tokenId);
         return ResponseEntity.ok(logs);
     }
@@ -82,7 +87,19 @@ public class ShareTokenController {
             @PathVariable Long tokenId,
             @Valid @RequestBody SendShareEmailRequest req) {
 
+        rejectDocumentToken(tokenId);
         shareTokenService.handleSendEmail(tokenId, req.getEmail());
         return ResponseEntity.ok().build();
+    }
+
+    private void rejectDocumentToken(String procedureType) {
+        if ("DOCUMENT".equals(procedureType)) {
+            throw new IdInvalidException("Vui lòng dùng API chia sẻ văn bản");
+        }
+    }
+
+    private void rejectDocumentToken(Long tokenId) {
+        ProcedureShareToken token = shareTokenService.fetchById(tokenId);
+        rejectDocumentToken(token.getProcedureType());
     }
 }

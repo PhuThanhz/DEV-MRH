@@ -46,6 +46,9 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
     @EntityGraph(attributePaths = { "userInfo", "role" })
     User findWithUserInfoById(String id);
 
+    @EntityGraph(attributePaths = { "userInfo", "role", "role.permissions" })
+    User findWithAuthByEmail(String email);
+
     /**
      * Load 1 user kèm role — dùng trong convertShareLogToDTO
      * Tránh LazyInitializationException khi gọi u.getRole().getName()
@@ -94,4 +97,21 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
             "JOIN r.permissions p " +
             "WHERE p.name IN :permissionNames")
     List<User> findUsersByPermissionNames(@Param("permissionNames") List<String> permissionNames);
+
+    @Query("SELECT DISTINCT u.id FROM User u " +
+            "JOIN UserPosition up ON up.user.id = u.id " +
+            "LEFT JOIN up.companyJobTitle cjt " +
+            "LEFT JOIN cjt.company cjt_company " +
+            "LEFT JOIN up.departmentJobTitle djt " +
+            "LEFT JOIN djt.department djt_department " +
+            "LEFT JOIN djt_department.company djt_company " +
+            "LEFT JOIN up.sectionJobTitle sjt " +
+            "LEFT JOIN sjt.section sjt_section " +
+            "LEFT JOIN sjt_section.department sjt_department " +
+            "LEFT JOIN sjt_department.company sjt_company " +
+            "WHERE up.active = true " +
+            "AND (cjt_company.id = :companyId OR " +
+            "     djt_company.id = :companyId OR " +
+            "     sjt_company.id = :companyId)")
+    List<String> findActiveUserIdsByCompany(@Param("companyId") Long companyId);
 }

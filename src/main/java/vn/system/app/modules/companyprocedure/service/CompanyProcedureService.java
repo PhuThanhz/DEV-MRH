@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,8 @@ import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedur
 import vn.system.app.modules.companyprocedure.domain.response.ResCompanyProcedureHistoryDTO;
 import vn.system.app.modules.companyprocedure.repository.CompanyProcedureRepository;
 import vn.system.app.modules.companyprocedure.repository.CompanyProcedureHistoryRepository;
+import vn.system.app.modules.notification.event.AppNotificationEvent;
+import vn.system.app.modules.user.repository.UserRepository;
 
 @Service
 public class CompanyProcedureService {
@@ -42,6 +45,8 @@ public class CompanyProcedureService {
     private final CompanyProcedureHistoryRepository historyRepository;
     private final DepartmentRepository departmentRepository;
     private final SectionRepository sectionRepository;
+    private final ApplicationEventPublisher eventPublisher;
+    private final UserRepository userRepository;
     private static final ObjectMapper mapper = new ObjectMapper();
 
     public CompanyProcedureService(
@@ -49,12 +54,16 @@ public class CompanyProcedureService {
             CompanyProcedureHistoryRepository historyRepository,
             DepartmentRepository departmentRepository,
             SectionRepository sectionRepository,
-            ProcedureQrService qrService) {
+            ProcedureQrService qrService,
+            ApplicationEventPublisher eventPublisher,
+            UserRepository userRepository) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
         this.qrService = qrService;
+        this.eventPublisher = eventPublisher;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -125,6 +134,34 @@ public class CompanyProcedureService {
         saved.setQrToken(qrService.buildQrToken());
         saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
         repository.save(saved);
+
+        // Notify users
+        if (department != null && department.getCompany() != null) {
+            java.util.List<String> targetUserIds = userRepository.findActiveUserIdsByCompany(department.getCompany().getId());
+            if (targetUserIds != null && !targetUserIds.isEmpty()) {
+                
+                String senderName = "Hệ thống";
+                vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
+                if (scope != null && scope.userId() != null) {
+                    vn.system.app.modules.user.domain.User sender = userRepository.findById(scope.userId()).orElse(null);
+                    if (sender != null) {
+                        senderName = sender.getName();
+                    }
+                }
+                
+                String notifContent = String.format("Quy trình: %s (%s) vừa được phát hành bởi %s.", 
+                        saved.getProcedureName(), saved.getProcedureCode(), senderName);
+
+                eventPublisher.publishEvent(new AppNotificationEvent(
+                        targetUserIds,
+                        "COMPANY_PROCEDURES",
+                        "PROCEDURE_CREATED",
+                        notifContent,
+                        "/admin/procedures?viewId=" + saved.getId()
+                ));
+            }
+        }
+
         return convertToDTO(saved);
     }
 

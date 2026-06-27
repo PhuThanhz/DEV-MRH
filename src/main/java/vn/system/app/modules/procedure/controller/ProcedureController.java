@@ -177,7 +177,7 @@ public class ProcedureController {
                     confidentialProcedureService.fetchById(id)));
         } else {
             return ResponseEntity.ok(documentService.convertToDTO(
-                    documentService.fetchById(id)));
+                    documentService.fetchByIdForRead(id)));
         }
     }
 
@@ -345,7 +345,7 @@ public class ProcedureController {
                     confidentialProcedureService.fetchById(result.id)));
         } else {
             return ResponseEntity.ok(documentService.convertToDTO(
-                    documentService.fetchById(result.id)));
+                    documentService.fetchByIdForRead(result.id)));
         }
     }
 

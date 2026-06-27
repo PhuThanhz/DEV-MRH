@@ -1,10 +1,12 @@
 package vn.system.app.modules.confidentialprocedure.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.HashSet;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import vn.system.app.modules.confidentialprocedure.domain.request.ConfidentialPr
 import vn.system.app.modules.confidentialprocedure.domain.response.ResAccessDTO;
 import vn.system.app.modules.confidentialprocedure.repository.ConfidentialProcedureAccessRepository;
 import vn.system.app.modules.confidentialprocedure.repository.ConfidentialProcedureRepository;
+import vn.system.app.modules.notification.event.AppNotificationEvent;
 
 @Service
 public class ConfidentialAccessService {
@@ -27,17 +30,20 @@ public class ConfidentialAccessService {
     private final ConfidentialProcedureRepository procedureRepository;
     private final UserRepository userRepository;
     private final ConfidentialShareLogService shareLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ConfidentialAccessService(
             ConfidentialProcedureAccessRepository accessRepository,
             ConfidentialProcedureRepository procedureRepository,
             UserRepository userRepository,
-            ConfidentialShareLogService shareLogService) {
+            ConfidentialShareLogService shareLogService,
+            ApplicationEventPublisher eventPublisher) {
 
         this.accessRepository = accessRepository;
         this.procedureRepository = procedureRepository;
         this.userRepository = userRepository;
         this.shareLogService = shareLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     // =====================================================
@@ -51,6 +57,13 @@ public class ConfidentialAccessService {
         if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
             throw new IdInvalidException("Danh sách user không được để trống");
         }
+
+        // Lấy tên người gửi để hiển thị trong thông báo
+        String senderName = userRepository.findById(currentUserId)
+                .map(User::getName)
+                .orElse("Hệ thống");
+
+        List<String> newlySharedUserIds = new ArrayList<>();
 
         for (String userId : req.getUserIds()) {
             userRepository.findById(userId)
@@ -71,12 +84,30 @@ public class ConfidentialAccessService {
             accessRepository.save(access);
 
             shareLogService.saveShareLog(procedureId, currentUserId, userId, "SHARE");
+            newlySharedUserIds.add(userId);
+        }
+
+        // Gửi thông báo tới tất cả người được chia sẻ
+        if (!newlySharedUserIds.isEmpty()) {
+            String content = String.format(
+                    "Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
+                    procedure.getProcedureName(), procedure.getProcedureCode(), senderName);
+            String actionLink = "/admin/procedures/confidential?viewId=" + procedureId;
+
+            eventPublisher.publishEvent(new AppNotificationEvent(
+                    newlySharedUserIds,
+                    "COMPANY_PROCEDURES",
+                    "CONFIDENTIAL_PROCEDURE_SHARED",
+                    content,
+                    actionLink
+            ));
         }
     }
 
     // =====================================================
     // SAVE ACCESS LIST (dùng khi create/update/revise)
-    // logShare = true chỉ khi CREATE, false khi UPDATE/REVISE
+    // logShare = true chỉ khi CREATE → ghi log + gửi notification
+    // logShare = false khi UPDATE/REVISE → không ghi log, không notify
     // =====================================================
     @Transactional
     public void saveAccessList(ConfidentialProcedure procedure,
@@ -84,6 +115,13 @@ public class ConfidentialAccessService {
             boolean logShare) {
 
         String currentUserId = getCurrentUserId();
+
+        // Lấy tên người tạo để hiển thị trong thông báo
+        String senderName = userRepository.findById(currentUserId)
+                .map(User::getName)
+                .orElse("Hệ thống");
+
+        List<String> notifyUserIds = new ArrayList<>();
 
         if (req.getUserIds() != null) {
             req.getUserIds().forEach(userId -> {
@@ -98,9 +136,9 @@ public class ConfidentialAccessService {
                 access.setAssignedAt(Instant.now());
                 accessRepository.save(access);
 
-                // ✅ SỬA THÀNH
                 if (logShare) {
                     shareLogService.saveShareLog(procedure.getId(), currentUserId, userId, "SHARE");
+                    notifyUserIds.add(userId);
                 }
             });
         }
@@ -113,6 +151,22 @@ public class ConfidentialAccessService {
                 access.setAccessType("ROLE");
                 accessRepository.save(access);
             });
+        }
+
+        // Gửi notification khi CREATE (logShare = true) — frontend không gọi /share sau create
+        if (logShare && !notifyUserIds.isEmpty()) {
+            String content = String.format(
+                    "Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
+                    procedure.getProcedureName(), procedure.getProcedureCode(), senderName);
+            String actionLink = "/admin/procedures/confidential?viewId=" + procedure.getId();
+
+            eventPublisher.publishEvent(new AppNotificationEvent(
+                    notifyUserIds,
+                    "COMPANY_PROCEDURES",
+                    "CONFIDENTIAL_PROCEDURE_SHARED",
+                    content,
+                    actionLink
+            ));
         }
     }
 

@@ -176,6 +176,11 @@ public class SecurityUtil {
      * Ví dụ: checkPermission("PROCEDURE_DEPARTMENT_UPDATE")
      */
     public static void checkPermission(String permission) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && scope.isSuperAdmin()) {
+            return;
+        }
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) {
@@ -197,6 +202,11 @@ public class SecurityUtil {
      * Trả về boolean — không throw, dùng để kiểm tra trước khi ẩn/hiện UI.
      */
     public static boolean hasPermission(String permission) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && scope.isSuperAdmin()) {
+            return true;
+        }
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return false;
         return auth.getAuthorities().stream()

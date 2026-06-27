@@ -25,6 +25,7 @@ import vn.system.app.common.util.SecurityUtil;
 import jakarta.persistence.criteria.Subquery;
 import jakarta.persistence.criteria.Root;
 import vn.system.app.modules.sharetoken.domain.ShareTokenAccessLog;
+import vn.system.app.modules.sharetoken.domain.ProcedureShareToken;
 import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
 import vn.system.app.modules.sharetoken.domain.request.SendShareEmailRequest;
 import vn.system.app.modules.sharetoken.domain.response.ResShareTokenDTO;
@@ -98,7 +99,7 @@ public class DocumentController {
     @GetMapping("/{id}")
     @ApiMessage("Chi tiết văn bản")
     public ResponseEntity<ResDocumentDTO> getOne(@PathVariable Long id) {
-        return ResponseEntity.ok(service.convertToDTO(service.fetchById(id)));
+        return ResponseEntity.ok(service.convertToDTO(service.fetchByIdForRead(id)));
     }
 
     // =====================================================
@@ -245,7 +246,7 @@ public class DocumentController {
     public ResponseEntity<ResShareTokenDTO> createShareToken(
             @PathVariable Long id,
             @Valid @RequestBody CreateShareTokenRequest req) {
-        service.fetchById(id); // kiểm tra document tồn tại
+        service.fetchByIdForWrite(id);
         req.setProcedureType("DOCUMENT");
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(shareTokenService.handleCreate(id, req));
@@ -258,6 +259,7 @@ public class DocumentController {
     @ApiMessage("Danh sách link chia sẻ của văn bản")
     public ResponseEntity<List<ResShareTokenDTO>> getShareTokens(
             @PathVariable Long id) {
+        service.fetchByIdForWrite(id);
         return ResponseEntity.ok(shareTokenService.fetchByProcedure(id, "DOCUMENT"));
     }
 
@@ -267,6 +269,7 @@ public class DocumentController {
     @PatchMapping("/share-tokens/{tokenId}/revoke")
     @ApiMessage("Thu hồi link chia sẻ văn bản")
     public ResponseEntity<Void> revokeShareToken(@PathVariable Long tokenId) {
+        assertDocumentShareTokenManageAccess(tokenId);
         shareTokenService.handleRevoke(tokenId);
         return ResponseEntity.ok().build();
     }
@@ -279,6 +282,7 @@ public class DocumentController {
     public ResponseEntity<Void> sendShareEmail(
             @PathVariable Long tokenId,
             @Valid @RequestBody SendShareEmailRequest req) {
+        assertDocumentShareTokenManageAccess(tokenId);
         shareTokenService.handleSendEmail(tokenId, req.getEmail());
         return ResponseEntity.ok().build();
     }
@@ -290,7 +294,16 @@ public class DocumentController {
     @ApiMessage("Lịch sử truy cập link chia sẻ văn bản")
     public ResponseEntity<List<ShareTokenAccessLog>> getAccessLogs(
             @PathVariable Long tokenId) {
+        assertDocumentShareTokenManageAccess(tokenId);
         return ResponseEntity.ok(shareTokenService.fetchAccessLogs(tokenId));
+    }
+
+    private void assertDocumentShareTokenManageAccess(Long tokenId) {
+        ProcedureShareToken token = shareTokenService.fetchById(tokenId);
+        if (!"DOCUMENT".equals(token.getProcedureType())) {
+            throw new vn.system.app.common.util.error.IdInvalidException("Link chia sẻ văn bản không tồn tại");
+        }
+        service.fetchByIdForWrite(token.getProcedureId());
     }
 
     // =====================================================

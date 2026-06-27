@@ -35,5 +35,6 @@ public class DocumentRequest {
     private List<Long> departmentIds;
     private List<String> userIds;
     private Long folderId;
+    private List<Long> targetCompanyIds;
 
 }
