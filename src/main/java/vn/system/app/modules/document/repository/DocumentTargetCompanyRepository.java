@@ -14,6 +14,8 @@ public interface DocumentTargetCompanyRepository extends JpaRepository<DocumentT
 
     List<DocumentTargetCompany> findByDocument_Id(Long documentId);
 
+    List<DocumentTargetCompany> findByDocument_IdIn(Collection<Long> documentIds);
+
     void deleteByDocument_Id(Long documentId);
 
     boolean existsByDocument_IdAndCompanyIdIn(Long documentId, Collection<Long> companyIds);

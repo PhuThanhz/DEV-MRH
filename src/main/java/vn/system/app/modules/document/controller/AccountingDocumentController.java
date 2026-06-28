@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.document.domain.Document;
 import vn.system.app.modules.document.domain.request.AccountingDocumentRequest;
 import vn.system.app.modules.document.domain.request.DocumentRequest;
@@ -118,7 +119,10 @@ public class AccountingDocumentController {
         
         // 2. Phân quyền Cross-Company (Level 2)
         vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
-        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+        if (scope == null) {
+            throw new PermissionException("Không xác định được phạm vi người dùng, vui lòng đăng nhập lại");
+        }
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
             // Xem toàn bộ chứng từ kế toán của tập đoàn
         } else {
             // Xem chứng từ của công ty hiện tại
@@ -143,7 +147,10 @@ public class AccountingDocumentController {
         Specification<Document> accSpec = (root, query, cb) -> cb.equal(root.get("category").get("categoryCode"), ACCOUNTING_CATEGORY_CODE);
         accSpec = applyAccountingLookupSpec(accSpec, keyword, validity, isLocked);
         vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
-        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+        if (scope == null) {
+            throw new PermissionException("Không xác định được phạm vi người dùng, vui lòng đăng nhập lại");
+        }
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
         } else {
             Specification<Document> companySpec = ScopeSpec.byCompanyScope("department.company.id");
             accSpec = accSpec.and(companySpec);

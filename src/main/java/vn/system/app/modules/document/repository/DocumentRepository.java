@@ -23,7 +23,14 @@ public interface DocumentRepository extends
     @Query("SELECT d FROM Document d WHERE d.department.company.id = :companyId")
     List<Document> findByCompanyId(@Param("companyId") Long companyId);
 
+    @Query("SELECT d.documentCode FROM Document d WHERE d.documentCode LIKE %:suffix")
+    List<String> findDocumentCodesBySuffix(@Param("suffix") String suffix);
+
     List<Document> findByDepartment_Id(Long departmentId);
+
+    @Query("SELECT DISTINCT d FROM Document d LEFT JOIN d.departments dd " +
+            "WHERE d.department.id = :deptId OR dd.id = :deptId")
+    List<Document> findByDepartmentIdIncludingMapped(@Param("deptId") Long deptId);
 
     List<Document> findBySection_Id(Long sectionId);
 

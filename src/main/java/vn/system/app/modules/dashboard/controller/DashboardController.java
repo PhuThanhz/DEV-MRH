@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import vn.system.app.common.util.annotation.ApiMessage;
@@ -41,8 +42,11 @@ public class DashboardController {
      */
     @GetMapping("/department-completeness")
     @ApiMessage("Kiểm tra mức độ hoàn thiện cấu hình các phòng ban")
-    public ResponseEntity<List<DepartmentCompletenessDTO>> getDepartmentCompleteness() {
+    public ResponseEntity<List<DepartmentCompletenessDTO>> getDepartmentCompleteness(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String companyName,
+            @RequestParam(required = false) String status) {
         return ResponseEntity.ok(
-                this.dashboardService.getDepartmentCompleteness());
+                this.dashboardService.getDepartmentCompleteness(search, companyName, status));
     }
 }

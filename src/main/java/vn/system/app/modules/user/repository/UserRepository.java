@@ -29,6 +29,8 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
 
     boolean existsByEmail(String email);
 
+    long countByIdIn(List<String> ids);
+
     // =========================
     // FETCH JOIN USING ENTITY GRAPH
     // =========================

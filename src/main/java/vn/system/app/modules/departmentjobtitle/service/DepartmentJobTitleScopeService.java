@@ -73,6 +73,11 @@ public class DepartmentJobTitleScopeService {
      */
     @Transactional(readOnly = true)
     public List<ResDepartmentJobTitleDTO> fetchByScope(Long departmentId) {
+        return fetchByScope(departmentId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResDepartmentJobTitleDTO> fetchByScope(Long departmentId, boolean ignorePermission) {
 
         Department department = departmentService.fetchEntityById(departmentId);
         Long companyId = department.getCompany().getId();
@@ -80,9 +85,9 @@ public class DepartmentJobTitleScopeService {
         // Lấy quyền người dùng
         Set<String> permissions = getCurrentUserPermissions();
 
-        boolean canCompany = permissions.contains("COMPANY_VIEW_TITLE");
-        boolean canDepartment = permissions.contains("DEPARTMENT_VIEW_TITLE");
-        boolean canSection = permissions.contains("SECTION_VIEW_TITLE");
+        boolean canCompany = ignorePermission || permissions.contains("COMPANY_VIEW_TITLE");
+        boolean canDepartment = ignorePermission || permissions.contains("DEPARTMENT_VIEW_TITLE");
+        boolean canSection = ignorePermission || permissions.contains("SECTION_VIEW_TITLE");
 
         if (!canCompany && !canDepartment && !canSection) {
             throw new IdInvalidException("Bạn không có quyền xem chức danh");

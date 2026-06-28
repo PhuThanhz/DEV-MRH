@@ -18,12 +18,15 @@ import vn.system.app.common.util.ScopeSpec;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.document.domain.Document;
 import vn.system.app.modules.document.domain.DocumentAccess;
+import vn.system.app.modules.document.domain.DocumentTargetCompany;
 import vn.system.app.modules.document.domain.request.DocumentRequest;
 import vn.system.app.modules.document.domain.response.ResDocumentDTO;
 import vn.system.app.modules.document.service.DocumentService;
 import vn.system.app.common.util.SecurityUtil;
 import jakarta.persistence.criteria.Subquery;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import vn.system.app.modules.sharetoken.domain.ShareTokenAccessLog;
 import vn.system.app.modules.sharetoken.domain.ProcedureShareToken;
 import vn.system.app.modules.sharetoken.domain.request.CreateShareTokenRequest;
@@ -33,6 +36,7 @@ import vn.system.app.modules.sharetoken.service.ProcedureShareTokenService;
 import vn.system.app.modules.procedure.enums.ProcedureType;
 import vn.system.app.modules.documentfolder.domain.DocumentFolder;
 import vn.system.app.modules.user.domain.User;
+import vn.system.app.modules.department.domain.Department;
 
 @RestController
 @RequestMapping("/api/v1/documents")
@@ -50,6 +54,18 @@ public class DocumentController {
     public ResponseEntity<ResDocumentDTO> create(
             @Valid @RequestBody DocumentRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.handleCreate(req));
+    }
+
+    // =====================================================
+    // UPDATE
+    // =====================================================
+    @GetMapping("/next-code")
+    @ApiMessage("Lấy mã văn bản tiếp theo")
+    public ResponseEntity<java.util.Map<String, String>> getNextCode(
+            @RequestParam Long companyId,
+            @RequestParam Long categoryId,
+            @RequestParam Integer year) {
+        return ResponseEntity.ok(service.getNextDocumentCode(companyId, categoryId, year));
     }
 
     // =====================================================
@@ -118,8 +134,10 @@ public class DocumentController {
         } else if (scope.isCompanyLevel()) {
             // Admin Sub 2 (COMPANY): Filter by companyId OR cross-company access
             Specification<Document> companySpec = ScopeSpec.byCompanyScope("department.company.id");
+            Specification<Document> targetCompanySpec = buildTargetCompanySpec();
             Specification<Document> accessSpec = buildAccessSpec();
-            spec = spec.and(companySpec.or(accessSpec));
+            Specification<Document> scopeSpec = companySpec.or(targetCompanySpec).or(accessSpec);
+            spec = (spec == null) ? scopeSpec.and(buildNotExcludedSpec()) : spec.and(scopeSpec).and(buildNotExcludedSpec());
         } else {
             // User bình thường (INDIVIDUAL): Filter by createdBy OR accessList OR company/department scope for non-confidential documents
             Specification<Document> individualSpec = (root, query, cb) -> {
@@ -150,16 +168,31 @@ public class DocumentController {
                         deptJoin.join("company", jakarta.persistence.criteria.JoinType.LEFT);
                     companyLevelPred = cb.and(
                         cb.equal(root.get("procedureType"), ProcedureType.COMPANY),
-                        companyJoin.get("id").in(scope.companyIds())
+                        cb.or(
+                            companyJoin.get("id").in(scope.companyIds()),
+                            cb.exists(buildTargetCompanySubquery(root, query, cb, scope.companyIds()))
+                        )
                     );
                 }
                 
                 // 4. Department level document (DEPARTMENT)
                 jakarta.persistence.criteria.Predicate deptLevelPred = cb.disjunction();
                 if (scope != null && scope.departmentIds() != null && !scope.departmentIds().isEmpty()) {
+                    Subquery<Integer> departmentMappingSubquery = query.subquery(Integer.class);
+                    Root<Document> departmentMappingRoot = departmentMappingSubquery.from(Document.class);
+                    Join<Document, Department> departmentMappingJoin = departmentMappingRoot.join("departments", JoinType.INNER);
+                    departmentMappingSubquery.select(cb.literal(1));
+                    departmentMappingSubquery.where(
+                        cb.equal(departmentMappingRoot.get("id"), root.get("id")),
+                        departmentMappingJoin.get("id").in(scope.departmentIds())
+                    );
+
                     deptLevelPred = cb.and(
                         cb.equal(root.get("procedureType"), ProcedureType.DEPARTMENT),
-                        deptJoin.get("id").in(scope.departmentIds())
+                        cb.or(
+                            deptJoin.get("id").in(scope.departmentIds()),
+                            cb.exists(departmentMappingSubquery)
+                        )
                     );
                 }
 
@@ -176,9 +209,12 @@ public class DocumentController {
                 );
                 jakarta.persistence.criteria.Predicate folderManagerPred = cb.exists(managerSubquery);
                 
-                return cb.or(createdByPred, accessPred, companyLevelPred, deptLevelPred, folderOwnerPred, folderManagerPred);
+                return cb.and(
+                    buildNotExcludedPredicate(root, query, cb, currentUserId, scope.departmentIds()),
+                    cb.or(createdByPred, accessPred, companyLevelPred, deptLevelPred, folderOwnerPred, folderManagerPred)
+                );
             };
-            spec = spec.and(individualSpec);
+            spec = (spec == null) ? individualSpec : spec.and(individualSpec);
         }
         
         return ResponseEntity.ok(service.fetchAll(spec, pageable));
@@ -196,6 +232,72 @@ public class DocumentController {
             );
             return cb.exists(subquery);
         };
+    }
+
+    private Specification<Document> buildTargetCompanySpec() {
+        return (root, query, cb) -> {
+            vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
+            if (scope == null || scope.companyIds() == null || scope.companyIds().isEmpty()) {
+                return cb.disjunction();
+            }
+            return cb.exists(buildTargetCompanySubquery(root, query, cb, scope.companyIds()));
+        };
+    }
+
+    private Subquery<Integer> buildTargetCompanySubquery(
+            Root<Document> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            java.util.Set<Long> companyIds) {
+        Subquery<Integer> targetCompanySubquery = query.subquery(Integer.class);
+        Root<DocumentTargetCompany> targetCompanyRoot = targetCompanySubquery.from(DocumentTargetCompany.class);
+        targetCompanySubquery.select(cb.literal(1));
+        targetCompanySubquery.where(
+            cb.equal(targetCompanyRoot.get("document"), root),
+            targetCompanyRoot.get("companyId").in(companyIds)
+        );
+        return targetCompanySubquery;
+    }
+
+    private Specification<Document> buildNotExcludedSpec() {
+        return (root, query, cb) -> {
+            String currentUserId = SecurityUtil.getCurrentUserId().orElse("");
+            vn.system.app.common.util.UserScopeContext.UserScope scope = vn.system.app.common.util.UserScopeContext.get();
+            return buildNotExcludedPredicate(root, query, cb, currentUserId, scope != null ? scope.departmentIds() : null);
+        };
+    }
+
+    private jakarta.persistence.criteria.Predicate buildNotExcludedPredicate(
+            Root<Document> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> query,
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            String currentUserId,
+            java.util.Set<Long> departmentIds) {
+
+        Subquery<Integer> excludedUserSubquery = query.subquery(Integer.class);
+        Root<Document> excludedUserRoot = excludedUserSubquery.from(Document.class);
+        Join<Document, User> excludedUserJoin = excludedUserRoot.join("excludedUsers", JoinType.INNER);
+        excludedUserSubquery.select(cb.literal(1));
+        excludedUserSubquery.where(
+            cb.equal(excludedUserRoot.get("id"), root.get("id")),
+            cb.equal(excludedUserJoin.get("id"), currentUserId)
+        );
+
+        jakarta.persistence.criteria.Predicate notExcludedUser = cb.not(cb.exists(excludedUserSubquery));
+        if (departmentIds == null || departmentIds.isEmpty()) {
+            return notExcludedUser;
+        }
+
+        Subquery<Integer> excludedDepartmentSubquery = query.subquery(Integer.class);
+        Root<Document> excludedDepartmentRoot = excludedDepartmentSubquery.from(Document.class);
+        Join<Document, Department> excludedDepartmentJoin = excludedDepartmentRoot.join("excludedDepartments", JoinType.INNER);
+        excludedDepartmentSubquery.select(cb.literal(1));
+        excludedDepartmentSubquery.where(
+            cb.equal(excludedDepartmentRoot.get("id"), root.get("id")),
+            excludedDepartmentJoin.get("id").in(departmentIds)
+        );
+
+        return cb.and(notExcludedUser, cb.not(cb.exists(excludedDepartmentSubquery)));
     }
 
     // =====================================================

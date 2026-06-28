@@ -80,7 +80,7 @@ public class ConfidentialProcedureService {
     private void validateScope(Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null)
-            return;
+            throw new PermissionException("Không xác định được phạm vi truy cập");
 
         if (scope.isSuperAdmin() || scope.isAdminLevel())
             return;
@@ -194,6 +194,9 @@ public class ConfidentialProcedureService {
     public ResConfidentialProcedureDTO handleRevise(Long id, ConfidentialProcedureRequest req) {
 
         ConfidentialProcedure current = fetchById(id);
+        if (!current.isActive()) {
+            throw new IdInvalidException("Không thể revise quy trình đã bị vô hiệu hóa");
+        }
 
         Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
                 ? current.getDepartment().getCompany().getId() : null;

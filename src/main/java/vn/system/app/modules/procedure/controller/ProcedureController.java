@@ -166,11 +166,15 @@ public class ProcedureController {
             @RequestParam ProcedureType type) {
 
         if (type == ProcedureType.COMPANY) {
+            CompanyProcedure procedure = companyProcedureService.fetchById(id);
+            companyProcedureService.validateReadAccess(procedure);
             return ResponseEntity.ok(companyProcedureService.convertToDTO(
-                    companyProcedureService.fetchById(id)));
+                    procedure));
         } else if (type == ProcedureType.DEPARTMENT) {
+            DepartmentProcedure procedure = departmentProcedureService.fetchById(id);
+            departmentProcedureService.validateReadAccess(procedure);
             return ResponseEntity.ok(departmentProcedureService.convertToDTO(
-                    departmentProcedureService.fetchById(id)));
+                    procedure));
         } else if (type == ProcedureType.CONFIDENTIAL) {
             confidentialProcedureService.checkAccess(id);
             return ResponseEntity.ok(confidentialProcedureService.convertToDTO(
@@ -214,7 +218,7 @@ public class ProcedureController {
             @Filter Specification<CompanyProcedure> spec,
             Pageable pageable) {
 
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("department.company.id"));
         return ResponseEntity.ok(companyProcedureService.fetchAll(spec, pageable));
     }
 
@@ -227,7 +231,7 @@ public class ProcedureController {
             @Filter Specification<DepartmentProcedure> spec,
             Pageable pageable) {
 
-        spec = spec.and(ScopeSpec.byCompanyScope("departments.company.id"));
+        spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("departments.company.id"));
         return ResponseEntity.ok(departmentProcedureService.fetchAll(spec, pageable));
     }
 
@@ -240,7 +244,7 @@ public class ProcedureController {
             @Filter Specification<ConfidentialProcedure> spec,
             Pageable pageable) {
 
-        spec = spec.and(ScopeSpec.byCompanyScope("department.company.id"));
+        spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("department.company.id"));
         return ResponseEntity.ok(confidentialProcedureService.fetchAll(spec, pageable));
     }
 
@@ -368,6 +372,7 @@ public class ProcedureController {
     @ApiMessage("Danh sách người có quyền truy cập")
     public ResponseEntity<List<ResAccessDTO>> getAccessList(
             @PathVariable Long id) {
+        confidentialProcedureService.checkAccess(id);
         return ResponseEntity.ok(confidentialProcedureService.handleGetAccessList(id));
     }
 

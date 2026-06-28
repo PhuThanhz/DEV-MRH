@@ -67,7 +67,7 @@ public class SalaryMatrixService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getDepartmentSalaryMatrix(Long departmentId) {
 
-        List<ResDepartmentJobTitleDTO> jobTitles = scopeService.fetchByScope(departmentId);
+        List<ResDepartmentJobTitleDTO> jobTitles = scopeService.fetchByScope(departmentId, true);
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (ResDepartmentJobTitleDTO jt : jobTitles) {
@@ -96,6 +96,8 @@ public class SalaryMatrixService {
                 .stream()
                 .filter(p -> {
                     String src = p.getSource().toUpperCase();
+                    if ("COMPANY".equals(src))
+                        return true;
                     if ("DEPARTMENT".equals(src))
                         return p.getDepartmentJobTitle()
                                 .getDepartment().getId().equals(departmentId);
@@ -104,19 +106,29 @@ public class SalaryMatrixService {
                                 .getSection().getDepartment().getId().equals(departmentId);
                     return false;
                 })
-                .map(p -> "DEPARTMENT".equalsIgnoreCase(p.getSource())
-                        ? p.getDepartmentJobTitle().getJobTitle().getId()
-                        : p.getSectionJobTitle().getJobTitle().getId())
+                .map(p -> {
+                    String s = p.getSource().toUpperCase();
+                    if ("COMPANY".equals(s)) return p.getCompanyJobTitle().getJobTitle().getId();
+                    if ("DEPARTMENT".equals(s)) return p.getDepartmentJobTitle().getJobTitle().getId();
+                    if ("SECTION".equals(s)) return p.getSectionJobTitle().getJobTitle().getId();
+                    return null;
+                })
                 .collect(Collectors.toSet());
 
         if (myJobTitleIds.isEmpty())
             return List.of();
 
-        // Tái dụng getDepartmentSalaryMatrix rồi filter theo jobTitleId của user
-        return getDepartmentSalaryMatrix(departmentId)
-                .stream()
-                .filter(row -> myJobTitleIds.contains((Long) row.get("jobTitleId")))
-                .collect(Collectors.toList());
+        // Gọi fetchByScope(..., true) để lấy toàn bộ các JobTitle mà không bị chặn phân quyền
+        List<ResDepartmentJobTitleDTO> allJobTitles = scopeService.fetchByScope(departmentId, true);
+        
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ResDepartmentJobTitleDTO jt : allJobTitles) {
+            if (myJobTitleIds.contains(jt.getJobTitle().getId())) {
+                result.add(buildJobTitleRow(jt));
+            }
+        }
+        
+        return result;
     }
 
     // ======================================================

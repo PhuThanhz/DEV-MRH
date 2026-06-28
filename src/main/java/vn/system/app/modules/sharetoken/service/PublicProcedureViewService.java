@@ -1,6 +1,10 @@
 package vn.system.app.modules.sharetoken.service;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.springframework.stereotype.Service;
 
@@ -9,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 
+import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.sharetoken.domain.ProcedureShareToken;
 import vn.system.app.modules.sharetoken.domain.response.ResPublicProcedureDTO;
 
@@ -35,6 +40,10 @@ public class PublicProcedureViewService {
     private final DocumentRepository documentRepository;
     private final ObjectMapper objectMapper;
 
+    private static final int MAX_PIN_ATTEMPTS = 5;
+    private static final Duration PIN_ATTEMPT_WINDOW = Duration.ofMinutes(15);
+    private final ConcurrentMap<String, PinAttempt> pinAttempts = new ConcurrentHashMap<>();
+
     // =====================================================
     // GET KHÔNG CẦN PIN
     // =====================================================
@@ -57,10 +66,15 @@ public class PublicProcedureViewService {
             String ip, String userAgent) {
         ProcedureShareToken shareToken = shareTokenService.validateToken(token);
 
-        if (!pin.equals(shareToken.getPin())) {
-            throw new RuntimeException("Mã PIN không đúng");
+        String attemptKey = token + ":" + ip;
+        ensurePinAttemptAllowed(attemptKey);
+
+        if (pin == null || !pin.equals(shareToken.getPin())) {
+            recordFailedPinAttempt(attemptKey);
+            throw new IdInvalidException("Mã PIN không đúng");
         }
 
+        pinAttempts.remove(attemptKey);
         checkActiveStatus(shareToken);
         shareTokenService.recordAccess(shareToken, ip, userAgent);
         return buildPublicDTO(shareToken);
@@ -72,33 +86,33 @@ public class PublicProcedureViewService {
         switch (type) {
             case "COMPANY" -> {
                 CompanyProcedure p = companyProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
                 if (!p.isActive()) {
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
                 }
             }
             case "DEPARTMENT" -> {
                 DepartmentProcedure p = departmentProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
                 if (!p.isActive()) {
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
                 }
             }
             case "CONFIDENTIAL" -> {
                 ConfidentialProcedure p = confidentialProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
                 if (!p.isActive()) {
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
                 }
             }
             case "DOCUMENT" -> {
                 Document doc = documentRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy văn bản"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy văn bản"));
                 if (!doc.isActive()) {
-                    throw new RuntimeException("Văn bản đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Văn bản đã bị vô hiệu hóa");
                 }
             }
-            default -> throw new RuntimeException("Loại không hợp lệ: " + type);
+            default -> throw new IdInvalidException("Loại không hợp lệ: " + type);
         }
     }
 
@@ -112,10 +126,10 @@ public class PublicProcedureViewService {
         return switch (type) {
             case "COMPANY" -> {
                 CompanyProcedure p = companyProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
 
                 if (!p.isActive())
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
 
                 yield ResPublicProcedureDTO.builder()
                         .procedureCode(p.getProcedureCode())
@@ -136,10 +150,10 @@ public class PublicProcedureViewService {
 
             case "DEPARTMENT" -> {
                 DepartmentProcedure p = departmentProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
 
                 if (!p.isActive())
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
 
                 String deptName = (p.getDepartments() != null && !p.getDepartments().isEmpty())
                         ? p.getDepartments().get(0).getName()
@@ -164,10 +178,10 @@ public class PublicProcedureViewService {
 
             case "CONFIDENTIAL" -> {
                 ConfidentialProcedure p = confidentialProcedureRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy quy trình"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy quy trình"));
 
                 if (!p.isActive())
-                    throw new RuntimeException("Quy trình đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Quy trình đã bị vô hiệu hóa");
 
                 yield ResPublicProcedureDTO.builder()
                         .procedureCode(p.getProcedureCode())
@@ -188,10 +202,10 @@ public class PublicProcedureViewService {
 
             case "DOCUMENT" -> {
                 Document doc = documentRepository.findById(id)
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy văn bản"));
+                        .orElseThrow(() -> new IdInvalidException("Không tìm thấy văn bản"));
 
                 if (!doc.isActive())
-                    throw new RuntimeException("Văn bản đã bị vô hiệu hóa");
+                    throw new IdInvalidException("Văn bản đã bị vô hiệu hóa");
 
                 yield ResPublicProcedureDTO.builder()
                         .procedureCode(doc.getDocumentCode())
@@ -210,7 +224,7 @@ public class PublicProcedureViewService {
                         .build();
             }
 
-            default -> throw new RuntimeException("Loại không hợp lệ: " + type);
+            default -> throw new IdInvalidException("Loại không hợp lệ: " + type);
         };
     }
 
@@ -229,6 +243,32 @@ public class PublicProcedureViewService {
         }
     }
 
+    private void ensurePinAttemptAllowed(String key) {
+        PinAttempt attempt = pinAttempts.get(key);
+        if (attempt == null) {
+            return;
+        }
+
+        if (attempt.firstFailedAt.plus(PIN_ATTEMPT_WINDOW).isBefore(Instant.now())) {
+            pinAttempts.remove(key);
+            return;
+        }
+
+        if (attempt.count >= MAX_PIN_ATTEMPTS) {
+            throw new IdInvalidException("Bạn đã nhập sai PIN quá nhiều lần, vui lòng thử lại sau");
+        }
+    }
+
+    private void recordFailedPinAttempt(String key) {
+        Instant now = Instant.now();
+        pinAttempts.compute(key, (k, current) -> {
+            if (current == null || current.firstFailedAt.plus(PIN_ATTEMPT_WINDOW).isBefore(now)) {
+                return new PinAttempt(1, now);
+            }
+            return new PinAttempt(current.count + 1, current.firstFailedAt);
+        });
+    }
+
     // =====================================================
     // INNER CLASS: response khi yêu cầu PIN
     // =====================================================
@@ -236,5 +276,8 @@ public class PublicProcedureViewService {
         public static RequirePinResponse of(boolean requirePin) {
             return new RequirePinResponse(requirePin);
         }
+    }
+
+    private record PinAttempt(int count, Instant firstFailedAt) {
     }
 }

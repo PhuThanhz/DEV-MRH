@@ -34,6 +34,8 @@ public class DocumentRequest {
     private Long procedureId;
     private List<Long> departmentIds;
     private List<String> userIds;
+    private List<Long> excludedDepartmentIds;
+    private List<String> excludedUserIds;
     private Long folderId;
     private List<Long> targetCompanyIds;
 

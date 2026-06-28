@@ -69,11 +69,9 @@ public class ConfidentialAccessService {
             userRepository.findById(userId)
                     .orElseThrow(() -> new IdInvalidException("User không tồn tại: " + userId));
 
-            accessRepository.findByProcedure_IdAndUserIdAndAccessType(procedureId, userId, "USER")
-                    .ifPresent(existing -> {
-                        accessRepository.delete(existing);
-                        accessRepository.flush();
-                    });
+            if (accessRepository.findByProcedure_IdAndUserIdAndAccessType(procedureId, userId, "USER").isPresent()) {
+                continue;
+            }
 
             ConfidentialProcedureAccess access = new ConfidentialProcedureAccess();
             access.setProcedure(procedure);

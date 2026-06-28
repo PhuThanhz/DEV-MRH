@@ -72,7 +72,7 @@ public class CompanyProcedureService {
     private void validateScope(Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null)
-            return;
+            throw new PermissionException("Không xác định được phạm vi truy cập");
 
         if (scope.isSuperAdmin() || scope.isAdminLevel())
             return;
@@ -222,6 +222,9 @@ public class CompanyProcedureService {
     public ResCompanyProcedureDTO handleRevise(Long id, CompanyProcedureRequest req) {
 
         CompanyProcedure current = fetchById(id);
+        if (!current.isActive()) {
+            throw new IdInvalidException("Không thể revise quy trình đã bị vô hiệu hóa");
+        }
 
         Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
                 ? current.getDepartment().getCompany().getId() : null;
@@ -299,6 +302,24 @@ public class CompanyProcedureService {
                 .orElseThrow(() -> new IdInvalidException("Quy trình không tồn tại"));
     }
 
+    public void validateReadAccess(CompanyProcedure procedure) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            throw new PermissionException("Không xác định được phạm vi truy cập");
+        }
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return;
+        }
+
+        Long companyId = (procedure.getDepartment() != null && procedure.getDepartment().getCompany() != null)
+                ? procedure.getDepartment().getCompany().getId()
+                : null;
+        if (companyId == null || scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+            throw new PermissionException("Bạn không có quyền xem quy trình này");
+        }
+    }
+
     // =====================================================
     // FETCH ALL
     // =====================================================
@@ -368,7 +389,8 @@ public class CompanyProcedureService {
     // FETCH HISTORY
     // =====================================================
     public List<ResCompanyProcedureHistoryDTO> fetchHistory(Long procedureId) {
-        fetchById(procedureId);
+        CompanyProcedure procedure = fetchById(procedureId);
+        validateReadAccess(procedure);
         return historyRepository.findByProcedure_IdOrderByVersionDesc(procedureId)
                 .stream()
                 .map(this::convertHistoryToDTO)

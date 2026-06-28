@@ -1,6 +1,11 @@
 package vn.system.app.modules.notification.service;
 
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -57,6 +62,45 @@ public class NotificationService {
             dto
         );
         
+        return saved;
+    }
+
+    @Transactional
+    public List<AppNotification> sendNotifications(Collection<String> userIds, String module, String type, String content, String actionLink) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> distinctIds = userIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (distinctIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, User> usersById = userRepository.findAllById(distinctIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
+        List<AppNotification> notifications = distinctIds.stream()
+                .map(usersById::get)
+                .filter(user -> user != null)
+                .map(user -> {
+                    AppNotification notification = new AppNotification();
+                    notification.setRecipient(user);
+                    notification.setModule(module);
+                    notification.setType(type);
+                    notification.setContent(content);
+                    notification.setActionLink(actionLink);
+                    return notification;
+                })
+                .collect(Collectors.toList());
+
+        List<AppNotification> saved = notificationRepo.saveAll(notifications);
+        saved.forEach(notification -> messagingTemplate.convertAndSendToUser(
+                notification.getRecipient().getId(),
+                "/queue/notifications",
+                mapToDTO(notification)));
+
         return saved;
     }
 

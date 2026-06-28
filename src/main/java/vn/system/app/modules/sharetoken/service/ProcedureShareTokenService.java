@@ -73,7 +73,7 @@ public class ProcedureShareTokenService {
 
         shareTokenRepository.save(entity);
 
-        return toDTO(entity, true);
+        return toDTO(entity, true, true);
     }
 
     // =====================================================
@@ -83,7 +83,7 @@ public class ProcedureShareTokenService {
         return shareTokenRepository
                 .findByProcedureIdAndProcedureType(procedureId, procedureType)
                 .stream()
-                .map(e -> toDTO(e, true))
+                .map(e -> toDTO(e, true, false))
                 .collect(Collectors.toList());
     }
 
@@ -183,6 +183,10 @@ public class ProcedureShareTokenService {
     // CONVERT TO DTO
     // =====================================================
     public ResShareTokenDTO toDTO(ProcedureShareToken entity, boolean includeQrCode) {
+        return toDTO(entity, includeQrCode, false);
+    }
+
+    private ResShareTokenDTO toDTO(ProcedureShareToken entity, boolean includeQrCode, boolean includePin) {
         return ResShareTokenDTO.builder()
                 .id(entity.getId())
                 .procedureId(entity.getProcedureId())
@@ -197,7 +201,7 @@ public class ProcedureShareTokenService {
                 .createdAt(entity.getCreatedAt())
                 .isRevoked(entity.getIsRevoked())
                 .hasPin(entity.getPin() != null && !entity.getPin().isBlank())
-                .pin(entity.getPin())
+                .pin(includePin ? entity.getPin() : null)
                 .build();
     }
 }

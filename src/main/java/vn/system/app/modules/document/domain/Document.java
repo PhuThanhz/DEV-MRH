@@ -16,6 +16,7 @@ import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.procedure.enums.ProcedureType;
 import vn.system.app.modules.documentfolder.domain.DocumentFolder;
+import vn.system.app.modules.user.domain.User;
 
 @Entity
 @Table(name = "document")
@@ -98,6 +99,20 @@ public class Document {
     @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnoreProperties({ "document" })
     private List<DocumentAccess> accessList = new ArrayList<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "document_departments_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))
+    @JsonIgnoreProperties({ "documents" })
+    private List<Department> departments = new ArrayList<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "document_excluded_departments_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))
+    @JsonIgnoreProperties({ "documents" })
+    private List<Department> excludedDepartments = new ArrayList<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "document_excluded_users_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "user_id"))
+    private List<User> excludedUsers = new ArrayList<>();
 
     private Instant createdAt;
     private Instant updatedAt;

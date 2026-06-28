@@ -60,7 +60,7 @@ public class DepartmentProcedureService {
     private void validateScope(Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null)
-            return;
+            throw new PermissionException("Không xác định được phạm vi truy cập");
 
         if (scope.isSuperAdmin() || scope.isAdminLevel())
             return;
@@ -194,6 +194,9 @@ public class DepartmentProcedureService {
     public ResDepartmentProcedureDTO handleRevise(Long id, DepartmentProcedureRequest req) {
 
         DepartmentProcedure current = fetchById(id);
+        if (!current.isActive()) {
+            throw new IdInvalidException("Không thể revise quy trình đã bị vô hiệu hóa");
+        }
 
         if (current.getDepartments() != null) {
             for (Department dept : current.getDepartments()) {
@@ -291,6 +294,38 @@ public class DepartmentProcedureService {
                 .orElseThrow(() -> new IdInvalidException("Quy trình không tồn tại"));
     }
 
+    public void validateReadAccess(DepartmentProcedure procedure) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            throw new PermissionException("Không xác định được phạm vi truy cập");
+        }
+
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return;
+        }
+
+        if (procedure.getDepartments() == null || procedure.getDepartments().isEmpty()) {
+            throw new PermissionException("Bạn không có quyền xem quy trình này");
+        }
+
+        if (scope.isCompanyLevel()) {
+            boolean sameCompany = procedure.getDepartments().stream()
+                    .anyMatch(dept -> dept.getCompany() != null
+                            && scope.companyIds() != null
+                            && scope.companyIds().contains(dept.getCompany().getId()));
+            if (!sameCompany) {
+                throw new PermissionException("Bạn không có quyền xem quy trình này");
+            }
+            return;
+        }
+
+        boolean sameDepartment = procedure.getDepartments().stream()
+                .anyMatch(dept -> scope.departmentIds() != null && scope.departmentIds().contains(dept.getId()));
+        if (!sameDepartment) {
+            throw new PermissionException("Bạn không có quyền xem quy trình này");
+        }
+    }
+
     // =====================================================
     // FETCH ALL
     // =====================================================
@@ -361,7 +396,8 @@ public class DepartmentProcedureService {
     // FETCH HISTORY
     // =====================================================
     public List<ResDepartmentProcedureHistoryDTO> fetchHistory(Long procedureId) {
-        fetchById(procedureId);
+        DepartmentProcedure procedure = fetchById(procedureId);
+        validateReadAccess(procedure);
         return historyRepository.findByProcedure_IdOrderByVersionDesc(procedureId)
                 .stream().map(this::convertHistoryToDTO).collect(Collectors.toList());
     }

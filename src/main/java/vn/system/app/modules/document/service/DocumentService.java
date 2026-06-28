@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.SecurityUtil;
@@ -25,6 +28,7 @@ import vn.system.app.modules.documentcategory.domain.DocumentCategory;
 import vn.system.app.modules.documentcategory.repository.DocumentCategoryRepository;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
+import vn.system.app.modules.company.repository.CompanyRepository;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
 import vn.system.app.modules.companyprocedure.domain.request.CompanyProcedureRequest;
@@ -44,11 +48,16 @@ import vn.system.app.modules.document.domain.DocumentShortcut;
 import vn.system.app.modules.document.repository.DocumentShortcutRepository;
 import vn.system.app.modules.document.domain.DocumentAudit;
 import vn.system.app.modules.document.repository.DocumentAuditRepository;
+import vn.system.app.modules.notification.service.NotificationService;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -70,6 +79,10 @@ public class DocumentService {
     private final AccountingDocumentCategoryRepository accountingCategoryRepository;
     private final DocumentAuditRepository auditRepository;
     private final vn.system.app.modules.document.repository.DocumentTargetCompanyRepository targetCompanyRepository;
+    private final CompanyRepository companyRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
+    private final UserPositionRepository userPositionRepository;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -89,7 +102,11 @@ public class DocumentService {
             DocumentShortcutRepository shortcutRepository,
             AccountingDocumentCategoryRepository accountingCategoryRepository,
             DocumentAuditRepository auditRepository,
-            vn.system.app.modules.document.repository.DocumentTargetCompanyRepository targetCompanyRepository) {
+            vn.system.app.modules.document.repository.DocumentTargetCompanyRepository targetCompanyRepository,
+            CompanyRepository companyRepository,
+            SimpMessagingTemplate messagingTemplate,
+            NotificationService notificationService,
+            UserPositionRepository userPositionRepository) {
         this.repository = repository;
         this.accessRepository = accessRepository;
         this.categoryRepository = categoryRepository;
@@ -106,6 +123,10 @@ public class DocumentService {
         this.accountingCategoryRepository = accountingCategoryRepository;
         this.auditRepository = auditRepository;
         this.targetCompanyRepository = targetCompanyRepository;
+        this.companyRepository = companyRepository;
+        this.messagingTemplate = messagingTemplate;
+        this.notificationService = notificationService;
+        this.userPositionRepository = userPositionRepository;
     }
 
     private void logAudit(Document document, String actionType, String changes) {
@@ -115,6 +136,115 @@ public class DocumentService {
         audit.setChanges(changes);
         audit.setCreatedBy(SecurityUtil.getCurrentUserLogin().orElse("System"));
         auditRepository.save(audit);
+    }
+
+    private void publishDocumentEvent(Document document, String eventType) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("module", "DOCUMENT");
+        payload.put("type", eventType);
+        payload.put("documentId", document.getId());
+        payload.put("documentCode", document.getDocumentCode());
+        payload.put("createdAt", Instant.now().toString());
+
+        Runnable send = () -> messagingTemplate.convertAndSend("/topic/documents", payload);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    send.run();
+                }
+            });
+            return;
+        }
+        send.run();
+    }
+
+    private void notifyDocumentCreated(Document document) {
+        Set<String> recipientIds = resolveDocumentNotificationRecipients(document);
+        SecurityUtil.getCurrentUserId().ifPresent(recipientIds::remove);
+        if (recipientIds.isEmpty()) {
+            return;
+        }
+
+        String content = "Văn bản mới: " + document.getDocumentCode() + " - " + document.getDocumentName();
+        String actionLink = "/admin/documents?documentId=" + document.getId();
+
+        Runnable send = () -> {
+            try {
+                notificationService.sendNotifications(
+                        recipientIds,
+                        "DOCUMENT",
+                        "DOCUMENT_CREATED",
+                        content,
+                        actionLink);
+            } catch (Exception ex) {
+                System.err.println("Failed to send document notifications: " + ex.getMessage());
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    send.run();
+                }
+            });
+            return;
+        }
+        send.run();
+    }
+
+    private Set<String> resolveDocumentNotificationRecipients(Document document) {
+        Set<String> recipientIds = new LinkedHashSet<>();
+
+        accessRepository.findByDocument_Id(document.getId()).stream()
+                .map(DocumentAccess::getUserId)
+                .forEach(recipientIds::add);
+
+        Set<Long> companyIds = new LinkedHashSet<>();
+        if (document.getProcedureType() == ProcedureType.COMPANY) {
+            Long legacyCompanyId = getCompanyId(document.getDepartment());
+            if (legacyCompanyId != null) {
+                companyIds.add(legacyCompanyId);
+            }
+        }
+        targetCompanyRepository.findByDocument_Id(document.getId()).stream()
+                .map(vn.system.app.modules.document.domain.DocumentTargetCompany::getCompanyId)
+                .forEach(companyIds::add);
+        if (!companyIds.isEmpty()) {
+            recipientIds.addAll(userPositionRepository.findUserIdsByCompanyIds(companyIds));
+        }
+
+        if (document.getProcedureType() == ProcedureType.DEPARTMENT) {
+            Set<Long> departmentIds = new LinkedHashSet<>();
+            if (document.getDepartment() != null) {
+                departmentIds.add(document.getDepartment().getId());
+            }
+            document.getDepartments().stream()
+                    .map(Department::getId)
+                    .forEach(departmentIds::add);
+            if (!departmentIds.isEmpty()) {
+                recipientIds.addAll(userPositionRepository.findUserIdsByDepartmentIdsWithSubSections(departmentIds));
+            }
+        }
+
+        if (document.getSection() != null) {
+            recipientIds.addAll(userPositionRepository.findUserIdsBySectionId(document.getSection().getId()));
+        }
+
+        document.getExcludedUsers().stream()
+                .map(User::getId)
+                .forEach(recipientIds::remove);
+
+        Set<Long> excludedDepartmentIds = document.getExcludedDepartments().stream()
+                .map(Department::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!excludedDepartmentIds.isEmpty()) {
+            userPositionRepository.findUserIdsByDepartmentIdsWithSubSections(excludedDepartmentIds)
+                    .forEach(recipientIds::remove);
+        }
+
+        return recipientIds;
     }
 
     // =====================================================
@@ -149,10 +279,22 @@ public class DocumentService {
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        } else if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
+            for (Long deptId : req.getDepartmentIds()) {
+                Department dept = departmentRepository.findById(deptId)
+                        .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại: " + deptId));
+                Long deptCompanyId = getCompanyId(dept);
+                if (deptCompanyId != null || req.getFolderId() == null) {
+                    validateScope(deptCompanyId);
+                }
+            }
+            department = departmentRepository.findById(req.getDepartmentIds().get(0)).orElseThrow();
         }
-        Long requestedCompanyId = getCompanyId(department);
-        if (requestedCompanyId != null || req.getFolderId() == null) {
-            validateScope(requestedCompanyId);
+        if (req.getDepartmentIds() == null || req.getDepartmentIds().isEmpty()) {
+            Long requestedCompanyId = getCompanyId(department);
+            if (requestedCompanyId != null || req.getFolderId() == null) {
+                validateScope(requestedCompanyId);
+            }
         }
 
         Section section = null;
@@ -172,7 +314,7 @@ public class DocumentService {
         entity.setAccountingCategory(resolveAccountingCategory(req.getAccountingCategoryId()));
         entity.setDepartment(department);
         entity.setSection(section);
-        entity.setStatus(req.getStatus());
+        applyStatus(entity, req.getStatus());
         entity.setIssuedDate(req.getIssuedDate());
         entity.setFileUrls(toJsonArray(req.getFileUrls()));
         entity.setNote(req.getNote());
@@ -193,20 +335,19 @@ public class DocumentService {
         }
 
         Document saved = repository.save(entity);
+        syncDocumentAccessRules(saved, req);
 
         saved.setQrToken(qrService.buildQrToken());
         saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
         repository.save(saved);
 
-        if (!category.isMappingProcedure()) {
-            if (req.getProcedureType() == null || req.getProcedureType() == ProcedureType.CONFIDENTIAL) {
-                saveAccessList(saved, req.getUserIds());
-            }
-        }
+        saveAccessList(saved, req.getUserIds());
         
         saveTargetCompanies(saved, req.getTargetCompanyIds());
 
         logAudit(saved, "CREATE", "Tạo mới chứng từ: " + saved.getDocumentCode());
+        publishDocumentEvent(saved, "DOCUMENT_CREATED");
+        notifyDocumentCreated(saved);
 
         return convertToDTO(saved);
     }
@@ -251,10 +392,22 @@ public class DocumentService {
         if (req.getDepartmentId() != null) {
             department = departmentRepository.findById(req.getDepartmentId())
                     .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        } else if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
+            for (Long deptId : req.getDepartmentIds()) {
+                Department dept = departmentRepository.findById(deptId)
+                        .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại: " + deptId));
+                Long deptCompanyId = getCompanyId(dept);
+                if (deptCompanyId != null || req.getFolderId() == null) {
+                    validateScope(deptCompanyId);
+                }
+            }
+            department = departmentRepository.findById(req.getDepartmentIds().get(0)).orElseThrow();
         }
-        Long requestedCompanyId = getCompanyId(department);
-        if (requestedCompanyId != null || req.getFolderId() == null) {
-            validateScope(requestedCompanyId);
+        if (req.getDepartmentIds() == null || req.getDepartmentIds().isEmpty()) {
+            Long requestedCompanyId = getCompanyId(department);
+            if (requestedCompanyId != null || req.getFolderId() == null) {
+                validateScope(requestedCompanyId);
+            }
         }
 
         Section section = null;
@@ -273,7 +426,7 @@ public class DocumentService {
         current.setAccountingCategory(resolveAccountingCategory(req.getAccountingCategoryId()));
         current.setDepartment(department);
         current.setSection(section);
-        current.setStatus(req.getStatus());
+        applyStatus(current, req.getStatus());
         current.setIssuedDate(req.getIssuedDate());
         current.setFileUrls(toJsonArray(req.getFileUrls()));
         current.setNote(req.getNote());
@@ -288,38 +441,39 @@ public class DocumentService {
         }
 
         if (req.getProcedureType() != null) {
+            ProcedureType oldType = current.getProcedureType();
             current.setProcedureType(req.getProcedureType());
             if (category.isMappingProcedure()) {
                 if (current.getProcedureId() != null
-                        && current.getProcedureType() == req.getProcedureType()) {
+                        && oldType == req.getProcedureType()) {
                     autoUpdateProcedure(req, code, current.getProcedureId());
                 } else {
                     Long procedureId = autoCreateProcedure(req, code);
                     current.setProcedureId(procedureId);
                 }
-                accessRepository.deleteByDocument_Id(current.getId());
             } else {
                 current.setProcedureId(null);
-                accessRepository.deleteByDocument_Id(current.getId());
-                if (req.getProcedureType() == ProcedureType.CONFIDENTIAL) {
-                    saveAccessList(current, req.getUserIds());
-                }
             }
         } else {
             current.setProcedureType(null);
             current.setProcedureId(null);
-            accessRepository.deleteByDocument_Id(current.getId());
-            if (category.isCrossCompany()) {
-                saveAccessList(current, req.getUserIds());
-            }
         }
 
+        syncDocumentAccessRules(current, req);
         Document saved = repository.save(current);
-        
-        targetCompanyRepository.deleteByDocument_Id(saved.getId());
-        saveTargetCompanies(saved, req.getTargetCompanyIds());
+
+        if (req.getUserIds() != null) {
+            accessRepository.deleteByDocument_Id(saved.getId());
+            saveAccessList(saved, req.getUserIds());
+        }
+
+        if (req.getTargetCompanyIds() != null) {
+            targetCompanyRepository.deleteByDocument_Id(saved.getId());
+            saveTargetCompanies(saved, req.getTargetCompanyIds());
+        }
         
         logAudit(saved, "UPDATE", "Cập nhật chứng từ: " + saved.getDocumentCode());
+        publishDocumentEvent(saved, "DOCUMENT_UPDATED");
         return convertToDTO(saved);
     }
 
@@ -367,7 +521,7 @@ public class DocumentService {
     private void validateScope(Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null)
-            return;
+            throw new PermissionException("Không xác định được phạm vi người dùng, vui lòng đăng nhập lại");
 
         if (scope.isSuperAdmin() || scope.isAdminLevel())
             return;
@@ -392,10 +546,20 @@ public class DocumentService {
     @Transactional
     public void handleToggleActive(Long id) {
         Document current = fetchById(id);
+        if (current.getIsLocked() != null && current.getIsLocked()) {
+            throw new PermissionException("Chứng từ này đã được kế toán thu thập và khoá. Không thể thay đổi hiệu lực.");
+        }
         validateWriteAccess(current);
-        current.setActive(!current.isActive());
+        boolean newActive = !current.isActive();
+        // Không cho phép kích hoạt lại văn bản đã hết hiệu lực — phải đổi status trước
+        if (newActive && "TERMINATED".equals(current.getStatus())) {
+            throw new vn.system.app.common.util.error.IdInvalidException(
+                "Không thể kích hoạt văn bản đã hết hiệu lực. Vui lòng đổi trạng thái trước.");
+        }
+        current.setActive(newActive);
         Document saved = repository.save(current);
         logAudit(saved, "STATUS_CHANGE", "Thay đổi hiệu lực sang " + (saved.isActive() ? "Còn hiệu lực" : "Đã hủy"));
+        publishDocumentEvent(saved, "DOCUMENT_STATUS_CHANGED");
     }
 
     // =====================================================
@@ -413,7 +577,42 @@ public class DocumentService {
         accessRepository.deleteByDocument_Id(id);
         targetCompanyRepository.deleteByDocument_Id(id);
         logAudit(current, "DELETE", "Xóa chứng từ: " + current.getDocumentCode());
+        publishDocumentEvent(current, "DOCUMENT_DELETED");
         repository.deleteById(id);
+    }
+
+    public Map<String, String> getNextDocumentCode(Long companyId, Long categoryId, Integer year) throws IdInvalidException {
+        vn.system.app.modules.company.domain.Company company = this.companyRepository.findById(companyId)
+                .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
+        DocumentCategory category = this.categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new IdInvalidException("Loại văn bản không tồn tại"));
+
+        String companyCode = company.getCode() != null ? company.getCode() : "";
+        String categoryCode = category.getSymbol() != null ? category.getSymbol() : category.getCategoryCode();
+        String suffix = "/" + year + "/" + categoryCode + "-" + companyCode;
+
+        List<String> existingCodes = this.repository.findDocumentCodesBySuffix(suffix);
+        int maxSeq = 0;
+        for (String code : existingCodes) {
+            if (code != null && code.contains("/")) {
+                String seqStr = code.split("/")[0];
+                try {
+                    int seq = Integer.parseInt(seqStr);
+                    if (seq > maxSeq) {
+                        maxSeq = seq;
+                    }
+                } catch (NumberFormatException e) {
+                    // ignore
+                }
+            }
+        }
+
+        int nextSeq = maxSeq + 1;
+        String nextCode = String.format("%02d/%d/%s-%s", nextSeq, year, categoryCode, companyCode);
+
+        Map<String, String> result = new HashMap<>();
+        result.put("code", nextCode);
+        return result;
     }
 
     // =====================================================
@@ -437,7 +636,8 @@ public class DocumentService {
     }
 
     public void validateAccountingReadAccess(Document document) {
-        validateCompanyReadAccess(document);
+        // Dùng validateReadAccess đầy đủ để đảm bảo exclusion list cũng được kiểm tra
+        validateReadAccess(document);
     }
 
     public void validateAccountingWriteAccess(Document document) {
@@ -449,6 +649,33 @@ public class DocumentService {
     // =====================================================
     public ResultPaginationDTO fetchAll(Specification<Document> spec, Pageable pageable) {
         Page<Document> page = repository.findAll(spec, pageable);
+        List<Document> docs = page.getContent();
+
+        // Batch load access + targetCompany cho toàn bộ page — tránh N+1
+        List<Long> docIds = docs.stream().map(Document::getId).collect(Collectors.toList());
+
+        Map<Long, List<DocumentAccess>> accessByDocId = accessRepository
+                .findByDocument_IdIn(docIds).stream()
+                .collect(Collectors.groupingBy(a -> a.getDocument().getId()));
+
+        Map<Long, List<vn.system.app.modules.document.domain.DocumentTargetCompany>> targetByDocId = targetCompanyRepository
+                .findByDocument_IdIn(docIds).stream()
+                .collect(Collectors.groupingBy(t -> t.getDocument().getId()));
+
+        // Batch load users từ tất cả access records
+        List<String> allUserIds = accessByDocId.values().stream()
+                .flatMap(List::stream)
+                .map(DocumentAccess::getUserId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, String> userNamesMap = allUserIds.isEmpty()
+                ? java.util.Collections.emptyMap()
+                : userRepository.findAllById(allUserIds).stream()
+                        .filter(u -> u.getId() != null && u.getName() != null)
+                        .collect(Collectors.toMap(
+                                u -> u.getId(),
+                                u -> u.getName(),
+                                (a, b) -> a));
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
@@ -457,8 +684,11 @@ public class DocumentService {
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
-        rs.setResult(page.getContent().stream()
-                .map(this::convertToDTO)
+        rs.setResult(docs.stream()
+                .map(d -> convertToDTO(d,
+                        accessByDocId.getOrDefault(d.getId(), java.util.Collections.emptyList()),
+                        targetByDocId.getOrDefault(d.getId(), java.util.Collections.emptyList()),
+                        userNamesMap))
                 .collect(Collectors.toList()));
 
         return rs;
@@ -483,7 +713,7 @@ public class DocumentService {
     // FETCH BY DEPARTMENT
     // =====================================================
     public List<ResDocumentDTO> fetchByDepartment(Long departmentId) {
-        return repository.findByDepartment_Id(departmentId)
+        return repository.findByDepartmentIdIncludingMapped(departmentId)
                 .stream()
                 .filter(this::canReadDocument)
                 .map(this::convertToDTO)
@@ -518,9 +748,14 @@ public class DocumentService {
     private void saveAccessList(Document document, List<String> userIds) {
         if (userIds == null || userIds.isEmpty())
             return;
+        List<String> distinctIds = userIds.stream().distinct().collect(Collectors.toList());
+        long foundCount = userRepository.countByIdIn(distinctIds);
+        if (foundCount != distinctIds.size()) {
+            throw new IdInvalidException("Một hoặc nhiều người dùng không tồn tại trong hệ thống");
+        }
         String assignedBy = SecurityUtil.getCurrentUserLogin().orElse("");
         Instant now = Instant.now();
-        List<DocumentAccess> accessList = userIds.stream().map(userId -> {
+        List<DocumentAccess> accessList = distinctIds.stream().map(userId -> {
             DocumentAccess access = new DocumentAccess();
             access.setDocument(document);
             access.setUserId(userId);
@@ -533,13 +768,57 @@ public class DocumentService {
 
     private void saveTargetCompanies(Document document, List<Long> companyIds) {
         if (companyIds == null || companyIds.isEmpty()) return;
-        List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetCompanies = companyIds.stream().map(companyId -> {
+        List<Long> distinctIds = companyIds.stream().distinct().collect(Collectors.toList());
+        long foundCount = companyRepository.countByIdIn(distinctIds);
+        if (foundCount != distinctIds.size()) {
+            throw new IdInvalidException("Một hoặc nhiều công ty không tồn tại trong hệ thống");
+        }
+        List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetCompanies = distinctIds.stream().map(companyId -> {
             vn.system.app.modules.document.domain.DocumentTargetCompany targetCompany = new vn.system.app.modules.document.domain.DocumentTargetCompany();
             targetCompany.setDocument(document);
             targetCompany.setCompanyId(companyId);
             return targetCompany;
         }).collect(Collectors.toList());
         targetCompanyRepository.saveAll(targetCompanies);
+    }
+
+    private void syncDocumentAccessRules(Document document, DocumentRequest req) {
+        document.getDepartments().clear();
+        if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
+            document.getDepartments().addAll(resolveDepartments(req.getDepartmentIds()));
+        } else if (req.getProcedureType() == ProcedureType.DEPARTMENT && req.getDepartmentId() != null) {
+            document.getDepartments().add(
+                    departmentRepository.findById(req.getDepartmentId())
+                            .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại")));
+        }
+
+        if (req.getExcludedDepartmentIds() != null) {
+            document.getExcludedDepartments().clear();
+            if (!req.getExcludedDepartmentIds().isEmpty()) {
+                document.getExcludedDepartments().addAll(resolveDepartments(req.getExcludedDepartmentIds()));
+            }
+        }
+
+        if (req.getExcludedUserIds() != null) {
+            document.getExcludedUsers().clear();
+            if (!req.getExcludedUserIds().isEmpty()) {
+                List<String> excludedUserIds = req.getExcludedUserIds().stream().distinct().collect(Collectors.toList());
+                List<User> users = userRepository.findAllById(excludedUserIds);
+                if (users.size() != excludedUserIds.size()) {
+                    throw new IdInvalidException("Có người dùng loại trừ không tồn tại");
+                }
+                document.getExcludedUsers().addAll(users);
+            }
+        }
+    }
+
+    private List<Department> resolveDepartments(List<Long> departmentIds) {
+        List<Long> ids = departmentIds.stream().distinct().collect(Collectors.toList());
+        List<Department> departments = departmentRepository.findAllById(ids);
+        if (departments.size() != ids.size()) {
+            throw new IdInvalidException("Có phòng ban không tồn tại");
+        }
+        return departments;
     }
 
     // =====================================================
@@ -636,6 +915,14 @@ public class DocumentService {
         }
     }
 
+    // Khi status = TERMINATED, bắt buộc active = false để giữ nhất quán nghiệp vụ.
+    private void applyStatus(Document document, String status) {
+        document.setStatus(status);
+        if ("TERMINATED".equals(status)) {
+            document.setActive(false);
+        }
+    }
+
     // =====================================================
     // JSON HELPER
     // =====================================================
@@ -723,8 +1010,19 @@ public class DocumentService {
         }
         dto.setProcedureType(e.getProcedureType());
         dto.setProcedureId(e.getProcedureId());
+        dto.setDepartmentIds(e.getDepartments().stream()
+                .map(Department::getId)
+                .collect(Collectors.toList()));
+        dto.setExcludedDepartmentIds(e.getExcludedDepartments().stream()
+                .map(Department::getId)
+                .collect(Collectors.toList()));
+        dto.setExcludedUserIds(e.getExcludedUsers().stream()
+                .map(User::getId)
+                .collect(Collectors.toList()));
 
-        if (e.getQrToken() != null) {
+        if (e.getQrCode() != null) {
+            dto.setQrCode(e.getQrCode());
+        } else if (e.getQrToken() != null) {
             dto.setQrCode(qrService.buildQrBase64(e.getQrToken()));
         }
 
@@ -738,33 +1036,66 @@ public class DocumentService {
             dto.setTargetCompanyIds(targetComps.stream().map(vn.system.app.modules.document.domain.DocumentTargetCompany::getCompanyId).collect(Collectors.toList()));
         }
 
-        if (e.getCategory() != null && !e.getCategory().isMappingProcedure()) {
-            List<DocumentAccess> accesses = accessRepository.findByDocument_Id(e.getId());
-            List<String> userIds = accesses.stream()
-                    .map(DocumentAccess::getUserId)
-                    .collect(Collectors.toList());
-            dto.setUserIds(userIds);
+        List<DocumentAccess> accesses = accessRepository.findByDocument_Id(e.getId());
+        List<String> userIds = accesses.stream()
+                .map(DocumentAccess::getUserId)
+                .collect(Collectors.toList());
+        dto.setUserIds(userIds);
 
-            Map<String, String> userNamesMap = new java.util.HashMap<>();
-            if (!userIds.isEmpty()) {
-                List<User> users = userRepository.findAllById(userIds);
-                for (User u : users) {
-                    if (u.getId() != null && u.getName() != null) {
-                        userNamesMap.put(u.getId(), u.getName());
-                    }
+        Map<String, String> userNamesMap = new java.util.HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userRepository.findAllById(userIds);
+            for (User u : users) {
+                if (u.getId() != null && u.getName() != null) {
+                    userNamesMap.put(u.getId(), u.getName());
                 }
             }
+        }
 
-            List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
-                ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
-                ref.setUserId(a.getUserId());
-                ref.setUserName(userNamesMap.getOrDefault(a.getUserId(), ""));
-                ref.setIsRead(a.getIsRead() != null ? a.getIsRead() : false);
-                ref.setReadAt(a.getReadAt());
-                ref.setAssignedAt(a.getAssignedAt());
-                return ref;
-            }).collect(Collectors.toList());
-            dto.setAccessDetails(accessDetails);
+        List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
+            ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
+            ref.setUserId(a.getUserId());
+            ref.setUserName(userNamesMap.getOrDefault(a.getUserId(), ""));
+            ref.setIsRead(a.getIsRead() != null ? a.getIsRead() : false);
+            ref.setReadAt(a.getReadAt());
+            ref.setAssignedAt(a.getAssignedAt());
+            return ref;
+        }).collect(Collectors.toList());
+        dto.setAccessDetails(accessDetails);
+
+        return dto;
+    }
+
+    // Overload dùng cho fetchAll — nhận pre-loaded data để tránh N+1
+    public ResDocumentDTO convertToDTO(
+            Document e,
+            List<DocumentAccess> accesses,
+            List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetComps,
+            Map<String, String> userNamesMap) {
+
+        ResDocumentDTO dto = convertToDTO(e); // reuse logic base, rồi override access/target
+
+        // Override access details bằng pre-loaded data
+        List<String> userIds = accesses.stream()
+                .map(DocumentAccess::getUserId)
+                .collect(Collectors.toList());
+        dto.setUserIds(userIds);
+
+        List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
+            ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
+            ref.setUserId(a.getUserId());
+            ref.setUserName(userNamesMap.getOrDefault(a.getUserId(), ""));
+            ref.setIsRead(a.getIsRead() != null ? a.getIsRead() : false);
+            ref.setReadAt(a.getReadAt());
+            ref.setAssignedAt(a.getAssignedAt());
+            return ref;
+        }).collect(Collectors.toList());
+        dto.setAccessDetails(accessDetails);
+
+        if (!targetComps.isEmpty()) {
+            dto.setTargetCompanyIds(targetComps.stream()
+                    .map(vn.system.app.modules.document.domain.DocumentTargetCompany::getCompanyId)
+                    .collect(Collectors.toList()));
         }
 
         return dto;
@@ -797,6 +1128,7 @@ public class DocumentService {
         }
         
         repository.save(document);
+        publishDocumentEvent(document, lockStatus ? "DOCUMENT_LOCKED" : "DOCUMENT_UNLOCKED");
     }
 
     // =====================================================
@@ -869,11 +1201,15 @@ public class DocumentService {
             return;
         }
         if (scope == null) {
-            return;
+            throw new PermissionException("Không xác định được phạm vi người dùng, vui lòng đăng nhập lại");
         }
 
         String currentUserId = SecurityUtil.getCurrentUserId().orElse("");
         String currentUserLogin = SecurityUtil.getCurrentUserLogin().orElse("");
+
+        if (isExcludedFromDocument(document, currentUserId, scope.departmentIds())) {
+            throw new PermissionException("Bạn không có quyền truy cập tài liệu này");
+        }
 
         if (document.getCreatedBy() != null && document.getCreatedBy().equals(currentUserLogin)) {
             return;
@@ -896,6 +1232,13 @@ public class DocumentService {
         Long companyId = getCompanyId(document.getDepartment());
         if (scope.isCompanyLevel() && companyId != null && scope.companyIds() != null
                 && scope.companyIds().contains(companyId)) {
+            if (document.getProcedureType() == ProcedureType.CONFIDENTIAL) {
+                String currentUserIdForConfidential = SecurityUtil.getCurrentUserId().orElse("");
+                boolean inAccessListForConfidential = accessRepository.existsByDocument_IdAndUserId(document.getId(), currentUserIdForConfidential);
+                if (!inAccessListForConfidential) {
+                    throw new PermissionException("Bạn không có quyền truy cập tài liệu bảo mật này");
+                }
+            }
             return;
         }
 
@@ -910,6 +1253,9 @@ public class DocumentService {
                     return;
                 }
             }
+            if (document.getDepartments().stream().anyMatch(dept -> scope.departmentIds().contains(dept.getId()))) {
+                return;
+            }
         }
         
         if (scope.companyIds() != null && !scope.companyIds().isEmpty()) {
@@ -918,6 +1264,19 @@ public class DocumentService {
         }
 
         throw new PermissionException("Bạn không có quyền truy cập tài liệu này");
+    }
+
+    private boolean isExcludedFromDocument(Document document, String currentUserId, Set<Long> departmentIds) {
+        boolean userExcluded = document.getExcludedUsers().stream()
+                .anyMatch(user -> user.getId() != null && user.getId().equals(currentUserId));
+        if (userExcluded) {
+            return true;
+        }
+
+        return departmentIds != null
+                && !departmentIds.isEmpty()
+                && document.getExcludedDepartments().stream()
+                        .anyMatch(dept -> departmentIds.contains(dept.getId()));
     }
 
     private void validateWriteAccess(Document document) {

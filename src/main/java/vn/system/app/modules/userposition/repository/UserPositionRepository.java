@@ -205,6 +205,26 @@ public interface UserPositionRepository
 
         @Query("""
                             SELECT DISTINCT up.user.id FROM UserPosition up
+                            LEFT JOIN up.companyJobTitle cjt
+                            LEFT JOIN cjt.company comp1
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN dept.company comp2
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            LEFT JOIN sdept.company comp3
+                            WHERE up.active = true
+                            AND (
+                                comp1.id IN :companyIds
+                                OR comp2.id IN :companyIds
+                                OR comp3.id IN :companyIds
+                            )
+                        """)
+        List<String> findUserIdsByCompanyIds(@Param("companyIds") java.util.Collection<Long> companyIds);
+
+        @Query("""
+                            SELECT DISTINCT up.user.id FROM UserPosition up
                             LEFT JOIN up.departmentJobTitle djt
                             LEFT JOIN djt.department dept
                             LEFT JOIN up.sectionJobTitle sjt
@@ -217,4 +237,19 @@ public interface UserPositionRepository
                             )
                         """)
         List<String> findUserIdsByDepartmentIdWithSubSections(@Param("departmentId") Long departmentId);
+
+        @Query("""
+                            SELECT DISTINCT up.user.id FROM UserPosition up
+                            LEFT JOIN up.departmentJobTitle djt
+                            LEFT JOIN djt.department dept
+                            LEFT JOIN up.sectionJobTitle sjt
+                            LEFT JOIN sjt.section sec
+                            LEFT JOIN sec.department sdept
+                            WHERE up.active = true
+                            AND (
+                                dept.id IN :departmentIds
+                                OR sdept.id IN :departmentIds
+                            )
+                        """)
+        List<String> findUserIdsByDepartmentIdsWithSubSections(@Param("departmentIds") java.util.Collection<Long> departmentIds);
 }

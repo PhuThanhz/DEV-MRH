@@ -42,6 +42,9 @@ public class ResDocumentDTO {
 
     // Danh sách userId được xem — chỉ có khi category.mappingProcedure = false
     private List<String> userIds;
+    private List<Long> departmentIds;
+    private List<Long> excludedDepartmentIds;
+    private List<String> excludedUserIds;
     private List<Long> targetCompanyIds;
     private List<UserAccessRef> accessDetails;
 

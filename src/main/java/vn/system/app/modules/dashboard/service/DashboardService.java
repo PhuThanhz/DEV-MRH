@@ -96,6 +96,11 @@ public class DashboardService {
          * ====================================================
          */
         public List<DepartmentCompletenessDTO> getDepartmentCompleteness() {
+                return getDepartmentCompleteness(null, null, null);
+        }
+
+        public List<DepartmentCompletenessDTO> getDepartmentCompleteness(String search, String companyName,
+                        String status) {
 
                 UserScopeContext.UserScope scope = UserScopeContext.get();
 
@@ -113,8 +118,50 @@ public class DashboardService {
                 }
 
                 return departments.stream()
+                                .filter(dept -> matchesSearch(dept, search))
+                                .filter(dept -> matchesCompany(dept, companyName))
                                 .map(this::buildCompleteness)
+                                .filter(dto -> matchesStatus(dto, status))
                                 .collect(Collectors.toList());
+        }
+
+        private boolean matchesSearch(Department dept, String search) {
+                if (isBlank(search)) {
+                        return true;
+                }
+                String keyword = normalize(search);
+                return normalize(dept.getName()).contains(keyword)
+                                || normalize(dept.getCode()).contains(keyword)
+                                || (dept.getCompany() != null
+                                                && normalize(dept.getCompany().getName()).contains(keyword));
+        }
+
+        private boolean matchesCompany(Department dept, String companyName) {
+                if (isBlank(companyName)) {
+                        return true;
+                }
+                return dept.getCompany() != null
+                                && normalize(dept.getCompany().getName()).equals(normalize(companyName));
+        }
+
+        private boolean matchesStatus(DepartmentCompletenessDTO dto, String status) {
+                if (isBlank(status) || "all".equalsIgnoreCase(status)) {
+                        return true;
+                }
+                return switch (status.toLowerCase()) {
+                        case "full" -> dto.getScore() == 7;
+                        case "partial" -> dto.getScore() > 0 && dto.getScore() < 7;
+                        case "empty" -> dto.getScore() == 0;
+                        default -> true;
+                };
+        }
+
+        private boolean isBlank(String value) {
+                return value == null || value.trim().isEmpty();
+        }
+
+        private String normalize(String value) {
+                return value == null ? "" : value.trim().toLowerCase();
         }
 
         private DepartmentCompletenessDTO buildCompleteness(Department dept) {
