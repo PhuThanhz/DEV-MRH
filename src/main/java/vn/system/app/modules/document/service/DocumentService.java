@@ -260,6 +260,9 @@ public class DocumentService {
 
         DocumentCategory category = categoryRepository.findById(req.getCategoryId())
                 .orElseThrow(() -> new IdInvalidException("Loại văn bản không tồn tại"));
+        if (!category.isActive()) {
+            throw new IdInvalidException("Loại văn bản này đang bị vô hiệu hóa");
+        }
 
         // Validate logic Mapping Procedure
         if (category.isMappingProcedure()) {
@@ -275,11 +278,18 @@ public class DocumentService {
             }
         }
 
-        Department department = null;
-        if (req.getDepartmentId() != null) {
-            department = departmentRepository.findById(req.getDepartmentId())
-                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
-        } else if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
+        if (req.getDepartmentId() == null) {
+            throw new IdInvalidException("Phòng ban ban hành không được để trống");
+        }
+        Department department = departmentRepository.findById(req.getDepartmentId())
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+
+        Long requestedCompanyId = getCompanyId(department);
+        if (requestedCompanyId != null || req.getFolderId() == null) {
+            validateScope(requestedCompanyId);
+        }
+
+        if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
             for (Long deptId : req.getDepartmentIds()) {
                 Department dept = departmentRepository.findById(deptId)
                         .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại: " + deptId));
@@ -287,13 +297,6 @@ public class DocumentService {
                 if (deptCompanyId != null || req.getFolderId() == null) {
                     validateScope(deptCompanyId);
                 }
-            }
-            department = departmentRepository.findById(req.getDepartmentIds().get(0)).orElseThrow();
-        }
-        if (req.getDepartmentIds() == null || req.getDepartmentIds().isEmpty()) {
-            Long requestedCompanyId = getCompanyId(department);
-            if (requestedCompanyId != null || req.getFolderId() == null) {
-                validateScope(requestedCompanyId);
             }
         }
 
@@ -373,6 +376,9 @@ public class DocumentService {
 
         DocumentCategory category = categoryRepository.findById(req.getCategoryId())
                 .orElseThrow(() -> new IdInvalidException("Loại văn bản không tồn tại"));
+        if (!category.isActive()) {
+            throw new IdInvalidException("Loại văn bản này đang bị vô hiệu hóa");
+        }
 
         // Validate logic Mapping Procedure
         if (category.isMappingProcedure()) {
@@ -388,11 +394,18 @@ public class DocumentService {
             }
         }
 
-        Department department = null;
-        if (req.getDepartmentId() != null) {
-            department = departmentRepository.findById(req.getDepartmentId())
-                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
-        } else if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
+        if (req.getDepartmentId() == null) {
+            throw new IdInvalidException("Phòng ban ban hành không được để trống");
+        }
+        Department department = departmentRepository.findById(req.getDepartmentId())
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+
+        Long requestedCompanyId = getCompanyId(department);
+        if (requestedCompanyId != null || req.getFolderId() == null) {
+            validateScope(requestedCompanyId);
+        }
+
+        if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
             for (Long deptId : req.getDepartmentIds()) {
                 Department dept = departmentRepository.findById(deptId)
                         .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại: " + deptId));
@@ -400,13 +413,6 @@ public class DocumentService {
                 if (deptCompanyId != null || req.getFolderId() == null) {
                     validateScope(deptCompanyId);
                 }
-            }
-            department = departmentRepository.findById(req.getDepartmentIds().get(0)).orElseThrow();
-        }
-        if (req.getDepartmentIds() == null || req.getDepartmentIds().isEmpty()) {
-            Long requestedCompanyId = getCompanyId(department);
-            if (requestedCompanyId != null || req.getFolderId() == null) {
-                validateScope(requestedCompanyId);
             }
         }
 

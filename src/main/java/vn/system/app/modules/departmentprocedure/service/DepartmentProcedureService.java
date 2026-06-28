@@ -107,6 +107,16 @@ public class DepartmentProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            boolean isValidSection = false;
+            for (Department dept : departments) {
+                if (section.getDepartment().getId().equals(dept.getId())) {
+                    isValidSection = true;
+                    break;
+                }
+            }
+            if (!isValidSection) {
+                throw new IdInvalidException("Bộ phận không thuộc các phòng ban đã chọn");
+            }
         }
 
         DepartmentProcedure entity = new DepartmentProcedure();
@@ -170,6 +180,16 @@ public class DepartmentProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            boolean isValidSection = false;
+            for (Department dept : departments) {
+                if (section.getDepartment().getId().equals(dept.getId())) {
+                    isValidSection = true;
+                    break;
+                }
+            }
+            if (!isValidSection) {
+                throw new IdInvalidException("Bộ phận không thuộc các phòng ban đã chọn");
+            }
         }
 
         saveHistory(current, "EDIT");
@@ -231,6 +251,16 @@ public class DepartmentProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            boolean isValidSection = false;
+            for (Department dept : departments) {
+                if (section.getDepartment().getId().equals(dept.getId())) {
+                    isValidSection = true;
+                    break;
+                }
+            }
+            if (!isValidSection) {
+                throw new IdInvalidException("Bộ phận không thuộc các phòng ban đã chọn");
+            }
         }
 
         saveHistory(current, "REVISE");

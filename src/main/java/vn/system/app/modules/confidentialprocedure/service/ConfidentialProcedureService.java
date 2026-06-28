@@ -104,6 +104,10 @@ public class ConfidentialProcedureService {
     @Transactional
     public ResConfidentialProcedureDTO handleCreate(ConfidentialProcedureRequest req) {
 
+        if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+            throw new IdInvalidException("Vui lòng chọn ít nhất 1 người được phép xem quy trình bảo mật");
+        }
+
         String code = req.getProcedureCode().trim().toUpperCase();
 
         if (req.getDepartmentId() != null &&
@@ -117,6 +121,9 @@ public class ConfidentialProcedureService {
         validateScope(department.getCompany() != null ? department.getCompany().getId() : null);
 
         Section section = resolveSection(req.getSectionId());
+        if (section != null && department != null && !section.getDepartment().getId().equals(department.getId())) {
+            throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+        }
 
         ConfidentialProcedure entity = new ConfidentialProcedure();
         entity.setProcedureCode(code);
@@ -150,6 +157,10 @@ public class ConfidentialProcedureService {
     @Transactional
     public ResConfidentialProcedureDTO handleUpdate(Long id, ConfidentialProcedureRequest req) {
 
+        if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+            throw new IdInvalidException("Vui lòng chọn ít nhất 1 người được phép xem quy trình bảo mật");
+        }
+
         ConfidentialProcedure current = fetchById(id);
         
         Long currentCompanyId = (current.getDepartment() != null && current.getDepartment().getCompany() != null)
@@ -167,6 +178,9 @@ public class ConfidentialProcedureService {
         validateScope(targetCompanyId);
 
         Section section = resolveSection(req.getSectionId());
+        if (section != null && department != null && !section.getDepartment().getId().equals(department.getId())) {
+            throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+        }
 
         current.setProcedureCode(code);
         current.setProcedureName(req.getProcedureName());
@@ -213,6 +227,9 @@ public class ConfidentialProcedureService {
         validateScope(targetCompanyId);
 
         Section section = resolveSection(req.getSectionId());
+        if (section != null && department != null && !section.getDepartment().getId().equals(department.getId())) {
+            throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+        }
 
         saveHistory(current, "REVISE");
 

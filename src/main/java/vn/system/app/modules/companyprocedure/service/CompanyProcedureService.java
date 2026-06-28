@@ -103,11 +103,11 @@ public class CompanyProcedureService {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
-        Department department = null;
-        if (req.getDepartmentId() != null) {
-            department = departmentRepository.findById(req.getDepartmentId())
-                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        if (req.getDepartmentId() == null) {
+            throw new IdInvalidException("Phòng ban ban hành không được để trống");
         }
+        Department department = departmentRepository.findById(req.getDepartmentId())
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
         validateScope(department != null && department.getCompany() != null ? department.getCompany().getId() : null);
 
@@ -115,6 +115,9 @@ public class CompanyProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            if (department != null && !section.getDepartment().getId().equals(department.getId())) {
+                throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+            }
         }
 
         CompanyProcedure entity = new CompanyProcedure();
@@ -185,11 +188,11 @@ public class CompanyProcedureService {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
-        Department department = null;
-        if (req.getDepartmentId() != null) {
-            department = departmentRepository.findById(req.getDepartmentId())
-                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        if (req.getDepartmentId() == null) {
+            throw new IdInvalidException("Phòng ban ban hành không được để trống");
         }
+        Department department = departmentRepository.findById(req.getDepartmentId())
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
         Long targetCompanyId = (department != null && department.getCompany() != null) ? department.getCompany().getId() : null;
         validateScope(targetCompanyId);
@@ -198,6 +201,9 @@ public class CompanyProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            if (department != null && !section.getDepartment().getId().equals(department.getId())) {
+                throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+            }
         }
 
         saveHistory(current, "EDIT");
@@ -238,11 +244,11 @@ public class CompanyProcedureService {
             throw new IdInvalidException("Mã quy trình đã tồn tại trong phòng ban này");
         }
 
-        Department department = null;
-        if (req.getDepartmentId() != null) {
-            department = departmentRepository.findById(req.getDepartmentId())
-                    .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
+        if (req.getDepartmentId() == null) {
+            throw new IdInvalidException("Phòng ban ban hành không được để trống");
         }
+        Department department = departmentRepository.findById(req.getDepartmentId())
+                .orElseThrow(() -> new IdInvalidException("Phòng ban không tồn tại"));
 
         Long targetCompanyId = (department != null && department.getCompany() != null) ? department.getCompany().getId() : null;
         validateScope(targetCompanyId);
@@ -251,6 +257,9 @@ public class CompanyProcedureService {
         if (req.getSectionId() != null) {
             section = sectionRepository.findById(req.getSectionId())
                     .orElseThrow(() -> new IdInvalidException("Bộ phận không tồn tại"));
+            if (department != null && !section.getDepartment().getId().equals(department.getId())) {
+                throw new IdInvalidException("Bộ phận không thuộc phòng ban đã chọn");
+            }
         }
 
         saveHistory(current, "REVISE");
