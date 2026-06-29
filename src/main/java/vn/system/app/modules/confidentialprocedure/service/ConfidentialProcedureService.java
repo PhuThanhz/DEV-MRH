@@ -34,6 +34,8 @@ import vn.system.app.modules.confidentialprocedure.domain.response.ResConfidenti
 import vn.system.app.modules.confidentialprocedure.domain.response.ResConfidentialProcedureHistoryDTO;
 import vn.system.app.modules.confidentialprocedure.domain.response.ResAccessDTO;
 import vn.system.app.modules.confidentialprocedure.domain.response.ResShareLogDTO;
+import org.springframework.context.ApplicationEventPublisher;
+import vn.system.app.modules.notification.event.AppNotificationEvent;
 import vn.system.app.modules.confidentialprocedure.repository.*;
 
 @Service
@@ -46,9 +48,9 @@ public class ConfidentialProcedureService {
     private final SectionRepository sectionRepository;
     private final UserRepository userRepository;
 
-    // ← 2 service tách ra
     private final ConfidentialAccessService accessService;
     private final ConfidentialShareLogService shareLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -61,7 +63,8 @@ public class ConfidentialProcedureService {
             UserRepository userRepository,
             ConfidentialAccessService accessService,
             ConfidentialShareLogService shareLogService,
-            ProcedureQrService qrService) {
+            ProcedureQrService qrService,
+            ApplicationEventPublisher eventPublisher) {
 
         this.repository = repository;
         this.historyRepository = historyRepository;
@@ -72,6 +75,7 @@ public class ConfidentialProcedureService {
         this.accessService = accessService;
         this.shareLogService = shareLogService;
         this.qrService = qrService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -147,6 +151,25 @@ public class ConfidentialProcedureService {
 
         // logShare = true: lần đầu tạo mới → ghi log SHARE thật sự
         accessService.saveAccessList(saved, req, true);
+
+        // Notify chỉ những user được cấp quyền xem
+        if (req.getUserIds() != null && !req.getUserIds().isEmpty()) {
+            String senderName = "Hệ thống";
+            UserScopeContext.UserScope scope = UserScopeContext.get();
+            if (scope != null && scope.userId() != null) {
+                User sender = userRepository.findById(scope.userId()).orElse(null);
+                if (sender != null) senderName = sender.getName();
+            }
+            String notifContent = String.format("Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
+                    saved.getProcedureName(), saved.getProcedureCode(), senderName);
+            eventPublisher.publishEvent(new AppNotificationEvent(
+                    req.getUserIds(),
+                    "CONFIDENTIAL_PROCEDURES",
+                    "PROCEDURE_CREATED",
+                    notifContent,
+                    "/admin/procedures?tab=confidential&viewId=" + saved.getId()
+            ));
+        }
 
         return convertToDTO(saved);
     }

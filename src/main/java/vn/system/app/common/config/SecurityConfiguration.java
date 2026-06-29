@@ -45,8 +45,8 @@ public class SecurityConfiguration {
         String[] whiteList = {
                 "/",
                 "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/register",
-                "/storage/**",
-                "/api/v1/email/**", "/uploads/**",
+                "/api/v1/email/**",
+                "/api/v1/files/public",
                 "/v3/api-docs/**",
                 "/swagger-ui/**", "/api/v1/users/request-password-code",
                 "/api/v1/users/confirm-reset-password",

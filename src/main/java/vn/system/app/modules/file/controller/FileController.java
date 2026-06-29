@@ -2,17 +2,23 @@ package vn.system.app.modules.file.controller;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRange;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,6 +84,99 @@ public class FileController {
                                 Instant.now());
 
                 return ResponseEntity.ok(res);
+        }
+
+        // =========================
+        // VIEW FILE PUBLIC (no auth — only whitelisted folders: avatar, procedures)
+        // Used by Office Online Viewer and public procedure pages
+        // =========================
+        @GetMapping("/files/public")
+        @ApiMessage("View a public file")
+        public ResponseEntity<Resource> viewPublic(
+                        @RequestParam("fileName") String fileName,
+                        @RequestParam("folder") String folder) throws StorageException {
+
+                List<String> allowedFolders = Arrays.asList("avatar", "procedures", "documents");
+                boolean allowed = allowedFolders.stream().anyMatch(folder::startsWith);
+                if (!allowed) {
+                        return ResponseEntity.status(403).build();
+                }
+
+                long fileLength = fileService.getFileLength(fileName, folder);
+                if (fileLength == 0) {
+                        throw new StorageException("File with name = " + fileName + " not found.");
+                }
+
+                Path filePath = fileService.resolvePath(fileName, folder);
+                String contentType = detectContentType(fileName);
+
+                return ResponseEntity.ok()
+                                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                                .contentLength(fileLength)
+                                .contentType(MediaType.parseMediaType(contentType))
+                                .body(new FileSystemResource(filePath));
+        }
+
+        // =========================
+        // VIEW FILE (inline, auth-gated, Range-aware for fast PDF loading)
+        // =========================
+        @GetMapping("/files/view")
+        @ApiMessage("View a file")
+        public ResponseEntity<?> view(
+                        @RequestParam("fileName") String fileName,
+                        @RequestParam("folder") String folder,
+                        @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader)
+                        throws StorageException, IOException {
+
+                long fileLength = fileService.getFileLength(fileName, folder);
+                if (fileLength == 0) {
+                        throw new StorageException("File with name = " + fileName + " not found.");
+                }
+
+                Path filePath = fileService.resolvePath(fileName, folder);
+                FileSystemResource resource = new FileSystemResource(filePath);
+                String contentType = detectContentType(fileName);
+                MediaType mediaType = MediaType.parseMediaType(contentType);
+
+                if (rangeHeader == null || rangeHeader.isBlank()) {
+                        return ResponseEntity.ok()
+                                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                                        .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                                        .contentLength(fileLength)
+                                        .contentType(mediaType)
+                                        .body(resource);
+                }
+
+                List<HttpRange> ranges = HttpRange.parseRanges(rangeHeader);
+                HttpRange range = ranges.get(0);
+                long start = range.getRangeStart(fileLength);
+                long end = range.getRangeEnd(fileLength);
+                long rangeLength = end - start + 1;
+
+                ResourceRegion region = new ResourceRegion(resource, start, rangeLength);
+
+                return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileLength)
+                                .contentLength(rangeLength)
+                                .contentType(mediaType)
+                                .body(region);
+        }
+
+        private String detectContentType(String fileName) {
+                String lower = fileName.toLowerCase();
+                if (lower.endsWith(".pdf"))  return "application/pdf";
+                if (lower.endsWith(".png"))  return "image/png";
+                if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+                if (lower.endsWith(".webp")) return "image/webp";
+                if (lower.endsWith(".doc") || lower.endsWith(".docx")) return "application/msword";
+                if (lower.endsWith(".xls") || lower.endsWith(".xlsx")) return "application/vnd.ms-excel";
+                return "application/octet-stream";
         }
 
         // =========================

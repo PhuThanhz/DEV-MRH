@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.util.error.IdInvalidException;
@@ -40,7 +41,7 @@ public class NotificationService {
      * @param actionLink Link điều hướng khi bấm vào
      * @return AppNotification
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AppNotification sendNotification(String userId, String module, String type, String content, String actionLink) {
         User recipient = userRepository.findById(userId)
                 .orElseThrow(() -> new IdInvalidException("Người dùng không tồn tại"));
@@ -65,7 +66,7 @@ public class NotificationService {
         return saved;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<AppNotification> sendNotifications(Collection<String> userIds, String module, String type, String content, String actionLink) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();

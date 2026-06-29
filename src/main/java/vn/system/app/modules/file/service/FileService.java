@@ -70,6 +70,10 @@ public class FileService {
 
         return new InputStreamResource(new FileInputStream(file));
     }
+
+    public Path resolvePath(String fileName, String folder) throws StorageException {
+        return validatePath(folder, fileName);
+    }
     
     private Path validatePath(String folder, String fileName) throws StorageException {
         Path rootPath = Paths.get(rootDir).toAbsolutePath().normalize();

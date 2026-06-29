@@ -2,6 +2,7 @@ package vn.system.app.modules.departmentprocedure.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -21,10 +22,12 @@ import vn.system.app.modules.departmentprocedure.domain.request.DepartmentProced
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureDTO;
 import vn.system.app.modules.departmentprocedure.domain.response.ResDepartmentProcedureHistoryDTO;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureRepository;
+import vn.system.app.modules.notification.event.AppNotificationEvent;
 import vn.system.app.modules.procedure.qr.service.ProcedureQrService;
 import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureHistoryRepository;
 import vn.system.app.modules.section.domain.Section;
 import vn.system.app.modules.section.repository.SectionRepository;
+import vn.system.app.modules.user.repository.UserRepository;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -38,6 +41,8 @@ public class DepartmentProcedureService {
     private final DepartmentProcedureHistoryRepository historyRepository;
     private final DepartmentRepository departmentRepository;
     private final SectionRepository sectionRepository;
+    private final ApplicationEventPublisher eventPublisher;
+    private final UserRepository userRepository;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -46,12 +51,16 @@ public class DepartmentProcedureService {
             DepartmentProcedureHistoryRepository historyRepository,
             DepartmentRepository departmentRepository,
             SectionRepository sectionRepository,
-            ProcedureQrService qrService) {
+            ProcedureQrService qrService,
+            ApplicationEventPublisher eventPublisher,
+            UserRepository userRepository) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.departmentRepository = departmentRepository;
         this.sectionRepository = sectionRepository;
         this.qrService = qrService;
+        this.eventPublisher = eventPublisher;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -136,6 +145,39 @@ public class DepartmentProcedureService {
         saved.setQrToken(qrService.buildQrToken());
         saved.setQrCode(qrService.buildQrBase64(saved.getQrToken()));
         repository.save(saved);
+
+        // Notify tất cả user trong các công ty của các phòng ban liên quan
+        List<Long> companyIds = departments.stream()
+                .filter(d -> d.getCompany() != null)
+                .map(d -> d.getCompany().getId())
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (!companyIds.isEmpty()) {
+            List<String> targetUserIds = companyIds.stream()
+                    .flatMap(cid -> userRepository.findActiveUserIdsByCompany(cid).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            if (!targetUserIds.isEmpty()) {
+                String senderName = "Hệ thống";
+                UserScopeContext.UserScope scope = UserScopeContext.get();
+                if (scope != null && scope.userId() != null) {
+                    vn.system.app.modules.user.domain.User sender = userRepository.findById(scope.userId()).orElse(null);
+                    if (sender != null) senderName = sender.getName();
+                }
+                String notifContent = String.format("Quy trình phòng ban: %s (%s) vừa được phát hành bởi %s.",
+                        saved.getProcedureName(), saved.getProcedureCode(), senderName);
+                eventPublisher.publishEvent(new AppNotificationEvent(
+                        targetUserIds,
+                        "DEPARTMENT_PROCEDURES",
+                        "PROCEDURE_CREATED",
+                        notifContent,
+                        "/admin/procedures?tab=department&viewId=" + saved.getId()
+                ));
+            }
+        }
+
         return convertToDTO(saved);
     }
 
