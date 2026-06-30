@@ -5,5 +5,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
-    // Static file serving removed — all file access goes through authenticated API endpoints
+    // Static file serving removed — all file access goes through authenticated API
+    // endpoints
 }
