@@ -92,9 +92,11 @@ public class FileController {
         // =========================
         @GetMapping("/files/public")
         @ApiMessage("View a public file")
-        public ResponseEntity<Resource> viewPublic(
+        public ResponseEntity<?> viewPublic(
                         @RequestParam("fileName") String fileName,
-                        @RequestParam("folder") String folder) throws StorageException {
+                        @RequestParam("folder") String folder,
+                        @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader)
+                        throws StorageException, IOException {
 
                 List<String> allowedFolders = Arrays.asList("avatar", "procedures", "documents");
                 boolean allowed = allowedFolders.stream().anyMatch(folder::startsWith);
@@ -108,15 +110,39 @@ public class FileController {
                 }
 
                 Path filePath = fileService.resolvePath(fileName, folder);
+                FileSystemResource resource = new FileSystemResource(filePath);
                 String contentType = detectContentType(fileName);
+                MediaType mediaType = MediaType.parseMediaType(contentType);
 
-                return ResponseEntity.ok()
-                                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                String contentDisposition = "inline; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName;
+
+                if (rangeHeader == null || rangeHeader.isBlank()) {
+                        return ResponseEntity.ok()
+                                        .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                                        .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                                        .contentLength(fileLength)
+                                        .contentType(mediaType)
+                                        .body(resource);
+                }
+
+                List<HttpRange> ranges = HttpRange.parseRanges(rangeHeader);
+                HttpRange range = ranges.get(0);
+                long start = range.getRangeStart(fileLength);
+                long end = range.getRangeEnd(fileLength);
+                long rangeLength = end - start + 1;
+
+                ResourceRegion region = new ResourceRegion(resource, start, rangeLength);
+
+                return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
-                                .contentLength(fileLength)
-                                .contentType(MediaType.parseMediaType(contentType))
-                                .body(new FileSystemResource(filePath));
+                                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileLength)
+                                .contentLength(rangeLength)
+                                .contentType(mediaType)
+                                .body(region);
         }
 
         // =========================
@@ -140,9 +166,12 @@ public class FileController {
                 String contentType = detectContentType(fileName);
                 MediaType mediaType = MediaType.parseMediaType(contentType);
 
+                String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                String contentDisposition = "inline; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName;
+
                 if (rangeHeader == null || rangeHeader.isBlank()) {
                         return ResponseEntity.ok()
-                                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                                        .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                         .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                                         .header(HttpHeaders.CACHE_CONTROL, "no-store")
                                         .contentLength(fileLength)
@@ -159,7 +188,7 @@ public class FileController {
                 ResourceRegion region = new ResourceRegion(resource, start, rangeLength);
 
                 return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileName + "\"")
+                                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                                 .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileLength)
@@ -196,10 +225,11 @@ public class FileController {
 
                 InputStreamResource resource = fileService.getResource(fileName, folder);
 
+                String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                String contentDisposition = "attachment; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName;
+
                 return ResponseEntity.ok()
-                                .header(
-                                                HttpHeaders.CONTENT_DISPOSITION,
-                                                "attachment; filename=\"" + fileName + "\"")
+                                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                 .contentLength(fileLength)
                                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                                 .body(resource);

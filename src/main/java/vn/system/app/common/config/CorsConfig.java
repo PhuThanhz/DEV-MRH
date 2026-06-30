@@ -36,6 +36,9 @@ public class CorsConfig {
         // thời gian pre-flight request có thể cache (tính theo seconds)
         configuration.setMaxAge(3600L);
 
+        // Cho phép frontend đọc các header cần thiết cho Range request và tải file
+        configuration.setExposedHeaders(Arrays.asList("Content-Range", "Accept-Ranges", "Content-Length", "Content-Disposition"));
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         // cấu hình cors cho tất cả api
         source.registerCorsConfiguration("/**", configuration);
