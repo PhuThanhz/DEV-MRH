@@ -12,75 +12,93 @@ import vn.system.app.modules.adminscope.domain.UserAdminScope;
 
 public interface UserAdminScopeRepository extends JpaRepository<UserAdminScope, Long> {
 
-    @Query("""
-            SELECT s FROM UserAdminScope s
-            LEFT JOIN FETCH s.company
-            LEFT JOIN FETCH s.department
-            WHERE s.user.id = :userId
-            AND s.active = true
-            """)
-    List<UserAdminScope> findByUser_IdAndActiveTrue(@Param("userId") String userId);
+        @Query(value = """
+                        SELECT s.*
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        """, nativeQuery = true)
+        List<UserAdminScope> findByUser_IdAndActiveTrue(@Param("userId") String userId);
 
-    Optional<UserAdminScope> findByUser_IdAndScopeTypeAndCompany_IdAndDepartment_Id(
-            String userId,
-            String scopeType,
-            Long companyId,
-            Long departmentId);
+        @Query(value = """
+                        SELECT s.*
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.scope_type = :scopeType
+                        AND s.company_id = :companyId
+                        AND s.department_id = :departmentId
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<UserAdminScope> findByUser_IdAndScopeTypeAndCompany_IdAndDepartment_Id(
+                        @Param("userId") String userId,
+                        @Param("scopeType") String scopeType,
+                        @Param("companyId") Long companyId,
+                        @Param("departmentId") Long departmentId);
 
-    Optional<UserAdminScope> findByUser_IdAndScopeTypeAndCompany_IdAndDepartmentIsNull(
-            String userId,
-            String scopeType,
-            Long companyId);
+        @Query(value = """
+                        SELECT s.*
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.scope_type = :scopeType
+                        AND s.company_id = :companyId
+                        AND s.department_id IS NULL
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<UserAdminScope> findByUser_IdAndScopeTypeAndCompany_IdAndDepartmentIsNull(
+                        @Param("userId") String userId,
+                        @Param("scopeType") String scopeType,
+                        @Param("companyId") Long companyId);
 
-    @Query("""
-            SELECT DISTINCT s.company.id
-            FROM UserAdminScope s
-            WHERE s.user.id = :userId
-            AND s.active = true
-            AND s.scopeType = 'COMPANY'
-            AND s.company IS NOT NULL
-            """)
-    List<Long> findActiveCompanyScopeIdsByUserId(@Param("userId") String userId);
+        @Query(value = """
+                        SELECT DISTINCT s.company_id
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        AND s.scope_type = 'COMPANY'
+                        AND s.company_id IS NOT NULL
+                        """, nativeQuery = true)
+        List<Long> findActiveCompanyScopeIdsByUserId(@Param("userId") String userId);
 
-    @Query("""
-            SELECT DISTINCT s.department.id
-            FROM UserAdminScope s
-            WHERE s.user.id = :userId
-            AND s.active = true
-            AND s.scopeType = 'DEPARTMENT'
-            AND s.department IS NOT NULL
-            """)
-    List<Long> findActiveDepartmentScopeIdsByUserId(@Param("userId") String userId);
+        @Query(value = """
+                        SELECT DISTINCT s.department_id
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        AND s.scope_type = 'DEPARTMENT'
+                        AND s.department_id IS NOT NULL
+                        """, nativeQuery = true)
+        List<Long> findActiveDepartmentScopeIdsByUserId(@Param("userId") String userId);
 
-    @Query("""
-            SELECT DISTINCT s.company.id
-            FROM UserAdminScope s
-            WHERE s.user.id = :userId
-            AND s.active = true
-            AND s.scopeType = 'DEPARTMENT'
-            AND s.company IS NOT NULL
-            """)
-    List<Long> findCompanyIdsFromDepartmentScopesByUserId(@Param("userId") String userId);
+        @Query(value = """
+                        SELECT DISTINCT s.company_id
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        AND s.scope_type = 'DEPARTMENT'
+                        AND s.company_id IS NOT NULL
+                        """, nativeQuery = true)
+        List<Long> findCompanyIdsFromDepartmentScopesByUserId(@Param("userId") String userId);
 
-    @Query("""
-            SELECT s FROM UserAdminScope s
-            WHERE s.user.id = :userId
-            AND s.active = true
-            AND s.scopeType = :scopeType
-            """)
-    List<UserAdminScope> findActiveByUserAndScopeType(
-            @Param("userId") String userId,
-            @Param("scopeType") String scopeType);
+        @Query(value = """
+                        SELECT s.*
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        AND s.scope_type = :scopeType
+                        """, nativeQuery = true)
+        List<UserAdminScope> findActiveByUserAndScopeType(
+                        @Param("userId") String userId,
+                        @Param("scopeType") String scopeType);
 
-    @Query("""
-            SELECT DISTINCT s.company.id
-            FROM UserAdminScope s
-            WHERE s.user.id = :userId
-            AND s.active = true
-            AND s.scopeType = 'COMPANY'
-            AND s.company.id IN :companyIds
-            """)
-    List<Long> findAllowedCompanyIds(
-            @Param("userId") String userId,
-            @Param("companyIds") Collection<Long> companyIds);
+        @Query(value = """
+                        SELECT DISTINCT s.company_id
+                        FROM user_admin_scopes s
+                        WHERE s.user_id = :userId
+                        AND s.active = 1
+                        AND s.scope_type = 'COMPANY'
+                        AND s.company_id IN :companyIds
+                        """, nativeQuery = true)
+        List<Long> findAllowedCompanyIds(
+                        @Param("userId") String userId,
+                        @Param("companyIds") Collection<Long> companyIds);
 }
