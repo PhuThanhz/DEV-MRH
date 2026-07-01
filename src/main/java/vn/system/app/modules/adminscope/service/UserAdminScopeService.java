@@ -123,14 +123,12 @@ public class UserAdminScopeService {
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        if (!scopedCompanyIds.isEmpty()) {
-            return scopedCompanyIds;
-        }
 
-        return userPositionRepo.findActiveCompanyIdsByUserId(userId)
+        scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        return scopedCompanyIds;
     }
 
     public Set<Long> getDepartmentScopeIds(String userId) {
@@ -138,14 +136,12 @@ public class UserAdminScopeService {
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        if (!scopedDepartmentIds.isEmpty()) {
-            return scopedDepartmentIds;
-        }
 
-        return userPositionRepo.findActiveDepartmentIdsByUserId(userId)
+        scopedDepartmentIds.addAll(userPositionRepo.findActiveDepartmentIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        return scopedDepartmentIds;
     }
 
     public Set<Long> getCompanyIdsFromDepartmentScopes(String userId) {
@@ -153,14 +149,12 @@ public class UserAdminScopeService {
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        if (!scopedCompanyIds.isEmpty()) {
-            return scopedCompanyIds;
-        }
 
-        return userPositionRepo.findActiveCompanyIdsByUserId(userId)
+        scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        return scopedCompanyIds;
     }
 
     private void validateActorCanManageScopes(ReqUpsertUserAdminScopesDTO req) {
