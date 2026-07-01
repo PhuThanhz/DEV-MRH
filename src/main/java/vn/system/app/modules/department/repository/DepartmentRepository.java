@@ -22,4 +22,6 @@ public interface DepartmentRepository
     long countByCompany_IdIn(java.util.Set<Long> companyIds);
 
     List<Department> findByCompany_IdIn(Collection<Long> companyIds);
+
+    List<Department> findByIdIn(Collection<Long> ids);
 }

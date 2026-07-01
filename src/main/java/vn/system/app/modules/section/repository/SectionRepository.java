@@ -26,4 +26,6 @@ public interface SectionRepository
 
     long countByDepartment_Company_IdIn(java.util.Set<Long> companyIds);
 
+    long countByDepartment_IdIn(java.util.Collection<Long> departmentIds);
+
 }

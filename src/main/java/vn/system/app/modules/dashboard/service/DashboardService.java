@@ -77,6 +77,14 @@ public class DashboardService {
                         totalCompany = companyRepository.count();
                         totalDepartment = departmentRepository.count();
                         totalSection = sectionRepository.count();
+                } else if (scope.isDepartmentLevel()) {
+                        var departmentIds = scope.departmentIds();
+                        if (departmentIds == null || departmentIds.isEmpty()) {
+                                return new DashboardSummaryDTO(0, 0, 0);
+                        }
+                        totalCompany = scope.companyIds() != null ? scope.companyIds().size() : 0;
+                        totalDepartment = departmentIds.size();
+                        totalSection = sectionRepository.countByDepartment_IdIn(departmentIds);
                 } else {
                         var companyIds = scope.companyIds();
                         if (companyIds.isEmpty()) {
@@ -109,6 +117,12 @@ public class DashboardService {
                 // SUPER_ADMIN và ADMIN_SUB_1 đều thấy toàn bộ hệ thống
                 if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
                         departments = departmentRepository.findAll();
+                } else if (scope.isDepartmentLevel()) {
+                        var departmentIds = scope.departmentIds();
+                        if (departmentIds == null || departmentIds.isEmpty()) {
+                                return List.of();
+                        }
+                        departments = departmentRepository.findByIdIn(departmentIds);
                 } else {
                         var companyIds = scope.companyIds();
                         if (companyIds.isEmpty()) {

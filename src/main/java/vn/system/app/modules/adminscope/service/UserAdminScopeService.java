@@ -119,21 +119,45 @@ public class UserAdminScopeService {
     }
 
     public Set<Long> getCompanyScopeIds(String userId) {
-        return repo.findActiveCompanyScopeIdsByUserId(userId)
+        Set<Long> scopedCompanyIds = repo.findActiveCompanyScopeIdsByUserId(userId)
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (!scopedCompanyIds.isEmpty()) {
+            return scopedCompanyIds;
+        }
+
+        return userPositionRepo.findActiveCompanyIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }
 
     public Set<Long> getDepartmentScopeIds(String userId) {
-        return repo.findActiveDepartmentScopeIdsByUserId(userId)
+        Set<Long> scopedDepartmentIds = repo.findActiveDepartmentScopeIdsByUserId(userId)
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (!scopedDepartmentIds.isEmpty()) {
+            return scopedDepartmentIds;
+        }
+
+        return userPositionRepo.findActiveDepartmentIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }
 
     public Set<Long> getCompanyIdsFromDepartmentScopes(String userId) {
-        return repo.findCompanyIdsFromDepartmentScopesByUserId(userId)
+        Set<Long> scopedCompanyIds = repo.findCompanyIdsFromDepartmentScopesByUserId(userId)
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (!scopedCompanyIds.isEmpty()) {
+            return scopedCompanyIds;
+        }
+
+        return userPositionRepo.findActiveCompanyIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());

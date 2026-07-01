@@ -131,6 +131,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         }
 
         seedAdminScopePermissionsAndRole();
+        syncFullPermissionRoles();
 
         if (countRoles == 0) {
             List<Permission> allPermissions = this.permissionRepository.findAll();
@@ -232,6 +233,12 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         departmentManagerRole.setPermissions(managerPermissions);
         this.roleRepository.save(departmentManagerRole);
+    }
+
+    private void syncFullPermissionRoles() {
+        List<Permission> allPermissions = this.permissionRepository.findAll();
+        addPermissionsToRoleIfMissing("SUPER_ADMIN", allPermissions);
+        addPermissionsToRoleIfMissing("ADMIN_SUB_1", allPermissions);
     }
 
     private void addPermissionsToRoleIfMissing(String roleName, List<Permission> permissions) {
