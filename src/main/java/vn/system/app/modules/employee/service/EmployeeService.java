@@ -173,7 +173,7 @@ public class EmployeeService {
     // ======================================================
     // GET ALL (PAGINATION)
     // ======================================================
-    public ResultPaginationDTO getAll(Specification<User> spec, Pageable pageable) {
+    public ResultPaginationDTO getAll(Specification<User> spec, Long companyId, Long departmentId, Long sectionId, Pageable pageable) {
 
         // ── ADMIN_SUB_2 filter ────────────────────────────────
         UserScopeContext.UserScope scope = UserScopeContext.get();
@@ -190,26 +190,90 @@ public class EmployeeService {
                 return rs;
             }
             Specification<User> scopeSpec = (root, query, cb) -> {
-                var sub = query.subquery(Long.class);
+                var sub = query.subquery(String.class);
                 var posRoot = sub.from(UserPosition.class);
+
+                // LEFT JOIN toàn bộ chain để tránh INNER JOIN lọc mất bản ghi
+                var cjtJoin     = posRoot.join("companyJobTitle",    jakarta.persistence.criteria.JoinType.LEFT);
+                var cjtCoJoin   = cjtJoin.join("company",            jakarta.persistence.criteria.JoinType.LEFT);
+
+                var djtJoin     = posRoot.join("departmentJobTitle", jakarta.persistence.criteria.JoinType.LEFT);
+                var djtDeptJoin = djtJoin.join("department",         jakarta.persistence.criteria.JoinType.LEFT);
+                var djtCoJoin   = djtDeptJoin.join("company",        jakarta.persistence.criteria.JoinType.LEFT);
+
+                var sjtJoin     = posRoot.join("sectionJobTitle",    jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtSecJoin  = sjtJoin.join("section",            jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtDeptJoin = sjtSecJoin.join("department",      jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtCoJoin   = sjtDeptJoin.join("company",        jakarta.persistence.criteria.JoinType.LEFT);
+
                 sub.select(posRoot.get("user").get("id"))
                         .where(cb.and(
                                 cb.isTrue(posRoot.get("active")),
                                 cb.or(
                                         cb.and(cb.equal(posRoot.get("source"), "COMPANY"),
-                                                posRoot.get("companyJobTitle").get("company").get("id")
-                                                        .in(scope.companyIds())),
+                                                cjtCoJoin.get("id").in(scope.companyIds())),
                                         cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                posRoot.get("departmentJobTitle").get("department").get("company")
-                                                        .get("id").in(scope.companyIds())),
+                                                djtCoJoin.get("id").in(scope.companyIds())),
                                         cb.and(cb.equal(posRoot.get("source"), "SECTION"),
-                                                posRoot.get("sectionJobTitle").get("section").get("department")
-                                                        .get("company").get("id").in(scope.companyIds())))));
+                                                sjtCoJoin.get("id").in(scope.companyIds())))));
                 return root.get("id").in(sub);
             };
             spec = Specification.where(spec).and(scopeSpec); // ← gộp vào spec gốc
         }
         // ── HẾT FILTER ───────────────────────────────────────
+
+        // ── Bộ lọc theo vị trí (Công ty, Phòng ban, Bộ phận) ──
+        if (companyId != null || departmentId != null || sectionId != null) {
+            Specification<User> positionFilterSpec = (root, query, cb) -> {
+                var sub = query.subquery(String.class);
+                var posRoot = sub.from(UserPosition.class);
+
+                // LEFT JOIN toàn bộ chain để tránh INNER JOIN lọc mất bản ghi
+                var cjtJoin     = posRoot.join("companyJobTitle",    jakarta.persistence.criteria.JoinType.LEFT);
+                var cjtCoJoin   = cjtJoin.join("company",            jakarta.persistence.criteria.JoinType.LEFT);
+
+                var djtJoin     = posRoot.join("departmentJobTitle", jakarta.persistence.criteria.JoinType.LEFT);
+                var djtDeptJoin = djtJoin.join("department",         jakarta.persistence.criteria.JoinType.LEFT);
+                var djtCoJoin   = djtDeptJoin.join("company",        jakarta.persistence.criteria.JoinType.LEFT);
+
+                var sjtJoin     = posRoot.join("sectionJobTitle",    jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtSecJoin  = sjtJoin.join("section",            jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtDeptJoin = sjtSecJoin.join("department",      jakarta.persistence.criteria.JoinType.LEFT);
+                var sjtCoJoin   = sjtDeptJoin.join("company",        jakarta.persistence.criteria.JoinType.LEFT);
+
+                sub.select(posRoot.get("user").get("id"));
+
+                var activeCond = cb.isTrue(posRoot.get("active"));
+
+                jakarta.persistence.criteria.Predicate filterCond;
+                if (sectionId != null) {
+                    filterCond = cb.and(
+                            cb.equal(posRoot.get("source"), "SECTION"),
+                            cb.equal(sjtSecJoin.get("id"), sectionId)
+                    );
+                } else if (departmentId != null) {
+                    filterCond = cb.or(
+                            cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                    cb.equal(djtDeptJoin.get("id"), departmentId)),
+                            cb.and(cb.equal(posRoot.get("source"), "SECTION"),
+                                    cb.equal(sjtDeptJoin.get("id"), departmentId))
+                    );
+                } else {
+                    filterCond = cb.or(
+                            cb.and(cb.equal(posRoot.get("source"), "COMPANY"),
+                                    cb.equal(cjtCoJoin.get("id"), companyId)),
+                            cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                    cb.equal(djtCoJoin.get("id"), companyId)),
+                            cb.and(cb.equal(posRoot.get("source"), "SECTION"),
+                                    cb.equal(sjtCoJoin.get("id"), companyId))
+                    );
+                }
+
+                sub.where(cb.and(activeCond, filterCond));
+                return root.get("id").in(sub);
+            };
+            spec = Specification.where(spec).and(positionFilterSpec);
+        }
 
         // specWithJoin bọc bên ngoài, bao gồm cả scopeSpec
         Specification<User> finalSpec = spec;

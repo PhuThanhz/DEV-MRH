@@ -84,8 +84,11 @@ public class EmployeeController {
     @ApiMessage("Lấy danh sách nhân viên thành công")
     public ResponseEntity<ResultPaginationDTO> getAll(
             @Filter Specification<User> spec,
+            @RequestParam(value = "companyId", required = false) Long companyId,
+            @RequestParam(value = "departmentId", required = false) Long departmentId,
+            @RequestParam(value = "sectionId", required = false) Long sectionId,
             Pageable pageable) {
 
-        return ResponseEntity.ok(employeeService.getAll(spec, pageable));
+        return ResponseEntity.ok(employeeService.getAll(spec, companyId, departmentId, sectionId, pageable));
     }
 }
