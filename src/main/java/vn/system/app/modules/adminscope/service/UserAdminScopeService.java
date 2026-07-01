@@ -36,6 +36,7 @@ public class UserAdminScopeService {
     public static final String ROLE_SUPER_ADMIN = "SUPER_ADMIN";
     public static final String ROLE_ADMIN_SUB_1 = "ADMIN_SUB_1";
     public static final String ROLE_ADMIN_SUB_2 = "ADMIN_SUB_2";
+    public static final String ROLE_ADMIN_SUB_3 = "ADMIN_SUB_3";
     public static final String ROLE_DEPARTMENT_MANAGER = "DEPARTMENT_MANAGER";
 
     private final UserAdminScopeRepository repo;
@@ -123,37 +124,54 @@ public class UserAdminScopeService {
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-
-        scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
-                .stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet()));
+        if (scopedCompanyIds.isEmpty()) {
+            scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        }
         return scopedCompanyIds;
     }
 
-    public Set<Long> getDepartmentScopeIds(String userId) {
+    public Set<Long> getDepartmentScopeIds(String userId, String roleName) {
+        if (ROLE_DEPARTMENT_MANAGER.equals(roleName)) {
+            return userPositionRepo.findActiveDepartmentIdsByUserId(userId)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+        }
+
         Set<Long> scopedDepartmentIds = repo.findActiveDepartmentScopeIdsByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-
-        scopedDepartmentIds.addAll(userPositionRepo.findActiveDepartmentIdsByUserId(userId)
-                .stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet()));
+        if (scopedDepartmentIds.isEmpty()) {
+            scopedDepartmentIds.addAll(userPositionRepo.findActiveDepartmentIdsByUserId(userId)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        }
         return scopedDepartmentIds;
     }
 
-    public Set<Long> getCompanyIdsFromDepartmentScopes(String userId) {
+    public Set<Long> getCompanyIdsFromDepartmentScopes(String userId, String roleName) {
+        if (ROLE_DEPARTMENT_MANAGER.equals(roleName)) {
+            return userPositionRepo.findActiveCompanyIdsByUserId(userId)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+        }
+
         Set<Long> scopedCompanyIds = repo.findCompanyIdsFromDepartmentScopesByUserId(userId)
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-
-        scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
-                .stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet()));
+        if (scopedCompanyIds.isEmpty()) {
+            scopedCompanyIds.addAll(userPositionRepo.findActiveCompanyIdsByUserId(userId)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        }
         return scopedCompanyIds;
     }
 
@@ -199,7 +217,7 @@ public class UserAdminScopeService {
                 ? req.getScopes()
                 : List.of();
 
-        if (!ROLE_ADMIN_SUB_2.equals(roleName) && !ROLE_DEPARTMENT_MANAGER.equals(roleName)) {
+        if (!ROLE_ADMIN_SUB_2.equals(roleName) && !ROLE_ADMIN_SUB_3.equals(roleName)) {
             return List.of();
         }
 
@@ -239,9 +257,9 @@ public class UserAdminScopeService {
             return;
         }
 
-        if (ROLE_DEPARTMENT_MANAGER.equals(roleName)) {
+        if (ROLE_ADMIN_SUB_3.equals(roleName)) {
             if (!SCOPE_DEPARTMENT.equals(item.getScopeType())) {
-                throw new IdInvalidException("Trưởng bộ phận chỉ được gán phạm vi phòng ban.");
+                throw new IdInvalidException("ADMIN_SUB_3 chỉ được gán phạm vi phòng ban.");
             }
             if (item.getCompanyId() == null || item.getDepartmentId() == null) {
                 throw new IdInvalidException("companyId và departmentId không được để trống.");

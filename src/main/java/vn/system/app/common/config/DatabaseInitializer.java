@@ -215,9 +215,9 @@ public class DatabaseInitializer implements CommandLineRunner {
         if (departmentManagerRole == null) {
             departmentManagerRole = new Role();
             departmentManagerRole.setName("DEPARTMENT_MANAGER");
-            departmentManagerRole.setDescription("Trưởng bộ phận - quản lý theo một hoặc nhiều phòng ban");
             departmentManagerRole.setActive(true);
         }
+        departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
 
         List<Permission> managerPermissions = new ArrayList<>(this.permissionRepository.findAll().stream()
                 .filter(p -> "USERS".equals(p.getModule())
@@ -226,13 +226,23 @@ public class DatabaseInitializer implements CommandLineRunner {
                         || "DASHBOARD".equals(p.getModule())
                         || "DEPARTMENT_OBJECTIVES".equals(p.getModule())
                         || "DEPARTMENT_JOB_TITLES".equals(p.getModule())
-                        || "USER_POSITIONS".equals(p.getModule()))
+                        || "USER_POSITION".equals(p.getModule()))
                 .filter(p -> "GET".equalsIgnoreCase(p.getMethod()))
                 .filter(p -> !"/api/v1/users/{userId}/admin-scopes".equals(p.getApiPath()))
                 .toList());
 
         departmentManagerRole.setPermissions(managerPermissions);
         this.roleRepository.save(departmentManagerRole);
+
+        Role adminSub3Role = this.roleRepository.findByName("ADMIN_SUB_3");
+        if (adminSub3Role == null) {
+            adminSub3Role = new Role();
+            adminSub3Role.setName("ADMIN_SUB_3");
+            adminSub3Role.setActive(true);
+        }
+        adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
+        adminSub3Role.setPermissions(managerPermissions);
+        this.roleRepository.save(adminSub3Role);
     }
 
     private void syncFullPermissionRoles() {

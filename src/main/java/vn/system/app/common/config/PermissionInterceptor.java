@@ -41,9 +41,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
     private static final List<String> COMPANY_LEVEL_ROLES = List.of(
             "ADMIN_SUB_2");
 
-    // DEPARTMENT_MANAGER → filter theo các phòng ban được gán trong user_admin_scopes
+    // DEPARTMENT_MANAGER, ADMIN_SUB_3 → filter theo phòng ban quản lý
     private static final List<String> DEPARTMENT_LEVEL_ROLES = List.of(
-            "DEPARTMENT_MANAGER");
+            "DEPARTMENT_MANAGER",
+            "ADMIN_SUB_3");
 
     @Override
     @Transactional
@@ -102,8 +103,8 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 if (isCompanyLevel) {
                     companyIds = userAdminScopeService.getCompanyScopeIds(user.getId());
                 } else if (isDepartmentLevel) {
-                    departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId());
-                    companyIds = userAdminScopeService.getCompanyIdsFromDepartmentScopes(user.getId());
+                    departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId(), roleName);
+                    companyIds = userAdminScopeService.getCompanyIdsFromDepartmentScopes(user.getId(), roleName);
                 }
 
                 UserScopeContext.set(new UserScopeContext.UserScope(
