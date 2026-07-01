@@ -2,9 +2,11 @@ package vn.system.app.common.config;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.modules.permission.domain.Permission;
 import vn.system.app.modules.permission.repository.PermissionRepository;
@@ -38,6 +40,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     @Override
+    @Transactional
     public void run(String... args) throws Exception {
         System.out.println(">>> START INIT DATABASE");
         long countPermissions = this.permissionRepository.count();
@@ -127,6 +130,8 @@ public class DatabaseInitializer implements CommandLineRunner {
             }
         }
 
+        seedAdminScopePermissionsAndRole();
+
         if (countRoles == 0) {
             List<Permission> allPermissions = this.permissionRepository.findAll();
 
@@ -172,6 +177,87 @@ public class DatabaseInitializer implements CommandLineRunner {
     private void addPermissionIfMissing(List<Permission> target, String name, String apiPath, String method, String module) {
         if (!this.permissionRepository.existsByModuleAndApiPathAndMethod(module, apiPath, method)) {
             target.add(createPermission(name, apiPath, method, module));
+        }
+    }
+
+    private void seedAdminScopePermissionsAndRole() {
+        List<Permission> newPerms = new ArrayList<>();
+        addPermissionIfMissing(newPerms, "Danh sách phạm vi quản trị user",
+                "/api/v1/users/{userId}/admin-scopes", "GET", "USERS");
+        addPermissionIfMissing(newPerms, "Cập nhật phạm vi quản trị user",
+                "/api/v1/users/{userId}/admin-scopes", "PUT", "USERS");
+
+        if (!newPerms.isEmpty()) {
+            this.permissionRepository.saveAll(newPerms);
+            System.out.println(">>> SEED: USER ADMIN SCOPES permissions created");
+
+            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            if (adminRole != null) {
+                List<Permission> allPerms = new ArrayList<>(adminRole.getPermissions());
+                allPerms.addAll(newPerms);
+                adminRole.setPermissions(allPerms);
+                this.roleRepository.save(adminRole);
+            }
+        }
+
+        List<Permission> adminScopePermissions = this.permissionRepository.findAll().stream()
+                .filter(p -> "USERS".equals(p.getModule()))
+                .filter(p -> "/api/v1/users/{userId}/admin-scopes".equals(p.getApiPath()))
+                .filter(p -> "GET".equalsIgnoreCase(p.getMethod()) || "PUT".equalsIgnoreCase(p.getMethod()))
+                .toList();
+
+        addPermissionsToRoleIfMissing("SUPER_ADMIN", adminScopePermissions);
+        addPermissionsToRoleIfMissing("ADMIN_SUB_1", adminScopePermissions);
+        addPermissionsToRoleIfMissing("ADMIN_SUB_2", adminScopePermissions);
+
+        Role departmentManagerRole = this.roleRepository.findByName("DEPARTMENT_MANAGER");
+        if (departmentManagerRole == null) {
+            departmentManagerRole = new Role();
+            departmentManagerRole.setName("DEPARTMENT_MANAGER");
+            departmentManagerRole.setDescription("Trưởng bộ phận - quản lý theo một hoặc nhiều phòng ban");
+            departmentManagerRole.setActive(true);
+        }
+
+        List<Permission> managerPermissions = new ArrayList<>(this.permissionRepository.findAll().stream()
+                .filter(p -> "USERS".equals(p.getModule())
+                        || "DEPARTMENTS".equals(p.getModule())
+                        || "SECTIONS".equals(p.getModule())
+                        || "DASHBOARD".equals(p.getModule())
+                        || "DEPARTMENT_OBJECTIVES".equals(p.getModule())
+                        || "DEPARTMENT_JOB_TITLES".equals(p.getModule())
+                        || "USER_POSITIONS".equals(p.getModule()))
+                .filter(p -> "GET".equalsIgnoreCase(p.getMethod()))
+                .filter(p -> !"/api/v1/users/{userId}/admin-scopes".equals(p.getApiPath()))
+                .toList());
+
+        departmentManagerRole.setPermissions(managerPermissions);
+        this.roleRepository.save(departmentManagerRole);
+    }
+
+    private void addPermissionsToRoleIfMissing(String roleName, List<Permission> permissions) {
+        Role role = this.roleRepository.findByName(roleName);
+        if (role == null || permissions == null || permissions.isEmpty()) {
+            return;
+        }
+
+        List<Permission> currentPermissions = role.getPermissions() != null
+                ? new ArrayList<>(role.getPermissions())
+                : new ArrayList<>();
+
+        boolean changed = false;
+        for (Permission permission : permissions) {
+            boolean exists = currentPermissions.stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(item -> item.getId() == permission.getId());
+            if (!exists) {
+                currentPermissions.add(permission);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            role.setPermissions(currentPermissions);
+            this.roleRepository.save(role);
         }
     }
 }

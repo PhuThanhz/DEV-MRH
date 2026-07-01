@@ -122,7 +122,9 @@ public class SectionService {
      * ============================================================
      */
     public ResSectionDTO fetchOne(Long id) {
-        return convertToDTO(fetchEntityById(id));
+        Section section = fetchEntityById(id);
+        departmentService.checkDepartmentScope(section.getDepartment());
+        return convertToDTO(section);
     }
 
     /*
@@ -131,6 +133,7 @@ public class SectionService {
      * ============================================================
      */
     public List<ResSectionDTO> fetchByDepartment(Long departmentId) {
+        departmentService.checkDepartmentScope(departmentService.fetchEntityById(departmentId));
 
         List<Section> sections = sectionRepo.findByDepartmentId(departmentId);
 
@@ -158,7 +161,9 @@ public class SectionService {
             Pageable pageable) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isAdminLevel()) {
-            Specification<Section> scopeSpec = ScopeSpec.byCompanyScope("department.company.id");
+            Specification<Section> scopeSpec = ScopeSpec.byCompanyOrDepartmentScope(
+                    "department.company.id",
+                    "department.id");
             spec = Specification.where(spec).and(scopeSpec);
         }
         Page<Section> page = sectionRepo.findAll(spec, pageable);

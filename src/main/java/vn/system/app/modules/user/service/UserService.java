@@ -193,6 +193,41 @@ public class UserService {
             if (scope.isAdminLevel()) {
                 // ADMIN_SUB_1 → thấy toàn bộ, không filter
 
+            } else if (scope.isDepartmentLevel()) {
+                if (scope.departmentIds() == null || scope.departmentIds().isEmpty()) {
+                    ResultPaginationDTO rs = new ResultPaginationDTO();
+                    ResultPaginationDTO.Meta mt = new ResultPaginationDTO.Meta();
+                    mt.setPage(pageable.getPageNumber() + 1);
+                    mt.setPageSize(pageable.getPageSize());
+                    mt.setPages(0);
+                    mt.setTotal(0);
+                    rs.setMeta(mt);
+                    rs.setResult(List.of());
+                    return rs;
+                }
+
+                Specification<User> scopeSpec = (root, query, cb) -> {
+                    var sub = query.subquery(String.class);
+                    var posRoot = sub.from(UserPosition.class);
+
+                    sub.select(posRoot.get("user").get("id"))
+                            .where(cb.and(
+                                    cb.isTrue(posRoot.get("active")),
+                                    cb.or(
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "DEPARTMENT"),
+                                                    posRoot.get("departmentJobTitle").get("department").get("id")
+                                                            .in(scope.departmentIds())),
+                                            cb.and(
+                                                    cb.equal(posRoot.get("source"), "SECTION"),
+                                                    posRoot.get("sectionJobTitle").get("section").get("department").get("id")
+                                                            .in(scope.departmentIds())))));
+
+                    return root.get("id").in(sub);
+                };
+
+                spec = Specification.where(spec).and(scopeSpec);
+
             } else if (scope.companyIds().isEmpty()) {
                 // Không có công ty nào → trả về rỗng
                 ResultPaginationDTO rs = new ResultPaginationDTO();

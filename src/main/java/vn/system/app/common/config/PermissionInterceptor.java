@@ -16,11 +16,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.common.util.error.PermissionException;
+import vn.system.app.modules.adminscope.service.UserAdminScopeService;
 import vn.system.app.modules.permission.domain.Permission;
 import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.service.UserService;
-import vn.system.app.modules.userposition.service.UserPositionService;
 
 public class PermissionInterceptor implements HandlerInterceptor {
 
@@ -28,7 +28,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
     UserService userService;
 
     @Autowired
-    UserPositionService userPositionService;
+    UserAdminScopeService userAdminScopeService;
 
     private static final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
@@ -40,6 +40,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
     // ADMIN_SUB_2 → admin cấp công ty, filter theo companyIds từ UserPosition
     private static final List<String> COMPANY_LEVEL_ROLES = List.of(
             "ADMIN_SUB_2");
+
+    // DEPARTMENT_MANAGER → filter theo các phòng ban được gán trong user_admin_scopes
+    private static final List<String> DEPARTMENT_LEVEL_ROLES = List.of(
+            "DEPARTMENT_MANAGER");
 
     @Override
     @Transactional
@@ -89,15 +93,18 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 // isCompanyLevel = true → ADMIN_SUB_2: thấy toàn bộ công ty được gán
                 boolean isCompanyLevel = COMPANY_LEVEL_ROLES.contains(roleName);
 
-                // companyIds: chỉ cần lấy nếu không phải admin toàn hệ thống
-                Set<Long> companyIds = isAdminLevel
-                        ? Set.of()
-                        : userPositionService.getCompanyIdsByUser(user.getId());
+                // isDepartmentLevel = true → DEPARTMENT_MANAGER: filter theo phòng ban được gán
+                boolean isDepartmentLevel = DEPARTMENT_LEVEL_ROLES.contains(roleName);
 
-                // departmentIds: ADMIN_SUB_2 không cần filter theo phòng ban
-                Set<Long> departmentIds = (isAdminLevel || isCompanyLevel)
-                        ? Set.of()
-                        : userPositionService.getDepartmentIdsByUser(user.getId());
+                Set<Long> companyIds = Set.of();
+                Set<Long> departmentIds = Set.of();
+
+                if (isCompanyLevel) {
+                    companyIds = userAdminScopeService.getCompanyScopeIds(user.getId());
+                } else if (isDepartmentLevel) {
+                    departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId());
+                    companyIds = userAdminScopeService.getCompanyIdsFromDepartmentScopes(user.getId());
+                }
 
                 UserScopeContext.set(new UserScopeContext.UserScope(
                         user.getId(),
@@ -105,7 +112,8 @@ public class PermissionInterceptor implements HandlerInterceptor {
                         departmentIds,
                         isSuperAdmin,
                         isAdminLevel,
-                        isCompanyLevel));
+                        isCompanyLevel,
+                        isDepartmentLevel));
 
                 Role role = user.getRole();
                 if (role != null) {

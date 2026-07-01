@@ -131,7 +131,9 @@ public class DepartmentService {
     /* ================= FETCH ONE ================= */
 
     public DepartmentResponse fetchDepartmentById(Long id) {
-        return convertToResponseDTO(fetchEntityById(id));
+        Department d = fetchEntityById(id);
+        checkDepartmentScope(d);
+        return convertToResponseDTO(d);
     }
 
     /* ================= FETCH ALL ================= */
@@ -182,8 +184,21 @@ public class DepartmentService {
     /* ================= FETCH BY COMPANY ================= */
 
     public List<DepartmentResponse> fetchDepartmentsByCompany(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
         return departmentRepository.findByCompanyId(companyId)
                 .stream()
+                .filter(d -> {
+                    if (scope == null || scope.isAdminLevel()) {
+                        return true;
+                    }
+                    if (scope.isCompanyLevel()) {
+                        return scope.companyIds() != null && scope.companyIds().contains(companyId);
+                    }
+                    if (scope.isDepartmentLevel()) {
+                        return scope.departmentIds() != null && scope.departmentIds().contains(d.getId());
+                    }
+                    return false;
+                })
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
     }

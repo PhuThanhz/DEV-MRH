@@ -82,4 +82,52 @@ public class ScopeSpec {
             return path.in(scope.departmentIds());
         };
     }
+
+    /**
+     * Filter linh hoạt theo cấp quyền:
+     * - SUPER_ADMIN, ADMIN_SUB_1: thấy toàn bộ
+     * - ADMIN_SUB_2: filter theo companyIds
+     * - DEPARTMENT_MANAGER: filter theo departmentIds
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> Specification<T> byCompanyOrDepartmentScope(String companyPath, String departmentPath) {
+
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+
+        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return Specification.where(null);
+        }
+
+        if (scope.isCompanyLevel()) {
+            if (scope.companyIds() == null || scope.companyIds().isEmpty()) {
+                return (root, query, cb) -> cb.disjunction();
+            }
+
+            return (root, query, cb) -> {
+                String[] parts = companyPath.split("\\.");
+                jakarta.persistence.criteria.Path<?> path = root.get(parts[0]);
+                for (int i = 1; i < parts.length; i++) {
+                    path = path.get(parts[i]);
+                }
+                return path.in(scope.companyIds());
+            };
+        }
+
+        if (scope.isDepartmentLevel()) {
+            if (scope.departmentIds() == null || scope.departmentIds().isEmpty()) {
+                return (root, query, cb) -> cb.disjunction();
+            }
+
+            return (root, query, cb) -> {
+                String[] parts = departmentPath.split("\\.");
+                jakarta.persistence.criteria.Path<?> path = root.get(parts[0]);
+                for (int i = 1; i < parts.length; i++) {
+                    path = path.get(parts[i]);
+                }
+                return path.in(scope.departmentIds());
+            };
+        }
+
+        return (root, query, cb) -> cb.disjunction();
+    }
 }
