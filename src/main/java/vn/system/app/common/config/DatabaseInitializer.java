@@ -216,8 +216,12 @@ public class DatabaseInitializer implements CommandLineRunner {
             departmentManagerRole = new Role();
             departmentManagerRole.setName("DEPARTMENT_MANAGER");
             departmentManagerRole.setActive(true);
+            departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
+            this.roleRepository.save(departmentManagerRole);
+        } else if (departmentManagerRole.getDescription() == null) {
+            departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
+            this.roleRepository.save(departmentManagerRole);
         }
-        departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
 
         List<Permission> managerPermissions = new ArrayList<>(this.permissionRepository.findAll().stream()
                 .filter(p -> "USERS".equals(p.getModule())
@@ -231,18 +235,20 @@ public class DatabaseInitializer implements CommandLineRunner {
                 .filter(p -> !"/api/v1/users/{userId}/admin-scopes".equals(p.getApiPath()))
                 .toList());
 
-        departmentManagerRole.setPermissions(managerPermissions);
-        this.roleRepository.save(departmentManagerRole);
+        addPermissionsToRoleIfMissing("DEPARTMENT_MANAGER", managerPermissions);
 
         Role adminSub3Role = this.roleRepository.findByName("ADMIN_SUB_3");
         if (adminSub3Role == null) {
             adminSub3Role = new Role();
             adminSub3Role.setName("ADMIN_SUB_3");
             adminSub3Role.setActive(true);
+            adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
+            this.roleRepository.save(adminSub3Role);
+        } else if (adminSub3Role.getDescription() == null) {
+            adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
+            this.roleRepository.save(adminSub3Role);
         }
-        adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
-        adminSub3Role.setPermissions(managerPermissions);
-        this.roleRepository.save(adminSub3Role);
+        addPermissionsToRoleIfMissing("ADMIN_SUB_3", managerPermissions);
     }
 
     private void syncFullPermissionRoles() {
