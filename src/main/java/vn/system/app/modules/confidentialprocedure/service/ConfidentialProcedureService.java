@@ -152,24 +152,7 @@ public class ConfidentialProcedureService {
         // logShare = true: lần đầu tạo mới → ghi log SHARE thật sự
         accessService.saveAccessList(saved, req, true);
 
-        // Notify chỉ những user được cấp quyền xem
-        if (req.getUserIds() != null && !req.getUserIds().isEmpty()) {
-            String senderName = "Hệ thống";
-            UserScopeContext.UserScope scope = UserScopeContext.get();
-            if (scope != null && scope.userId() != null) {
-                User sender = userRepository.findById(scope.userId()).orElse(null);
-                if (sender != null) senderName = sender.getName();
-            }
-            String notifContent = String.format("Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
-                    saved.getProcedureName(), saved.getProcedureCode(), senderName);
-            eventPublisher.publishEvent(new AppNotificationEvent(
-                    req.getUserIds(),
-                    "CONFIDENTIAL_PROCEDURES",
-                    "PROCEDURE_CREATED",
-                    notifContent,
-                    "/admin/procedures?tab=confidential&viewId=" + saved.getId()
-            ));
-        }
+
 
         return convertToDTO(saved);
     }

@@ -90,11 +90,11 @@ public class ConfidentialAccessService {
             String content = String.format(
                     "Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
                     procedure.getProcedureName(), procedure.getProcedureCode(), senderName);
-            String actionLink = "/admin/procedures/confidential?viewId=" + procedureId;
+            String actionLink = "/admin/procedures?tab=confidential&viewId=" + procedureId;
 
             eventPublisher.publishEvent(new AppNotificationEvent(
                     newlySharedUserIds,
-                    "COMPANY_PROCEDURES",
+                    "CONFIDENTIAL_PROCEDURES",
                     "CONFIDENTIAL_PROCEDURE_SHARED",
                     content,
                     actionLink
@@ -156,11 +156,11 @@ public class ConfidentialAccessService {
             String content = String.format(
                     "Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
                     procedure.getProcedureName(), procedure.getProcedureCode(), senderName);
-            String actionLink = "/admin/procedures/confidential?viewId=" + procedure.getId();
+            String actionLink = "/admin/procedures?tab=confidential&viewId=" + procedure.getId();
 
             eventPublisher.publishEvent(new AppNotificationEvent(
                     notifyUserIds,
-                    "COMPANY_PROCEDURES",
+                    "CONFIDENTIAL_PROCEDURES",
                     "CONFIDENTIAL_PROCEDURE_SHARED",
                     content,
                     actionLink
@@ -300,6 +300,8 @@ public class ConfidentialAccessService {
                 .collect(Collectors.toCollection(HashSet::new));
         Set<String> newSet = new HashSet<>(newUserIds); // ← thêm dòng này
 
+        List<String> newlySharedUserIds = new ArrayList<>();
+
         // SHARE
         for (String userId : newUserIds) {
             if (!existingSet.contains(userId)) {
@@ -312,6 +314,7 @@ public class ConfidentialAccessService {
                 accessRepository.save(access);
 
                 shareLogService.saveShareLog(procedureId, currentUserId, userId, "SHARE");
+                newlySharedUserIds.add(userId);
             }
         }
 
@@ -322,6 +325,25 @@ public class ConfidentialAccessService {
                 accessRepository.flush();
                 shareLogService.saveShareLog(procedureId, currentUserId, access.getUserId(), "REVOKE");
             }
+        }
+
+        // Bắn thông báo cho những người mới được chia sẻ
+        if (!newlySharedUserIds.isEmpty()) {
+            String senderName = userRepository.findById(currentUserId)
+                    .map(User::getName)
+                    .orElse("Hệ thống");
+            String content = String.format(
+                    "Quy trình bảo mật: %s (%s) vừa được chia sẻ với bạn bởi %s.",
+                    procedure.getProcedureName(), procedure.getProcedureCode(), senderName);
+            String actionLink = "/admin/procedures?tab=confidential&viewId=" + procedureId;
+
+            eventPublisher.publishEvent(new AppNotificationEvent(
+                    newlySharedUserIds,
+                    "CONFIDENTIAL_PROCEDURES",
+                    "CONFIDENTIAL_PROCEDURE_SHARED",
+                    content,
+                    actionLink
+            ));
         }
     }
 

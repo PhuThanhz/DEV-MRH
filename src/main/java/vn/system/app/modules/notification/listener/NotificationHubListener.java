@@ -20,18 +20,16 @@ public class NotificationHubListener {
     public void handleAppNotificationEvent(AppNotificationEvent event) {
         if (event.getRecipientIds() == null) return;
 
-        for (String userId : event.getRecipientIds()) {
-            try {
-                notificationService.sendNotification(
-                    userId,
-                    event.getModule(),
-                    event.getType(),
-                    event.getContent(),
-                    event.getActionLink()
-                );
-            } catch (Exception e) {
-                System.err.println("[Notification] Lỗi gửi cho user " + userId + ": " + e.getMessage());
-            }
+        try {
+            notificationService.sendNotifications(
+                event.getRecipientIds(),
+                event.getModule(),
+                event.getType(),
+                event.getContent(),
+                event.getActionLink()
+            );
+        } catch (Exception e) {
+            System.err.println("[Notification] Lỗi gửi thông báo hàng loạt: " + e.getMessage());
         }
     }
 }
