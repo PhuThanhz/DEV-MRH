@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -18,4 +20,26 @@ public class AccountingDossierDocumentRequest {
     private String documentType; // Kept for existing data/imports. Defaults to OTHER when omitted.
 
     private Long documentId; // Optional, if using existing document table
+
+    private String fileUrl;
+
+    private String externalLink;
+
+    private Instant invoiceDate;
+
+    private String invoiceNumber;
+
+    private String invoiceContent;
+
+    private String partnerName;
+
+    private String partnerType;
+
+    private BigDecimal amount;
+
+    private String currency;
+
+    private Boolean confirmDuplicate;
+
+    private String duplicateReason;
 }

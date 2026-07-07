@@ -105,6 +105,9 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 } else if (isDepartmentLevel) {
                     departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId(), roleName);
                     companyIds = userAdminScopeService.getCompanyIdsFromDepartmentScopes(user.getId(), roleName);
+                } else {
+                    companyIds = userAdminScopeService.getCompanyScopeIds(user.getId());
+                    departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId(), roleName);
                 }
 
                 UserScopeContext.set(new UserScopeContext.UserScope(

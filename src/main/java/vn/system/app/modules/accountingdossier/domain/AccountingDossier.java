@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -28,7 +29,14 @@ import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.section.domain.Section;
 
 @Entity
-@Table(name = "accounting_dossier")
+@Table(name = "accounting_dossier", indexes = {
+    @Index(name = "idx_dossier_company", columnList = "company_id"),
+    @Index(name = "idx_dossier_department", columnList = "department_id"),
+    @Index(name = "idx_dossier_status", columnList = "status"),
+    @Index(name = "idx_dossier_storage_status", columnList = "storage_status"),
+    @Index(name = "idx_dossier_active", columnList = "active"),
+    @Index(name = "idx_dossier_retention_until", columnList = "retention_until")
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
@@ -41,7 +49,7 @@ public class AccountingDossier {
     @Column(name = "dossier_code", length = 100, unique = true)
     private String dossierCode;
 
-    @Column(name = "content", nullable = false, length = 500)
+    @Column(name = "content", nullable = false, length = 1000)
     private String content;
 
     @Enumerated(EnumType.STRING)
@@ -103,8 +111,23 @@ public class AccountingDossier {
     @Column(name = "terminated_at")
     private Instant terminatedAt;
 
+    @Column(name = "return_count", nullable = false)
+    private Integer returnCount = 0;
+
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(name = "qr_token", unique = true, length = 64)
+    private String qrToken;
+
+    @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
+    private String qrCode;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Column(name = "deleted_by")
+    private String deletedBy;
 
     private Instant createdAt;
     private Instant updatedAt;

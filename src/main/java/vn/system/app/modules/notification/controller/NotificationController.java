@@ -1,8 +1,10 @@
 package vn.system.app.modules.notification.controller;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.notification.domain.AppNotification;
@@ -47,6 +49,13 @@ public class NotificationController {
         return ResponseEntity.ok(res);
     }
 
+    @GetMapping("/paginate")
+    @ApiMessage("Lấy danh sách thông báo phân trang")
+    public ResponseEntity<ResultPaginationDTO> fetchMyNotificationsPaginate(Pageable pageable) {
+        String userId = getCurrentUserId();
+        return ResponseEntity.ok(notificationService.fetchPaginate(userId, pageable));
+    }
+
     @GetMapping("/unread/count")
     @ApiMessage("Đếm số thông báo chưa đọc")
     public ResponseEntity<Long> countUnread() {
@@ -66,6 +75,22 @@ public class NotificationController {
     public ResponseEntity<Void> markAllAsRead() {
         String userId = getCurrentUserId();
         notificationService.markAllAsRead(userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/read-all/module")
+    @ApiMessage("Đánh dấu tất cả thông báo theo module đã đọc")
+    public ResponseEntity<Void> markAllAsReadByModule(@RequestParam String module) {
+        String userId = getCurrentUserId();
+        notificationService.markAllAsReadByModule(userId, module);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}")
+    @ApiMessage("Xoá thông báo")
+    public ResponseEntity<Void> deleteNotification(@PathVariable Long id) {
+        String userId = getCurrentUserId();
+        notificationService.deleteNotification(id, userId);
         return ResponseEntity.ok().build();
     }
 

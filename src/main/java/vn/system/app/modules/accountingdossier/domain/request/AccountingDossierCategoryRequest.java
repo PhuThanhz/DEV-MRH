@@ -24,4 +24,14 @@ public class AccountingDossierCategoryRequest {
     private boolean active = true;
 
     private List<Long> documentCategoryIds;
+
+    private List<DocumentCategoryItemRequest> documentCategoryItems;
+
+    @Getter
+    @Setter
+    public static class DocumentCategoryItemRequest {
+        private Long documentCategoryId;
+        private Boolean required;
+        private Integer sortOrder;
+    }
 }

@@ -4,11 +4,11 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
-import vn.system.app.modules.document.domain.AccountingDocumentCategory;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "accounting_dossier_category")
@@ -27,6 +27,9 @@ public class AccountingDossierCategory {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(columnDefinition = "TEXT")
+    private String approvalStepsConfig;
+
     private Long companyId;
 
     private String scope; // COMPANY, GLOBAL
@@ -38,13 +41,8 @@ public class AccountingDossierCategory {
 
     private boolean active = true;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "accounting_dossier_category_documents",
-        joinColumns = @JoinColumn(name = "dossier_category_id"),
-        inverseJoinColumns = @JoinColumn(name = "document_category_id")
-    )
-    private List<AccountingDocumentCategory> documentCategories = new ArrayList<>();
+    @OneToMany(mappedBy = "dossierCategory", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<AccountingDossierCategoryDocument> categoryDocuments = new ArrayList<>();
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -65,5 +63,14 @@ public class AccountingDossierCategory {
     public void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
+    }
+
+    @Transient
+    public List<vn.system.app.modules.document.domain.AccountingDocumentCategory> getDocumentCategories() {
+        return this.categoryDocuments == null
+                ? List.of()
+                : this.categoryDocuments.stream()
+                        .map(AccountingDossierCategoryDocument::getDocumentCategory)
+                        .collect(Collectors.toList());
     }
 }

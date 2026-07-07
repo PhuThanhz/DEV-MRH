@@ -33,5 +33,7 @@ public class ResAccountingDossierCategoryDTO {
         private String categoryCode;
         private String categoryName;
         private String symbol;
+        private boolean required;
+        private Integer sortOrder;
     }
 }

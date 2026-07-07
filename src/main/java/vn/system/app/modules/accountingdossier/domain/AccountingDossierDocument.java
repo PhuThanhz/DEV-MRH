@@ -8,6 +8,7 @@ import vn.system.app.modules.document.domain.AccountingDocumentCategory;
 import vn.system.app.modules.document.domain.Document;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "accounting_dossier_document")
@@ -43,8 +44,41 @@ public class AccountingDossierDocument {
     @Column(name = "check_note", columnDefinition = "TEXT")
     private String checkNote;
 
+    @Column(name = "file_url", length = 1000)
+    private String fileUrl;
+
+    @Column(name = "external_link", length = 1000)
+    private String externalLink;
+
+    @Column(name = "invoice_date")
+    private Instant invoiceDate;
+
+    @Column(name = "invoice_number", length = 100)
+    private String invoiceNumber;
+
+    @Column(name = "invoice_content", length = 500)
+    private String invoiceContent;
+
+    @Column(name = "partner_name", length = 255)
+    private String partnerName;
+
+    @Column(name = "partner_type", length = 50)
+    private String partnerType;
+
+    @Column(name = "amount", precision = 19, scale = 2)
+    private BigDecimal amount;
+
+    @Column(name = "currency", length = 10)
+    private String currency;
+
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Column(name = "deleted_by")
+    private String deletedBy;
 
     private Instant createdAt;
     private Instant updatedAt;

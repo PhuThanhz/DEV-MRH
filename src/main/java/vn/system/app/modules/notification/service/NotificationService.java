@@ -7,11 +7,14 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.notification.domain.AppNotification;
 import vn.system.app.modules.notification.domain.response.ResNotificationDTO;
@@ -109,6 +112,27 @@ public class NotificationService {
         return notificationRepo.findTop50ByRecipientIdOrderByCreatedAtDesc(userId);
     }
 
+    public ResultPaginationDTO fetchPaginate(String userId, Pageable pageable) {
+        Page<AppNotification> page = notificationRepo.findByRecipientIdOrderByCreatedAtDesc(userId, pageable);
+
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+
+        meta.setPage(pageable.getPageNumber() + 1);
+        meta.setPageSize(pageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+
+        List<ResNotificationDTO> list = page.getContent()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+
+        rs.setMeta(meta);
+        rs.setResult(list);
+        return rs;
+    }
+
     public List<AppNotification> fetchUnreadByUser(String userId) {
         return notificationRepo.findByRecipientIdAndReadFalseOrderByCreatedAtDesc(userId);
     }
@@ -131,8 +155,25 @@ public class NotificationService {
     }
 
     @Transactional
+    public void deleteNotification(Long notificationId, String userId) {
+        AppNotification notification = notificationRepo.findById(notificationId)
+                .orElseThrow(() -> new IdInvalidException("Thông báo không tồn tại"));
+
+        if (notification.getRecipient() == null || !notification.getRecipient().getId().equals(userId)) {
+            throw new IdInvalidException("Bạn không có quyền xoá thông báo này");
+        }
+
+        notificationRepo.delete(notification);
+    }
+
+    @Transactional
     public void markAllAsRead(String userId) {
         notificationRepo.markAllAsReadByRecipientId(userId);
+    }
+
+    @Transactional
+    public void markAllAsReadByModule(String userId, String module) {
+        notificationRepo.markAllAsReadByRecipientIdAndModule(userId, module);
     }
     
     public ResNotificationDTO mapToDTO(AppNotification entity) {

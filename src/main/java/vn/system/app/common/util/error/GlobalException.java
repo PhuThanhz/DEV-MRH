@@ -59,6 +59,15 @@ public class GlobalException {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
     }
 
+    @ExceptionHandler(DuplicateInvoiceWarningException.class)
+    public ResponseEntity<RestResponse<Object>> handleDuplicateInvoiceWarningException(DuplicateInvoiceWarningException ex) {
+        RestResponse<Object> res = new RestResponse<>();
+        res.setStatusCode(HttpStatus.BAD_REQUEST.value());
+        res.setMessage(ex.getMessage());
+        res.setError("DUPLICATE_INVOICE_WARNING");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
+    }
+
     // ============================================================
     // Xử lý lỗi Not Found
     // ============================================================

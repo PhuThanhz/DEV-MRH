@@ -14,8 +14,10 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.departmentobjective.domain.DepartmentObjective;
 import vn.system.app.modules.departmentobjective.domain.request.ReqCreateDepartmentObjective;
+import vn.system.app.modules.departmentobjective.domain.request.ReqPublishDepartmentObjective;
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentObjectiveDTO;
 import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentMissionTreeDTO;
+import vn.system.app.modules.departmentobjective.domain.response.ResDepartmentMissionVersionDTO;
 import vn.system.app.modules.departmentobjective.service.DepartmentObjectiveService;
 
 @RestController
@@ -45,6 +47,24 @@ public class DepartmentObjectiveController {
         ResDepartmentMissionTreeDTO tree = service.fetchMissionTree(req.getDepartmentId());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(tree);
+    }
+
+    /*
+     * ==========================================
+     * PUBLISH (Ban hành)
+     * ==========================================
+     */
+    @PostMapping("/department-objectives/publish")
+    @ApiMessage("Ban hành mục tiêu - nhiệm vụ")
+    public ResponseEntity<ResDepartmentMissionTreeDTO> publish(
+            @Valid @RequestBody ReqPublishDepartmentObjective req)
+            throws IdInvalidException {
+
+        service.handlePublish(req);
+
+        ResDepartmentMissionTreeDTO tree = service.fetchMissionTree(req.getDepartmentId());
+
+        return ResponseEntity.ok(tree);
     }
 
     /*
@@ -90,6 +110,17 @@ public class DepartmentObjectiveController {
 
     /*
      * ==========================================
+     * FETCH SUMMARY (Admin Master-Detail List)
+     * ==========================================
+     */
+    @GetMapping("/department-objectives/summary")
+    @ApiMessage("Danh sách tổng hợp mục tiêu phòng ban")
+    public ResponseEntity<java.util.List<vn.system.app.modules.departmentobjective.domain.response.ResDepartmentMissionSummaryDTO>> fetchSummary() {
+        return ResponseEntity.ok(service.fetchSummary());
+    }
+
+    /*
+     * ==========================================
      * FETCH ALL (pagination + filter)
      * ==========================================
      */
@@ -114,6 +145,15 @@ public class DepartmentObjectiveController {
             throws IdInvalidException {
 
         return ResponseEntity.ok(service.fetchMissionTree(departmentId));
+    }
+
+    @GetMapping("/departments/{departmentId}/objectives/versions")
+    @ApiMessage("Lịch sử version mục tiêu - nhiệm vụ phòng ban")
+    public ResponseEntity<java.util.List<ResDepartmentMissionVersionDTO>> fetchVersions(
+            @PathVariable Long departmentId)
+            throws IdInvalidException {
+
+        return ResponseEntity.ok(service.fetchVersions(departmentId));
     }
 
 }

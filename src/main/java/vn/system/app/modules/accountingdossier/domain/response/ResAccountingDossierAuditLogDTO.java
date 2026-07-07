@@ -15,6 +15,14 @@ public class ResAccountingDossierAuditLogDTO {
     private String note;
     private String actorUserId;
     private String ipAddress;
+    private String userAgent;
+    private String targetType;
+    private Long targetId;
+    private String fromStatus;
+    private String toStatus;
+    private String beforeValue;
+    private String afterValue;
+    private String bulkActionId;
     private Instant createdAt;
     private String createdBy;
 }

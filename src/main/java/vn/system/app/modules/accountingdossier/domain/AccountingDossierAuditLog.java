@@ -7,7 +7,10 @@ import vn.system.app.common.util.SecurityUtil;
 import java.time.Instant;
 
 @Entity
-@Table(name = "accounting_dossier_audit_log")
+@Table(name = "accounting_dossier_audit_log", indexes = {
+    @Index(name = "idx_audit_dossier", columnList = "dossier_id"),
+    @Index(name = "idx_audit_bulk_action", columnList = "bulk_action_id")
+})
 @Getter
 @Setter
 public class AccountingDossierAuditLog {
@@ -31,6 +34,30 @@ public class AccountingDossierAuditLog {
 
     @Column(name = "ip_address", length = 100)
     private String ipAddress;
+
+    @Column(name = "user_agent", length = 500)
+    private String userAgent;
+
+    @Column(name = "target_type", length = 80)
+    private String targetType;
+
+    @Column(name = "target_id")
+    private Long targetId;
+
+    @Column(name = "from_status", length = 80)
+    private String fromStatus;
+
+    @Column(name = "to_status", length = 80)
+    private String toStatus;
+
+    @Column(name = "before_value", columnDefinition = "TEXT")
+    private String beforeValue;
+
+    @Column(name = "after_value", columnDefinition = "TEXT")
+    private String afterValue;
+
+    @Column(name = "bulk_action_id", length = 80)
+    private String bulkActionId;
 
     private Instant createdAt;
     private String createdBy;

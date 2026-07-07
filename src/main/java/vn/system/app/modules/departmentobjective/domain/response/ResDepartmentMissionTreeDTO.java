@@ -21,6 +21,21 @@ public class ResDepartmentMissionTreeDTO {
     private boolean hasSections;
 
     /*
+     * AUDIT TỔNG (lấy từ DepartmentMission) — null nếu phòng ban chưa từng lưu
+     */
+    private String status;
+
+    private String issuedBy;
+    private String issuedByName;
+    private Instant issuedAt;
+
+    private String lastUpdatedBy;
+    private String lastUpdatedByName;
+    private Instant lastUpdatedAt;
+
+    private Integer version;
+
+    /*
      * MỤC TIÊU
      */
     private List<ObjectiveItem> objectives;
@@ -57,6 +72,8 @@ public class ResDepartmentMissionTreeDTO {
 
         private String content;
 
+        private Integer orderNo;
+
         private String createdBy;
 
         private String updatedBy;
@@ -85,6 +102,8 @@ public class ResDepartmentMissionTreeDTO {
 
         private String content;
 
+        private Integer orderNo;
+
         private String createdBy;
 
         private String updatedBy;
@@ -101,6 +120,8 @@ public class ResDepartmentMissionTreeDTO {
         private Long id;
 
         private String content;
+
+        private Integer orderNo;
 
         private String createdBy;
 

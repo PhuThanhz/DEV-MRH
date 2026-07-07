@@ -197,7 +197,8 @@ public class DepartmentService {
                     if (scope.isDepartmentLevel()) {
                         return scope.departmentIds() != null && scope.departmentIds().contains(d.getId());
                     }
-                    return false;
+                    // Dành cho nhân viên bình thường (không phải admin, không phải manager)
+                    return scope.departmentIds() != null && scope.departmentIds().contains(d.getId());
                 })
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());

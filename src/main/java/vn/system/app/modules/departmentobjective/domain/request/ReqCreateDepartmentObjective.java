@@ -37,6 +37,8 @@ public class ReqCreateDepartmentObjective {
     @Setter
     public static class ObjectiveItem {
 
+        private Long id;
+
         private String content;
 
         private Integer orderNo;
@@ -56,6 +58,8 @@ public class ReqCreateDepartmentObjective {
     @Setter
     public static class TaskItem {
 
+        private Long id;
+
         private String content;
 
         private Integer orderNo;
@@ -64,6 +68,8 @@ public class ReqCreateDepartmentObjective {
     @Getter
     @Setter
     public static class AuthorityItem {
+
+        private Long id;
 
         private String content;
 

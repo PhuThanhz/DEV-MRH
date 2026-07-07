@@ -33,7 +33,11 @@ public class ResAccountingDossierDTO {
     private Instant submittedAt;
     private Instant approvedAt;
     private Instant terminatedAt;
+    private Integer returnCount;
     private boolean active;
+
+    private String qrToken;
+    private String qrCode;
 
     private Instant createdAt;
     private Instant updatedAt;

@@ -3,6 +3,10 @@ package vn.system.app.modules.document.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +19,10 @@ import vn.system.app.modules.document.domain.Document;
 public interface DocumentRepository extends
         JpaRepository<Document, Long>,
         JpaSpecificationExecutor<Document> {
+
+    @Override
+    @EntityGraph(attributePaths = {"category", "accountingCategory", "department", "department.company", "section", "folder", "departments"})
+    Page<Document> findAll(Specification<Document> spec, Pageable pageable);
 
     boolean existsByDocumentCode(String documentCode);
 

@@ -22,14 +22,21 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossier;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierCategory;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest;
+import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentCheckRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierCategoryRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierRequest;
+import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierSubmitRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentRequest;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierAuditLogDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierBulkActionDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierCategoryDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDocumentDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierApprovalStepDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierReportRowDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierStorageSummaryDTO;
 import vn.system.app.modules.accountingdossier.service.AccountingDossierService;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -70,8 +77,10 @@ public class AccountingDossierController {
 
     @PostMapping("/{id}/submit")
     @ApiMessage("Chuyển xử lý bộ chứng từ kế toán")
-    public ResponseEntity<ResAccountingDossierDTO> submit(@PathVariable Long id) {
-        return ResponseEntity.ok(service.submit(id));
+    public ResponseEntity<ResAccountingDossierDTO> submit(
+            @PathVariable Long id,
+            @RequestBody(required = false) AccountingDossierSubmitRequest req) {
+        return ResponseEntity.ok(service.submit(id, req));
     }
 
     @PostMapping("/{id}/request-return")
@@ -92,8 +101,78 @@ public class AccountingDossierController {
     @ApiMessage("Danh sách bộ chứng từ kế toán")
     public ResponseEntity<ResultPaginationDTO> getAll(
             @Filter Specification<AccountingDossier> spec,
+            Pageable pageable,
+            @RequestParam(required = false) String approverUserId,
+            @RequestParam(required = false) String storageStatus,
+            @RequestParam(required = false) Integer retentionYear,
+            @RequestParam(required = false) Integer retentionMonth,
+            @RequestParam(required = false) Integer retentionDay,
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long dossierCategoryId) {
+        return ResponseEntity.ok(service.fetchAll(
+                spec,
+                pageable,
+                approverUserId,
+                storageStatus,
+                retentionYear,
+                retentionMonth,
+                retentionDay,
+                companyId,
+                departmentId,
+                dossierCategoryId));
+    }
+
+    @GetMapping("/pending-my-approval")
+    @ApiMessage("Danh sách bộ chứng từ chờ tôi duyệt")
+    public ResponseEntity<ResultPaginationDTO> getPendingMyApproval(Pageable pageable) {
+        return ResponseEntity.ok(service.fetchPendingMyApproval(pageable));
+    }
+
+    @GetMapping("/documents")
+    @ApiMessage("Danh sách chứng từ con trong các bộ chứng từ")
+    public ResponseEntity<ResultPaginationDTO> getAllDossierDocuments(
+            @Filter Specification<vn.system.app.modules.accountingdossier.domain.AccountingDossierDocument> spec,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String fileStatus,
             Pageable pageable) {
-        return ResponseEntity.ok(service.fetchAll(spec, pageable));
+        return ResponseEntity.ok(service.fetchAllDossierDocuments(spec, keyword, fileStatus, pageable));
+    }
+
+    @PostMapping("/storage/refresh-expired")
+    @ApiMessage("Cập nhật trạng thái hết thời hạn lưu trữ")
+    public ResponseEntity<Integer> refreshExpiredStorageStatus() {
+        return ResponseEntity.ok(service.refreshExpiredRetentionStatuses());
+    }
+
+    @GetMapping("/dashboard/summary")
+    @ApiMessage("Tổng quan lưu trữ bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierStorageSummaryDTO> getStorageSummary() {
+        return ResponseEntity.ok(service.getStorageSummary());
+    }
+
+    @GetMapping("/dashboard/pending-by-role")
+    @ApiMessage("Thống kê bộ chứng từ đang chờ duyệt theo vai trò")
+    public ResponseEntity<List<ResAccountingDossierReportRowDTO>> getPendingByRole() {
+        return ResponseEntity.ok(service.pendingByRole());
+    }
+
+    @GetMapping("/reports/by-status")
+    @ApiMessage("Báo cáo bộ chứng từ theo trạng thái")
+    public ResponseEntity<List<ResAccountingDossierReportRowDTO>> reportByStatus() {
+        return ResponseEntity.ok(service.reportByStatus());
+    }
+
+    @GetMapping("/reports/by-department")
+    @ApiMessage("Báo cáo bộ chứng từ theo phòng ban")
+    public ResponseEntity<List<ResAccountingDossierReportRowDTO>> reportByDepartment() {
+        return ResponseEntity.ok(service.reportByDepartment());
+    }
+
+    @GetMapping("/reports/by-category")
+    @ApiMessage("Báo cáo bộ chứng từ theo danh mục")
+    public ResponseEntity<List<ResAccountingDossierReportRowDTO>> reportByCategory() {
+        return ResponseEntity.ok(service.reportByCategory());
     }
 
     // ==================== DOSSIER TEMPLATES ====================
@@ -167,5 +246,120 @@ public class AccountingDossierController {
             @PathVariable Long docId) {
         service.deleteDocument(id, docId);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/documents/{docId}/check")
+    @ApiMessage("Kiểm tra chứng từ con trong bộ")
+    public ResponseEntity<ResAccountingDossierDocumentDTO> reviewDocument(
+            @PathVariable Long id,
+            @PathVariable Long docId,
+            @Valid @RequestBody AccountingDossierDocumentCheckRequest req) {
+        return ResponseEntity.ok(service.reviewDocument(id, docId, req));
+    }
+
+    @PostMapping("/{id}/approve")
+    @ApiMessage("Phê duyệt bước bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierDTO> approve(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.approve(id, req));
+    }
+
+    @PostMapping("/{id}/reject")
+    @ApiMessage("Từ chối bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierDTO> reject(
+            @PathVariable Long id,
+            @Valid @RequestBody AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.reject(id, req));
+    }
+
+    @PostMapping("/{id}/terminate")
+    @ApiMessage("Chấm dứt bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierDTO> terminate(
+            @PathVariable Long id,
+            @Valid @RequestBody AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.terminate(id, req));
+    }
+
+    @PostMapping("/{id}/archive")
+    @ApiMessage("Đưa bộ chứng từ kế toán vào lưu trữ")
+    public ResponseEntity<ResAccountingDossierDTO> archive(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.archive(id, req));
+    }
+
+    @PostMapping("/{id}/return-response")
+    @ApiMessage("Phản hồi yêu cầu hoàn bộ chứng từ")
+    public ResponseEntity<ResAccountingDossierDTO> handleReturnResponse(
+            @PathVariable Long id,
+            @RequestParam String action,
+            @Valid @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.handleReturnResponse(id, action, req));
+    }
+
+    @PostMapping("/{id}/sync-template/reject")
+    @ApiMessage("Từ chối đồng bộ bộ chứng từ phi cấu trúc thành mẫu")
+    public ResponseEntity<ResAccountingDossierDTO> rejectTemplateSync(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.rejectTemplateSync(id, req));
+    }
+
+    @GetMapping("/{id}/approval-steps")
+    @ApiMessage("Danh sách tiến trình duyệt bộ chứng từ")
+    public ResponseEntity<List<ResAccountingDossierApprovalStepDTO>> getApprovalSteps(
+            @PathVariable Long id) {
+        return ResponseEntity.ok(service.getApprovalSteps(id));
+    }
+
+    @PostMapping("/bulk-approve")
+    @ApiMessage("Duyệt hàng loạt bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierBulkActionDTO> bulkApprove(
+            @RequestParam List<Long> ids,
+            @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.bulkApprove(ids, req));
+    }
+
+    @PostMapping("/bulk/approve")
+    @ApiMessage("Duyệt hàng loạt bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierBulkActionDTO> bulkApprovePlanRoute(
+            @RequestParam List<Long> ids,
+            @RequestBody(required = false) AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.bulkApprove(ids, req));
+    }
+
+    @PostMapping("/bulk/reject")
+    @ApiMessage("Từ chối hàng loạt bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierBulkActionDTO> bulkReject(
+            @RequestParam List<Long> ids,
+            @Valid @RequestBody AccountingDossierActionRequest req) {
+        return ResponseEntity.ok(service.bulkReject(ids, req));
+    }
+
+    @PostMapping("/{id}/documents/bulk-check")
+    @ApiMessage("Kiểm tra hàng loạt chứng từ con")
+    public ResponseEntity<ResAccountingDossierBulkActionDTO> bulkCheckDocuments(
+            @PathVariable Long id,
+            @RequestParam List<Long> documentIds,
+            @RequestParam String checkStatus,
+            @RequestParam(required = false) String note) {
+        return ResponseEntity.ok(service.bulkCheckDocuments(id, documentIds, checkStatus, note));
+    }
+
+    @PostMapping("/{id}/documents/bulk/check")
+    @ApiMessage("Kiểm tra hàng loạt chứng từ con")
+    public ResponseEntity<ResAccountingDossierBulkActionDTO> bulkCheckDocumentsPlanRoute(
+            @PathVariable Long id,
+            @RequestParam List<Long> documentIds,
+            @RequestParam String checkStatus,
+            @RequestParam(required = false) String note) {
+        return ResponseEntity.ok(service.bulkCheckDocuments(id, documentIds, checkStatus, note));
+    }
+
+    @GetMapping("/qr/{token}")
+    @ApiMessage("Tra cứu bộ chứng từ qua mã QR")
+    public ResponseEntity<ResAccountingDossierDTO> getByQrToken(@PathVariable String token) {
+        return ResponseEntity.ok(service.getByQrToken(token));
     }
 }

@@ -12,7 +12,7 @@ import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierCat
 public class AccountingDossierRequest {
 
     @NotBlank(message = "Nội dung bộ chứng từ không được để trống")
-    @Size(max = 500, message = "Nội dung bộ chứng từ tối đa 500 ký tự")
+    @Size(max = 1000, message = "Nội dung bộ chứng từ tối đa 1000 ký tự")
     private String content;
 
     private AccountingDossierCategoryMode categoryMode;

@@ -11,10 +11,25 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.domain.Specification;
+
 @Repository
 public interface JobDescriptionRepository
         extends JpaRepository<JobDescription, Long>,
         JpaSpecificationExecutor<JobDescription> {
+
+    @Override
+    @EntityGraph(attributePaths = {
+        "company",
+        "department",
+        "companyJobTitle",
+        "departmentJobTitle",
+        "departmentJobTitle.jobTitle",
+        "sectionJobTitle",
+        "requirement"
+    })
+    Page<JobDescription> findAll(Specification<JobDescription> spec, Pageable pageable);
     
     boolean existsByCode(String code);
 
