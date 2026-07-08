@@ -16,6 +16,8 @@ public class ReqCreateDepartmentObjective {
     private Long departmentId;
 
     private LocalDate issueDate;
+    
+    private String status;
 
     /*
      * MỤC TIÊU PHÒNG BAN

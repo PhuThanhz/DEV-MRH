@@ -195,6 +195,7 @@ public class DepartmentObjectiveService {
                 });
 
         mission.setIssueDate(issueDate);
+        mission.setStatus(req.getStatus() != null ? req.getStatus() : "DRAFT");
         mission.setLastUpdatedAt(Instant.now());
         mission.setLastUpdatedBy(SecurityUtil.getCurrentUserLogin().orElse(""));
 
@@ -202,7 +203,8 @@ public class DepartmentObjectiveService {
     }
 
     /*
-     * Với id có sẵn và thuộc phòng ban → lấy entity cũ để update (giữ createdBy gốc,
+     * Với id có sẵn và thuộc phòng ban → lấy entity cũ để update (giữ createdBy
+     * gốc,
      * kích hoạt @PreUpdate). Ngược lại tạo mới (@PrePersist).
      */
     private DepartmentObjective resolveEntity(
@@ -275,7 +277,8 @@ public class DepartmentObjectiveService {
         versionRepository.save(history);
     }
 
-    private String buildVersionSnapshot(Department department, DepartmentMission mission, List<DepartmentObjective> items) {
+    private String buildVersionSnapshot(Department department, DepartmentMission mission,
+            List<DepartmentObjective> items) {
         List<DepartmentObjective> sortedItems = new ArrayList<>(items);
         sortedItems.sort(Comparator.comparing(DepartmentObjective::getOrderNo,
                 Comparator.nullsLast(Comparator.naturalOrder())));
@@ -655,7 +658,8 @@ public class DepartmentObjectiveService {
     }
 
     /*
-     * Resolve login (email) → họ tên hiển thị. Không tìm thấy thì trả về chính login.
+     * Resolve login (email) → họ tên hiển thị. Không tìm thấy thì trả về chính
+     * login.
      */
     private String resolveName(String login) {
         if (login == null || login.isBlank()) {
