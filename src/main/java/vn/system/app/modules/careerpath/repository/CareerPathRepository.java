@@ -32,4 +32,7 @@ public interface CareerPathRepository extends JpaRepository<CareerPath, Long> {
     // nhất
     @Query("SELECT cp.jobTitle.id FROM CareerPath cp WHERE cp.department.id = :departmentId")
     Set<Long> findExistingJobTitleIds(@Param("departmentId") Long departmentId);
+
+    @Query("SELECT DISTINCT cp.department.id FROM CareerPath cp WHERE cp.department.id IN :departmentIds AND cp.active = TRUE")
+    java.util.Set<Long> findDepartmentIdsWithCareerPath(@Param("departmentIds") java.util.Collection<Long> departmentIds);
 }

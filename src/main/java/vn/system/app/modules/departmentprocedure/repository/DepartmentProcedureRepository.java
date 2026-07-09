@@ -46,4 +46,6 @@ public interface DepartmentProcedureRepository extends
 
         List<DepartmentProcedure> findByQrTokenIsNull(); // ← THÊM DÒNG NÀY
 
+        @Query("SELECT DISTINCT d.id FROM DepartmentProcedure p JOIN p.departments d WHERE d.id IN :departmentIds")
+        java.util.Set<Long> findDepartmentIdsWithProcedure(@Param("departmentIds") java.util.Collection<Long> departmentIds);
 }

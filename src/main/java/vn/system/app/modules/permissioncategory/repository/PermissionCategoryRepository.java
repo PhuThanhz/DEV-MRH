@@ -24,4 +24,11 @@ public interface PermissionCategoryRepository
                   AND c.active = TRUE
             """)
     List<PermissionCategory> findByDepartmentId(@Param("departmentId") Long departmentId);
+
+    @Query("""
+                SELECT DISTINCT c.department.id FROM PermissionCategory c
+                WHERE c.department.id IN :departmentIds
+                  AND c.active = TRUE
+            """)
+    java.util.Set<Long> findDepartmentIdsWithPermissions(@Param("departmentIds") java.util.Collection<Long> departmentIds);
 }

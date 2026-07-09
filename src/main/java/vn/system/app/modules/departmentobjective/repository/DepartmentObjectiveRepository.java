@@ -16,6 +16,9 @@ public interface DepartmentObjectiveRepository
 
     List<DepartmentObjective> findByDepartmentId(Long departmentId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT o.department.id FROM DepartmentObjective o WHERE o.department.id IN :departmentIds")
+    java.util.Set<Long> findDepartmentIdsWithObjectives(@org.springframework.data.repository.query.Param("departmentIds") java.util.Collection<Long> departmentIds);
+
     /**
      * Load ALL departments (admin level - no company scope restriction).
      * Uses Department as the driving table so departments with 0 objectives are included.

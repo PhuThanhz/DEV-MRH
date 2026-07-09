@@ -1,6 +1,8 @@
 package vn.system.app.modules.dashboard.service;
 
 import java.util.List;
+import java.util.Set;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -131,10 +133,23 @@ public class DashboardService {
                         departments = departmentRepository.findByCompany_IdIn(companyIds);
                 }
 
-                return departments.stream()
+                List<Department> filteredDepts = departments.stream()
                                 .filter(dept -> matchesSearch(dept, search))
                                 .filter(dept -> matchesCompany(dept, companyName))
-                                .map(this::buildCompleteness)
+                                .collect(Collectors.toList());
+
+                List<Long> deptIds = filteredDepts.stream().map(Department::getId).collect(Collectors.toList());
+
+                Set<Long> orgCharts = deptIds.isEmpty() ? Collections.emptySet() : chartRepository.findDepartmentIdsWithChart(deptIds);
+                Set<Long> objectives = deptIds.isEmpty() ? Collections.emptySet() : objectiveRepository.findDepartmentIdsWithObjectives(deptIds);
+                Set<Long> procedures = deptIds.isEmpty() ? Collections.emptySet() : departmentProcedureRepository.findDepartmentIdsWithProcedure(deptIds);
+                Set<Long> permissions = deptIds.isEmpty() ? Collections.emptySet() : permissionCategoryRepository.findDepartmentIdsWithPermissions(deptIds);
+                Set<Long> careerPaths = deptIds.isEmpty() ? Collections.emptySet() : careerPathRepository.findDepartmentIdsWithCareerPath(deptIds);
+                Set<Long> salaryGrades = deptIds.isEmpty() ? Collections.emptySet() : salaryGradeRepository.findDepartmentIdsWithSalaryGrade(deptIds);
+                Set<Long> jobTitleMaps = deptIds.isEmpty() ? Collections.emptySet() : departmentJobTitleRepository.findDepartmentIdsWithJobTitleMap(deptIds);
+
+                return filteredDepts.stream()
+                                .map(dept -> buildCompleteness(dept, orgCharts, objectives, procedures, permissions, careerPaths, salaryGrades, jobTitleMaps))
                                 .filter(dto -> matchesStatus(dto, status))
                                 .collect(Collectors.toList());
         }
@@ -147,7 +162,7 @@ public class DashboardService {
                 return normalize(dept.getName()).contains(keyword)
                                 || normalize(dept.getCode()).contains(keyword)
                                 || (dept.getCompany() != null
-                                                && normalize(dept.getCompany().getName()).contains(keyword));
+                                                 && normalize(dept.getCompany().getName()).contains(keyword));
         }
 
         private boolean matchesCompany(Department dept, String companyName) {
@@ -178,49 +193,30 @@ public class DashboardService {
                 return value == null ? "" : value.trim().toLowerCase();
         }
 
-        private DepartmentCompletenessDTO buildCompleteness(Department dept) {
+        private DepartmentCompletenessDTO buildCompleteness(
+                        Department dept,
+                        Set<Long> orgCharts,
+                        Set<Long> objectives,
+                        Set<Long> procedures,
+                        Set<Long> permissions,
+                        Set<Long> careerPaths,
+                        Set<Long> salaryGrades,
+                        Set<Long> jobTitleMaps) {
 
                 Long deptId = dept.getId();
 
-                boolean orgChart = !chartRepository
-                                .findAll()
-                                .stream()
-                                .filter(c -> deptId.equals(c.getDepartmentId()))
-                                .toList()
-                                .isEmpty();
-
-                boolean objectives = !objectiveRepository
-                                .findByDepartmentId(deptId)
-                                .isEmpty();
-                boolean departmentProcedure = !departmentProcedureRepository
-                                .findByDepartmentId(deptId) // dùng query @Query mới trong repository
-                                .isEmpty();
-
-                boolean permissions = !permissionCategoryRepository
-                                .findByDepartmentId(deptId)
-                                .isEmpty();
-
-                boolean careerPath = !careerPathRepository
-                                .findByDepartment_IdAndActiveTrue(deptId)
-                                .isEmpty();
-
-                boolean salaryGrade = !salaryGradeRepository
-                                .findAll()
-                                .stream()
-                                .filter(sg -> "DEPARTMENT".equals(sg.getContextType())
-                                                && deptId.equals(sg.getContextId())
-                                                && sg.isActive())
-                                .toList()
-                                .isEmpty();
-
-                boolean jobTitleMap = !departmentJobTitleRepository
-                                .findByDepartment_IdAndActiveTrue(deptId)
-                                .isEmpty();
+                boolean orgChart = orgCharts.contains(deptId);
+                boolean hasObjectives = objectives.contains(deptId);
+                boolean departmentProcedure = procedures.contains(deptId);
+                boolean hasPermissions = permissions.contains(deptId);
+                boolean careerPath = careerPaths.contains(deptId);
+                boolean salaryGrade = salaryGrades.contains(deptId);
+                boolean jobTitleMap = jobTitleMaps.contains(deptId);
 
                 int score = (orgChart ? 1 : 0)
-                                + (objectives ? 1 : 0)
+                                + (hasObjectives ? 1 : 0)
                                 + (departmentProcedure ? 1 : 0)
-                                + (permissions ? 1 : 0)
+                                + (hasPermissions ? 1 : 0)
                                 + (careerPath ? 1 : 0)
                                 + (salaryGrade ? 1 : 0)
                                 + (jobTitleMap ? 1 : 0);
@@ -228,11 +224,11 @@ public class DashboardService {
                 return new DepartmentCompletenessDTO(
                                 deptId,
                                 dept.getName(),
-                                dept.getCompany().getName(),
+                                dept.getCompany() != null ? dept.getCompany().getName() : "",
                                 orgChart,
-                                objectives,
+                                hasObjectives,
                                 departmentProcedure,
-                                permissions,
+                                hasPermissions,
                                 careerPath,
                                 salaryGrade,
                                 jobTitleMap,

@@ -60,4 +60,7 @@ public interface DepartmentJobTitleRepository
         List<DepartmentJobTitle> findAllActiveByCompanyIdExcludingDepartment(
                         @Param("companyId") Long companyId,
                         @Param("excludeDeptId") Long excludeDeptId);
+
+        @Query("SELECT DISTINCT d.department.id FROM DepartmentJobTitle d WHERE d.department.id IN :departmentIds AND d.active = TRUE")
+        java.util.Set<Long> findDepartmentIdsWithJobTitleMap(@Param("departmentIds") java.util.Collection<Long> departmentIds);
 }
