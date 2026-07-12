@@ -11,7 +11,10 @@ import java.time.Instant;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "accounting_dossier_document")
+@Table(name = "accounting_dossier_document", indexes = {
+        @Index(name = "idx_acc_doc_dossier_active", columnList = "dossier_id,active"),
+        @Index(name = "idx_acc_doc_invoice_partner", columnList = "invoice_number,partner_name")
+})
 @Getter
 @Setter
 public class AccountingDossierDocument {

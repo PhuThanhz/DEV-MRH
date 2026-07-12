@@ -5,9 +5,17 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import vn.system.app.modules.accountingdossier.domain.enums.ApproverType;
+import vn.system.app.modules.accountingdossier.domain.enums.ApprovalStepStatus;
+import vn.system.app.modules.accountingdossier.domain.converter.ApproverTypeConverter;
+import vn.system.app.modules.accountingdossier.domain.converter.ApprovalStepStatusConverter;
 
 @Entity
-@Table(name = "accounting_dossier_approval_steps")
+@Table(name = "accounting_dossier_approval_steps", indexes = {
+        @Index(name = "idx_acc_step_dossier_active_order", columnList = "dossier_id,active,step_order"),
+        @Index(name = "idx_acc_step_dossier_status", columnList = "dossier_id,status,active"),
+        @Index(name = "idx_acc_step_approver_status", columnList = "approver_user_id,status,active")
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
@@ -22,6 +30,12 @@ public class AccountingDossierApprovalStep {
     @JsonIgnoreProperties({ "approvalSteps", "documentItems" })
     private AccountingDossier dossier;
 
+    @Column(name = "instance_id")
+    private Long instanceId;
+
+    @Column(name = "step_key", length = 80)
+    private String stepKey;
+
     @Column(name = "step_order", nullable = false)
     private int stepOrder;
 
@@ -29,13 +43,18 @@ public class AccountingDossierApprovalStep {
     private String stepName;
 
     @Column(name = "approver_type", nullable = false, length = 50)
-    private String approverType; // DEPARTMENT_MANAGER, ACCOUNTANT, CHIEF_ACCOUNTANT
+    @Convert(converter = ApproverTypeConverter.class)
+    private ApproverType approverType; // DEPARTMENT_MANAGER, ACCOUNTANT, CHIEF_ACCOUNTANT
 
     @Column(name = "approver_user_id", length = 36)
     private String approverUserId; // UUID String of User
 
+    @Column(name = "eligible_approver_ids", length = 2000)
+    private String eligibleApproverIds;
+
     @Column(name = "status", nullable = false, length = 40)
-    private String status; // PENDING, CURRENT, APPROVED, RETURNED, REJECTED, SKIPPED
+    @Convert(converter = ApprovalStepStatusConverter.class)
+    private ApprovalStepStatus status; // PENDING, CURRENT, APPROVED, RETURNED, REJECTED, SKIPPED
 
     @Column(name = "action_note", length = 1000)
     private String actionNote;
@@ -43,11 +62,23 @@ public class AccountingDossierApprovalStep {
     @Column(name = "acted_at")
     private Instant actedAt;
 
+    @Column(name = "due_at")
+    private Instant dueAt;
+
+    @Column(name = "sla_minutes")
+    private Integer slaMinutes;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(name = "allow_delegation", nullable = false)
+    private boolean allowDelegation = false;
+
+    @Version
+    private Long version;
 
     @PrePersist
     public void beforeCreate() {

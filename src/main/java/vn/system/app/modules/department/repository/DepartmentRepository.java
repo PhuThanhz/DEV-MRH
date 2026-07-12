@@ -13,6 +13,10 @@ import vn.system.app.modules.department.domain.Department;
 public interface DepartmentRepository
         extends JpaRepository<Department, Long>, JpaSpecificationExecutor<Department> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"company"})
+    @Override
+    List<Department> findAll();
+
     // ✅ check trùng code trong cùng công ty
     boolean existsByCodeAndCompany_Id(String code, Long companyId);
 
@@ -21,7 +25,9 @@ public interface DepartmentRepository
 
     long countByCompany_IdIn(java.util.Set<Long> companyIds);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"company"})
     List<Department> findByCompany_IdIn(Collection<Long> companyIds);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"company"})
     List<Department> findByIdIn(Collection<Long> ids);
 }

@@ -5,6 +5,7 @@ import java.time.Instant;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Basic;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -18,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
 import vn.system.app.common.util.SecurityUtil;
@@ -35,7 +37,8 @@ import vn.system.app.modules.section.domain.Section;
     @Index(name = "idx_dossier_status", columnList = "status"),
     @Index(name = "idx_dossier_storage_status", columnList = "storage_status"),
     @Index(name = "idx_dossier_active", columnList = "active"),
-    @Index(name = "idx_dossier_retention_until", columnList = "retention_until")
+    @Index(name = "idx_dossier_retention_until", columnList = "retention_until"),
+    @Index(name = "idx_dossier_created_at", columnList = "created_at")
 })
 @Getter
 @Setter
@@ -120,6 +123,7 @@ public class AccountingDossier {
     @Column(name = "qr_token", unique = true, length = 64)
     private String qrToken;
 
+    @Basic(fetch = FetchType.LAZY)
     @Column(name = "qr_code", columnDefinition = "MEDIUMTEXT")
     private String qrCode;
 
@@ -128,6 +132,9 @@ public class AccountingDossier {
 
     @Column(name = "deleted_by")
     private String deletedBy;
+
+    @Version
+    private Long version;
 
     private Instant createdAt;
     private Instant updatedAt;

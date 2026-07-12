@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import vn.system.app.modules.userposition.domain.UserPosition;
+import vn.system.app.modules.user.domain.User;
 
 public interface UserPositionRepository
                 extends JpaRepository<UserPosition, Long>, JpaSpecificationExecutor<UserPosition> {
@@ -158,6 +159,41 @@ public interface UserPositionRepository
                             )
                         """)
         boolean existsByJobTitleIdAndActiveTrue(@Param("jobTitleId") Long jobTitleId);
+
+        @Query("""
+                        SELECT DISTINCT u FROM UserPosition up
+                        JOIN up.user u
+                        LEFT JOIN up.companyJobTitle cjt
+                        LEFT JOIN cjt.company companyFromCompanyTitle
+                        LEFT JOIN cjt.jobTitle companyJobTitle
+                        LEFT JOIN companyJobTitle.positionLevel companyPositionLevel
+                        LEFT JOIN up.departmentJobTitle djt
+                        LEFT JOIN djt.department departmentFromDepartmentTitle
+                        LEFT JOIN departmentFromDepartmentTitle.company companyFromDepartmentTitle
+                        LEFT JOIN djt.jobTitle departmentJobTitle
+                        LEFT JOIN departmentJobTitle.positionLevel departmentPositionLevel
+                        LEFT JOIN up.sectionJobTitle sjt
+                        LEFT JOIN sjt.section section
+                        LEFT JOIN section.department departmentFromSectionTitle
+                        LEFT JOIN departmentFromSectionTitle.company companyFromSectionTitle
+                        LEFT JOIN sjt.jobTitle sectionJobTitle
+                        LEFT JOIN sectionJobTitle.positionLevel sectionPositionLevel
+                        WHERE up.active = true
+                        AND ((:referenceType = 'JOB_TITLE' AND (
+                                companyJobTitle.id = :referenceId OR departmentJobTitle.id = :referenceId OR sectionJobTitle.id = :referenceId))
+                             OR (:referenceType = 'POSITION_LEVEL' AND (
+                                companyPositionLevel.id = :referenceId OR departmentPositionLevel.id = :referenceId OR sectionPositionLevel.id = :referenceId)))
+                        AND ((:resolverScope = 'COMPANY' AND (
+                                companyFromCompanyTitle.id = :companyId OR companyFromDepartmentTitle.id = :companyId OR companyFromSectionTitle.id = :companyId))
+                             OR (:resolverScope <> 'COMPANY' AND (
+                                departmentFromDepartmentTitle.id = :departmentId OR departmentFromSectionTitle.id = :departmentId)))
+                        """)
+        List<User> findActiveUsersByPositionReference(
+                        @Param("referenceType") String referenceType,
+                        @Param("referenceId") Long referenceId,
+                        @Param("resolverScope") String resolverScope,
+                        @Param("companyId") Long companyId,
+                        @Param("departmentId") Long departmentId);
 
         @Query("""
                             SELECT DISTINCT up.user.id FROM UserPosition up

@@ -653,6 +653,7 @@ public class DocumentService {
     // =====================================================
     // FETCH ALL
     // =====================================================
+    @Transactional(readOnly = true)
     public ResultPaginationDTO fetchAll(Specification<Document> spec, Pageable pageable) {
         Page<Document> page = repository.findAll(spec, pageable);
         List<Document> docs = page.getContent();
@@ -660,12 +661,13 @@ public class DocumentService {
         // Batch load access + targetCompany cho toàn bộ page — tránh N+1
         List<Long> docIds = docs.stream().map(Document::getId).collect(Collectors.toList());
 
-        Map<Long, List<DocumentAccess>> accessByDocId = accessRepository
-                .findByDocument_IdIn(docIds).stream()
+        Map<Long, List<DocumentAccess>> accessByDocId = (docIds.isEmpty() ? java.util.Collections.<DocumentAccess>emptyList()
+                : accessRepository.findByDocument_IdIn(docIds)).stream()
                 .collect(Collectors.groupingBy(a -> a.getDocument().getId()));
 
-        Map<Long, List<vn.system.app.modules.document.domain.DocumentTargetCompany>> targetByDocId = targetCompanyRepository
-                .findByDocument_IdIn(docIds).stream()
+        Map<Long, List<vn.system.app.modules.document.domain.DocumentTargetCompany>> targetByDocId = (docIds.isEmpty()
+                ? java.util.Collections.<vn.system.app.modules.document.domain.DocumentTargetCompany>emptyList()
+                : targetCompanyRepository.findByDocument_IdIn(docIds)).stream()
                 .collect(Collectors.groupingBy(t -> t.getDocument().getId()));
 
         // Batch load users từ tất cả access records
@@ -958,6 +960,18 @@ public class DocumentService {
     // =====================================================
     public ResDocumentDTO convertToDTO(Document e) {
         ResDocumentDTO dto = new ResDocumentDTO();
+        mapBaseFields(e, dto);
+
+        List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetComps = targetCompanyRepository.findByDocument_Id(e.getId());
+        if (!targetComps.isEmpty()) {
+            dto.setTargetCompanyIds(targetComps.stream().map(vn.system.app.modules.document.domain.DocumentTargetCompany::getCompanyId).collect(Collectors.toList()));
+        }
+        List<DocumentAccess> accesses = accessRepository.findByDocument_Id(e.getId());
+        applyAccessFields(dto, accesses, loadUserNames(accesses.stream().map(DocumentAccess::getUserId).collect(Collectors.toList())));
+        return dto;
+    }
+
+    private void mapBaseFields(Document e, ResDocumentDTO dto) {
         dto.setId(e.getId());
         dto.setDocumentCode(e.getDocumentCode());
         dto.setDocumentName(e.getDocumentName());
@@ -1037,27 +1051,16 @@ public class DocumentService {
         dto.setCreatedBy(e.getCreatedBy());
         dto.setUpdatedBy(e.getUpdatedBy());
         
-        List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetComps = targetCompanyRepository.findByDocument_Id(e.getId());
-        if (!targetComps.isEmpty()) {
-            dto.setTargetCompanyIds(targetComps.stream().map(vn.system.app.modules.document.domain.DocumentTargetCompany::getCompanyId).collect(Collectors.toList()));
-        }
+    }
 
-        List<DocumentAccess> accesses = accessRepository.findByDocument_Id(e.getId());
-        List<String> userIds = accesses.stream()
-                .map(DocumentAccess::getUserId)
-                .collect(Collectors.toList());
-        dto.setUserIds(userIds);
+    private Map<String, String> loadUserNames(List<String> userIds) {
+        if (userIds.isEmpty()) return java.util.Collections.emptyMap();
+        return userRepository.findAllById(userIds).stream().filter(u -> u.getId() != null && u.getName() != null)
+                .collect(Collectors.toMap(User::getId, User::getName, (a, b) -> a));
+    }
 
-        Map<String, String> userNamesMap = new java.util.HashMap<>();
-        if (!userIds.isEmpty()) {
-            List<User> users = userRepository.findAllById(userIds);
-            for (User u : users) {
-                if (u.getId() != null && u.getName() != null) {
-                    userNamesMap.put(u.getId(), u.getName());
-                }
-            }
-        }
-
+    private void applyAccessFields(ResDocumentDTO dto, List<DocumentAccess> accesses, Map<String, String> userNamesMap) {
+        dto.setUserIds(accesses.stream().map(DocumentAccess::getUserId).collect(Collectors.toList()));
         List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
             ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
             ref.setUserId(a.getUserId());
@@ -1068,8 +1071,6 @@ public class DocumentService {
             return ref;
         }).collect(Collectors.toList());
         dto.setAccessDetails(accessDetails);
-
-        return dto;
     }
 
     // Overload dùng cho fetchAll — nhận pre-loaded data để tránh N+1
@@ -1079,24 +1080,9 @@ public class DocumentService {
             List<vn.system.app.modules.document.domain.DocumentTargetCompany> targetComps,
             Map<String, String> userNamesMap) {
 
-        ResDocumentDTO dto = convertToDTO(e); // reuse logic base, rồi override access/target
-
-        // Override access details bằng pre-loaded data
-        List<String> userIds = accesses.stream()
-                .map(DocumentAccess::getUserId)
-                .collect(Collectors.toList());
-        dto.setUserIds(userIds);
-
-        List<ResDocumentDTO.UserAccessRef> accessDetails = accesses.stream().map(a -> {
-            ResDocumentDTO.UserAccessRef ref = new ResDocumentDTO.UserAccessRef();
-            ref.setUserId(a.getUserId());
-            ref.setUserName(userNamesMap.getOrDefault(a.getUserId(), ""));
-            ref.setIsRead(a.getIsRead() != null ? a.getIsRead() : false);
-            ref.setReadAt(a.getReadAt());
-            ref.setAssignedAt(a.getAssignedAt());
-            return ref;
-        }).collect(Collectors.toList());
-        dto.setAccessDetails(accessDetails);
+        ResDocumentDTO dto = new ResDocumentDTO();
+        mapBaseFields(e, dto);
+        applyAccessFields(dto, accesses, userNamesMap);
 
         if (!targetComps.isEmpty()) {
             dto.setTargetCompanyIds(targetComps.stream()

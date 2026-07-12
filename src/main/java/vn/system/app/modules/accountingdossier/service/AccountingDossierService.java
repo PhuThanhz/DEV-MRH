@@ -46,9 +46,14 @@ import vn.system.app.modules.accountingdossier.domain.AccountingDossierDocument;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierDocumentVersion;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierApprovalStep;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierSequence;
+import vn.system.app.modules.accountingdossier.domain.AccountingDossierOutbox;
+import vn.system.app.modules.accountingdossier.repository.AccountingDossierOutboxRepository;
 import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierCategoryMode;
 import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStatus;
 import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStorageStatus;
+import vn.system.app.modules.accountingdossier.domain.enums.ApproverType;
+import vn.system.app.modules.accountingdossier.domain.enums.ApprovalStepStatus;
+import vn.system.app.modules.accountingdossier.domain.enums.WorkflowInstanceStatus;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierSubmitRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentCheckRequest;
@@ -69,8 +74,10 @@ import vn.system.app.modules.accountingdossier.repository.AccountingDossierDocum
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierDocumentVersionRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierApprovalStepRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierRepository;
+import vn.system.app.modules.accountingdossier.repository.AccountingDossierListProjection;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierSequenceRepository;
 import vn.system.app.modules.company.domain.Company;
+
 import vn.system.app.modules.company.repository.CompanyRepository;
 import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
@@ -83,6 +90,8 @@ import vn.system.app.modules.section.repository.SectionRepository;
 
 @Service
 public class AccountingDossierService {
+    private final ThreadLocal<vn.system.app.modules.user.domain.User> bulkActionUser = new ThreadLocal<>();
+    private static final long DEFAULT_APPROVAL_SLA_HOURS = 24;
     private static final Set<String> SUPPORTED_DOCUMENT_TYPES = Set.of(
             "PDF", "EXCEL", "WORD", "PPT", "CSV", "XML", "VIDEO_LINK", "NAS_PATH", "PNG", "JPG", "OTHER");
     private static final Set<String> SUPPORTED_DOCUMENT_CHECK_STATUSES = Set.of(
@@ -105,6 +114,11 @@ public class AccountingDossierService {
     private final vn.system.app.modules.user.repository.UserRepository userRepository;
     private final AccountingDossierApprovalStepRepository approvalStepRepository;
     private final AppProperties appProperties;
+    private final ApproverResolutionService approverResolutionService;
+    private final ApprovalStepGenerationService approvalStepGenerationService;
+    private final DossierAuditService dossierAuditService;
+    private final AccountingDossierOutboxRepository outboxRepository;
+    private final AccountingApprovalDelegationService delegationService;
 
     public AccountingDossierService(
             AccountingDossierRepository repository,
@@ -120,7 +134,12 @@ public class AccountingDossierService {
             AccountingDossierDocumentVersionRepository documentVersionRepository,
             vn.system.app.modules.user.repository.UserRepository userRepository,
             AccountingDossierApprovalStepRepository approvalStepRepository,
-            AppProperties appProperties) {
+            AppProperties appProperties,
+            ApproverResolutionService approverResolutionService,
+            ApprovalStepGenerationService approvalStepGenerationService,
+            DossierAuditService dossierAuditService,
+            AccountingDossierOutboxRepository outboxRepository,
+            AccountingApprovalDelegationService delegationService) {
         this.repository = repository;
         this.companyRepository = companyRepository;
         this.departmentRepository = departmentRepository;
@@ -135,6 +154,25 @@ public class AccountingDossierService {
         this.userRepository = userRepository;
         this.approvalStepRepository = approvalStepRepository;
         this.appProperties = appProperties;
+        this.approverResolutionService = approverResolutionService;
+        this.approvalStepGenerationService = approvalStepGenerationService;
+        this.dossierAuditService = dossierAuditService;
+        this.outboxRepository = outboxRepository;
+        this.delegationService = delegationService;
+    }
+
+    private void writeOutbox(Long dossierId, String eventType, String payloadJson, String idempotencyKey) {
+        try {
+            AccountingDossierOutbox outbox = new AccountingDossierOutbox();
+            outbox.setDossierId(dossierId);
+            outbox.setEventType(eventType);
+            outbox.setIdempotencyKey(idempotencyKey);
+            outbox.setPayload(payloadJson);
+            outbox.setStatus("PENDING");
+            outboxRepository.saveAndFlush(outbox);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new IdInvalidException("Yêu cầu đã được xử lý trước đó (IDEMPOTENT_REJECTED)");
+        }
     }
 
     @Transactional
@@ -151,7 +189,7 @@ public class AccountingDossierService {
 
         AccountingDossier saved = repository.save(entity);
         createTemplateDocumentRows(saved);
-        writeLog(saved, "CREATE_DOSSIER", saved.getDossierCategory() == null
+        dossierAuditService.writeLog(saved, "CREATE_DOSSIER", saved.getDossierCategory() == null
                 ? saved.isSyncCategoryRequested()
                         ? "Tạo bộ chứng từ nháp phi cấu trúc, có đề xuất lưu thành mẫu"
                         : "Tạo bộ chứng từ nháp phi cấu trúc"
@@ -163,6 +201,7 @@ public class AccountingDossierService {
     public ResAccountingDossierDTO update(Long id, AccountingDossierRequest req) {
         AccountingDossier current = fetchById(id);
         validateEditable(current);
+        validateDossierMutator(current);
 
         Company company = resolveCompany(req.getCompanyId());
         Department department = resolveDepartment(req.getDepartmentId(), company.getId());
@@ -174,7 +213,7 @@ public class AccountingDossierService {
 
         AccountingDossier saved = repository.save(current);
         Long newCategoryId = saved.getDossierCategory() == null ? null : saved.getDossierCategory().getId();
-        writeLog(saved, "UPDATE_DOSSIER", !java.util.Objects.equals(oldCategoryId, newCategoryId)
+        dossierAuditService.writeLog(saved, "UPDATE_DOSSIER", !java.util.Objects.equals(oldCategoryId, newCategoryId)
                 ? "Cập nhật bộ chứng từ, đổi mẫu sử dụng"
                 : "Cập nhật bộ chứng từ");
         return convertToDTO(saved);
@@ -184,6 +223,7 @@ public class AccountingDossierService {
     public void delete(Long id) {
         AccountingDossier current = fetchById(id);
         validateEditable(current);
+        validateDossierMutator(current);
         validateCompanyScope(current.getCompany().getId());
         current.setActive(false);
         current.setDeletedAt(Instant.now());
@@ -195,7 +235,7 @@ public class AccountingDossierService {
             item.setDeletedBy(current.getDeletedBy());
             documentItemRepository.save(item);
         });
-        writeLog(current, "SOFT_DELETE_DOSSIER", "Xóa mềm bộ chứng từ", "DOSSIER", current.getId(),
+        dossierAuditService.writeLog(current, "SOFT_DELETE_DOSSIER", "Xóa mềm bộ chứng từ", "DOSSIER", current.getId(),
                 current.getStatus().name(), current.getStatus().name(), null, "active=false");
     }
 
@@ -208,10 +248,12 @@ public class AccountingDossierService {
     public ResAccountingDossierDTO submit(Long id, AccountingDossierSubmitRequest req) {
         AccountingDossier dossier = fetchById(id);
         if (dossier.getStatus() != AccountingDossierStatus.DRAFT
-                && dossier.getStatus() != AccountingDossierStatus.RETURNED) {
+                && dossier.getStatus() != AccountingDossierStatus.RETURNED
+                && dossier.getStatus() != AccountingDossierStatus.REJECTED) {
             throw new PermissionException(
-                    "Chỉ có thể chuyển xử lý bộ chứng từ đang ở trạng thái Nháp hoặc Bị hoàn trả");
+                    "Chỉ có thể chuyển xử lý bộ chứng từ đang ở trạng thái Nháp, Bị hoàn trả hoặc Bị từ chối");
         }
+        validateDossierMutator(dossier);
 
         long docsCount = documentItemRepository.countByDossierIdAndActiveTrue(id);
         if (docsCount == 0) {
@@ -232,11 +274,30 @@ public class AccountingDossierService {
         AccountingDossierStatus oldStatus = dossier.getStatus();
         dossier.setStatus(AccountingDossierStatus.SUBMITTED);
         dossier.setSubmittedAt(Instant.now());
-        generateApprovalSteps(dossier, req);
+        approvalStepGenerationService.generateApprovalSteps(dossier, req);
 
-        AccountingDossier saved = repository.save(dossier);
-        writeLog(saved, "SUBMIT_DOSSIER", "Chuyển bộ chứng từ và cấp mã hệ thống", "DOSSIER", saved.getId(),
+        AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
+        dossierAuditService.writeLog(saved, "SUBMIT_DOSSIER", "Chuyển bộ chứng từ và cấp mã hệ thống", "DOSSIER", saved.getId(),
                 oldStatus.name(), saved.getStatus().name(), null, saved.getDossierCode());
+        writeOutbox(saved.getId(), "SUBMIT", "Dossier submitted: " + saved.getDossierCode(), "DOSSIER_" + saved.getId() + "_SUBMIT_RETURN_" + saved.getReturnCount());
+        return convertToDTO(saved);
+    }
+
+    @Transactional
+    public ResAccountingDossierDTO reopen(Long id) {
+        AccountingDossier dossier = fetchById(id);
+        if (dossier.getStatus() != AccountingDossierStatus.REJECTED) {
+            throw new PermissionException("Chỉ có thể mở lại bộ chứng từ đang ở trạng thái Bị từ chối (REJECTED)");
+        }
+        validateDossierMutator(dossier);
+
+        AccountingDossierStatus oldStatus = dossier.getStatus();
+        dossier.setStatus(AccountingDossierStatus.DRAFT);
+        
+        AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
+        dossierAuditService.writeLog(saved, "REOPEN_DOSSIER", "Mở lại bộ chứng từ bị từ chối thành nháp", "DOSSIER", saved.getId(),
+                oldStatus.name(), saved.getStatus().name(), null, null);
+        
         return convertToDTO(saved);
     }
 
@@ -250,9 +311,20 @@ public class AccountingDossierService {
             throw new PermissionException("Chỉ bộ chứng từ đã chuyển xử lý mới được yêu cầu hoàn chứng từ");
         }
 
+        vn.system.app.modules.user.domain.User currentUser = userRepository
+                .findByEmail(SecurityUtil.getCurrentUserLogin().orElse(""));
+        if (currentUser == null) {
+            throw new IdInvalidException("Không xác định được người yêu cầu hoàn chứng từ");
+        }
+        if (!Objects.equals(dossier.getCreatorId(), currentUser.getId())) {
+            throw new PermissionException("Chỉ người lập hồ sơ mới được yêu cầu hoàn chứng từ");
+        }
+
+        AccountingDossierStatus oldStatus = dossier.getStatus();
         dossier.setStatus(AccountingDossierStatus.RETURN_REQUESTED);
-        AccountingDossier saved = repository.save(dossier);
-        writeLog(saved, "REQUEST_RETURN_DOSSIER",
+
+        AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
+        dossierAuditService.writeLog(saved, "REQUEST_RETURN_DOSSIER",
                 normalizeNote(req == null ? null : req.getNote(), "Người lập yêu cầu hoàn chứng từ"));
         return convertToDTO(saved);
     }
@@ -265,8 +337,19 @@ public class AccountingDossierService {
             throw new PermissionException("Hồ sơ không ở trạng thái phê duyệt");
         }
 
+        List<AccountingDossierDocument> docs = documentItemRepository.findByDossierIdAndActiveTrue(id);
+        if (docs != null) {
+            boolean hasInvalidDoc = docs.stream().anyMatch(doc ->
+                    "INVALID".equalsIgnoreCase(doc.getCheckStatus()) ||
+                    "NEED_SUPPLEMENT".equalsIgnoreCase(doc.getCheckStatus())
+            );
+            if (hasInvalidDoc) {
+                throw new IdInvalidException("Bộ chứng từ có chứng từ không hợp lệ hoặc cần bổ sung");
+            }
+        }
+
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
-        vn.system.app.modules.user.domain.User currentUser = userRepository.findByEmail(email);
+        vn.system.app.modules.user.domain.User currentUser = resolveActionUser(email);
         if (currentUser == null) {
             throw new IdInvalidException("Không xác định được người duyệt");
         }
@@ -274,21 +357,26 @@ public class AccountingDossierService {
         List<AccountingDossierApprovalStep> steps = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(id);
         AccountingDossierApprovalStep currentStep = steps.stream()
-                .filter(step -> step.getStatus().equals("CURRENT"))
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
                 .findFirst()
                 .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
 
         validateApprover(currentStep, currentUser);
 
-        currentStep.setStatus("APPROVED");
+        currentStep.setStatus(ApprovalStepStatus.APPROVED);
         currentStep.setActedAt(Instant.now());
         currentStep.setActionNote(req == null ? null : req.getNote());
-        approvalStepRepository.save(currentStep);
+        
+        try {
+            approvalStepRepository.saveAndFlush(currentStep);
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+            throw new IdInvalidException("Hồ sơ đang được xử lý bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+        }
 
         // Find next step
         AccountingDossierApprovalStep nextStep = null;
         for (AccountingDossierApprovalStep step : steps) {
-            if (step.getStepOrder() > currentStep.getStepOrder() && !step.getStatus().equals("SKIPPED")) {
+            if (step.getStepOrder() > currentStep.getStepOrder() && step.getStatus() != ApprovalStepStatus.SKIPPED) {
                 nextStep = step;
                 break;
             }
@@ -296,20 +384,55 @@ public class AccountingDossierService {
 
         AccountingDossierStatus oldStatus = dossier.getStatus();
         if (nextStep != null) {
-            nextStep.setStatus("CURRENT");
+            nextStep.setStatus(ApprovalStepStatus.CURRENT);
+            nextStep.setDueAt(calculateApprovalDueAt(nextStep));
             approvalStepRepository.save(nextStep);
             dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
-            repository.save(dossier);
-            writeLog(dossier, "APPROVE_DOSSIER_STEP", "Phê duyệt bước: " + currentStep.getStepName(),
+            saveDossierWithOptimisticLockCheck(dossier);
+            dossierAuditService.writeLog(dossier, "APPROVE_DOSSIER_STEP", "Phê duyệt bước: " + currentStep.getStepName(),
                     "APPROVAL_STEP", currentStep.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, currentStep.getStepName());
+            writeOutbox(dossier.getId(), "APPROVE", "Dossier approved by step: " + currentStep.getStepName(), "DOSSIER_" + dossier.getId() + "_APPROVE_STEP_" + currentStep.getId());
         } else {
+            // Final approval!
+            // Check that all required documents are VALID (no PENDING, INVALID, NEED_SUPPLEMENT, NOT_REQUIRED)
+            // and all optional documents are not INVALID or NEED_SUPPLEMENT.
+            if (docs != null && !docs.isEmpty()) {
+                Set<Long> requiredCategoryIds = new java.util.HashSet<>();
+                if (dossier.getCategoryMode() == AccountingDossierCategoryMode.TEMPLATE && dossier.getDossierCategory() != null) {
+                    dossier.getDossierCategory().getCategoryDocuments().stream()
+                            .filter(AccountingDossierCategoryDocument::isRequired)
+                            .filter(cd -> cd.getDocumentCategory() != null)
+                            .forEach(cd -> requiredCategoryIds.add(cd.getDocumentCategory().getId()));
+                }
+                
+                for (AccountingDossierDocument doc : docs) {
+                    boolean isRequired = false;
+                    if (dossier.getCategoryMode() == AccountingDossierCategoryMode.TEMPLATE) {
+                        if (doc.getAccountingCategory() != null && requiredCategoryIds.contains(doc.getAccountingCategory().getId())) {
+                            isRequired = true;
+                        }
+                    }
+                    if (isRequired) {
+                        if (!"VALID".equalsIgnoreCase(doc.getCheckStatus())) {
+                            throw new IdInvalidException("Chứng từ bắt buộc '" + doc.getDocumentName() + "' phải ở trạng thái Hợp lệ (VALID) ở bước duyệt cuối cùng");
+                        }
+                    } else {
+                        if ("INVALID".equalsIgnoreCase(doc.getCheckStatus()) || "NEED_SUPPLEMENT".equalsIgnoreCase(doc.getCheckStatus())) {
+                            throw new IdInvalidException("Chứng từ tùy chọn '" + doc.getDocumentName() + "' không hợp lệ hoặc cần bổ sung");
+                        }
+                    }
+                }
+            }
+
             dossier.setStatus(AccountingDossierStatus.APPROVED);
             dossier.setApprovedAt(Instant.now());
-            repository.save(dossier);
-            writeLog(dossier, "APPROVE_DOSSIER_FINAL", "Phê duyệt cuối cùng bộ chứng từ",
+            saveDossierWithOptimisticLockCheck(dossier);
+            approvalStepGenerationService.completeActiveInstance(id, WorkflowInstanceStatus.COMPLETED);
+            dossierAuditService.writeLog(dossier, "APPROVE_DOSSIER_FINAL", "Phê duyệt cuối cùng bộ chứng từ",
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, dossier.getDossierCode());
+            writeOutbox(dossier.getId(), "APPROVE_FINAL", "Dossier fully approved: " + dossier.getDossierCode(), "DOSSIER_" + dossier.getId() + "_APPROVE_FINAL_STEP_" + currentStep.getId());
             // Phase 3: Auto sync unstructured dossier to category template if requested
             if (dossier.isSyncCategoryRequested()
                     && dossier
@@ -318,6 +441,47 @@ public class AccountingDossierService {
             }
         }
 
+        return convertToDTO(dossier);
+    }
+
+    @Transactional
+    public ResAccountingDossierDTO claim(Long id) {
+        AccountingDossier dossier = fetchById(id);
+        if (dossier.getStatus() != AccountingDossierStatus.SUBMITTED
+                && dossier.getStatus() != AccountingDossierStatus.IN_REVIEW) {
+            throw new PermissionException("Hồ sơ không ở trạng thái có thể nhận xử lý");
+        }
+
+        String email = SecurityUtil.getCurrentUserLogin().orElse("");
+        vn.system.app.modules.user.domain.User currentUser = resolveActionUser(email);
+        if (currentUser == null) {
+            throw new IdInvalidException("Không xác định được người nhận xử lý");
+        }
+
+        AccountingDossierApprovalStep currentStep = approvalStepRepository
+                .findByDossierIdAndStatusAndActiveTrue(id, ApprovalStepStatus.CURRENT)
+                .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
+
+        if (currentStep.getApproverUserId() != null) {
+            throw new IdInvalidException("Bước này đã được giao cho một người xử lý cụ thể");
+        }
+        if (currentStep.getApproverType() == ApproverType.DEPARTMENT_MANAGER) {
+            throw new PermissionException("Bước Trưởng bộ phận phải được gán đích danh, không nhận từ hàng đợi");
+        }
+
+        validateApprover(currentStep, currentUser);
+        currentStep.setApproverUserId(currentUser.getId());
+        try {
+            approvalStepRepository.saveAndFlush(currentStep);
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+            throw new IdInvalidException("Bước phê duyệt đang được nhận bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+        }
+
+        dossierAuditService.writeLog(dossier, "CLAIM_APPROVAL_STEP",
+                "Nhận xử lý bước: " + currentStep.getStepName(),
+                "APPROVAL_STEP", currentStep.getId(), null, currentUser.getId(), null, null);
+        writeOutbox(dossier.getId(), "CLAIM", "Approval step claimed: " + currentStep.getStepName(),
+                "DOSSIER_" + dossier.getId() + "_CLAIM_STEP_" + currentStep.getId());
         return convertToDTO(dossier);
     }
 
@@ -334,7 +498,7 @@ public class AccountingDossierService {
         }
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
-        vn.system.app.modules.user.domain.User currentUser = userRepository.findByEmail(email);
+        vn.system.app.modules.user.domain.User currentUser = resolveActionUser(email);
         if (currentUser == null) {
             throw new IdInvalidException("Không xác định được người thao tác");
         }
@@ -342,24 +506,31 @@ public class AccountingDossierService {
         List<AccountingDossierApprovalStep> steps = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(id);
         AccountingDossierApprovalStep currentStep = steps.stream()
-                .filter(step -> step.getStatus().equals("CURRENT"))
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
                 .findFirst()
                 .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
 
         validateApprover(currentStep, currentUser);
 
-        currentStep.setStatus("REJECTED");
+        currentStep.setStatus(ApprovalStepStatus.REJECTED);
         currentStep.setActedAt(Instant.now());
         currentStep.setActionNote(req.getNote());
-        approvalStepRepository.save(currentStep);
+        
+        try {
+            approvalStepRepository.saveAndFlush(currentStep);
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+            throw new IdInvalidException("Hồ sơ đang được xử lý bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+        }
 
         AccountingDossierStatus oldStatus = dossier.getStatus();
         dossier.setStatus(AccountingDossierStatus.REJECTED);
-        repository.save(dossier);
+        saveDossierWithOptimisticLockCheck(dossier);
+        approvalStepGenerationService.completeActiveInstance(id, WorkflowInstanceStatus.REJECTED);
 
-        writeLog(dossier, "REJECT_DOSSIER", "Từ chối phê duyệt bộ chứng từ: " + req.getNote(),
+        dossierAuditService.writeLog(dossier, "REJECT_DOSSIER", "Từ chối phê duyệt bộ chứng từ: " + req.getNote(),
                 "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                 null, req.getNote());
+        writeOutbox(dossier.getId(), "REJECT", "Dossier rejected with reason: " + req.getNote(), "DOSSIER_" + dossier.getId() + "_REJECT_STEP_" + currentStep.getId());
 
         return convertToDTO(dossier);
     }
@@ -378,34 +549,41 @@ public class AccountingDossierService {
         }
 
         vn.system.app.modules.user.domain.User currentUser = userRepository.findByEmail(SecurityUtil.getCurrentUserLogin().orElse(""));
-        if (currentUser != null && currentUser.getRole() != null) {
-            String roleName = currentUser.getRole().getName().toUpperCase();
-            if (!"SUPER_ADMIN".equals(roleName) && !"CHIEF_ACCOUNTANT".equals(roleName)) {
-                throw new PermissionException("Chỉ Kế toán trưởng hoặc Super Admin mới được quyền chấm dứt");
-            }
+        if (currentUser == null || currentUser.getRole() == null) {
+            throw new PermissionException("Không xác định được quyền chấm dứt bộ chứng từ");
+        }
+        String roleName = currentUser.getRole().getName().toUpperCase();
+        if (!"SUPER_ADMIN".equals(roleName) && !"CHIEF_ACCOUNTANT".equals(roleName) && !"KETOANTRUONG".equals(roleName)) {
+            throw new PermissionException("Chỉ Kế toán trưởng hoặc Super Admin mới được quyền chấm dứt");
         }
 
         AccountingDossierStatus oldStatus = dossier.getStatus();
         dossier.setStatus(AccountingDossierStatus.TERMINATED);
         dossier.setTerminatedAt(Instant.now());
-        repository.save(dossier);
+        saveDossierWithOptimisticLockCheck(dossier);
+        approvalStepGenerationService.completeActiveInstance(id, WorkflowInstanceStatus.CANCELLED);
 
         // Terminate current step if exists
         List<AccountingDossierApprovalStep> steps = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(id);
         steps.stream()
-                .filter(step -> step.getStatus().equals("CURRENT"))
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
                 .findFirst()
                 .ifPresent(step -> {
-                    step.setStatus("REJECTED");
+                    step.setStatus(ApprovalStepStatus.REJECTED);
                     step.setActedAt(Instant.now());
                     step.setActionNote("[CHẤM DỨT] " + req.getNote());
-                    approvalStepRepository.save(step);
+                    try {
+                        approvalStepRepository.saveAndFlush(step);
+                    } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                        throw new IdInvalidException("Hồ sơ đang được xử lý bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+                    }
                 });
 
-        writeLog(dossier, "TERMINATE_DOSSIER", "Chấm dứt bộ chứng từ: " + req.getNote(),
+        dossierAuditService.writeLog(dossier, "TERMINATE_DOSSIER", "Chấm dứt bộ chứng từ: " + req.getNote(),
                 "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                 null, req.getNote());
+        writeOutbox(dossier.getId(), "TERMINATE", "Dossier terminated with reason: " + req.getNote(), "DOSSIER_" + dossier.getId() + "_TERMINATE");
 
         return convertToDTO(dossier);
     }
@@ -426,7 +604,7 @@ public class AccountingDossierService {
         List<AccountingDossierApprovalStep> steps = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(id);
         AccountingDossierApprovalStep currentStep = steps.stream()
-                .filter(step -> step.getStatus().equals("CURRENT"))
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
                 .findFirst()
                 .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
 
@@ -435,27 +613,39 @@ public class AccountingDossierService {
         AccountingDossierStatus oldStatus = dossier.getStatus();
 
         if ("ACCEPT".equalsIgnoreCase(action)) {
+            if (currentStep.getApproverType() == ApproverType.DIRECTOR) {
+                if (req == null || req.getNote() == null || req.getNote().trim().isEmpty()) {
+                    throw new IdInvalidException("Vui lòng nhập lý do hoàn trả tại bước Giám đốc");
+                }
+            }
             dossier.setStatus(AccountingDossierStatus.RETURNED);
             dossier.setReturnCount(dossier.getReturnCount() + 1);
-            repository.save(dossier);
+            saveDossierWithOptimisticLockCheck(dossier);
 
-            currentStep.setStatus("RETURNED");
+            currentStep.setStatus(ApprovalStepStatus.RETURNED);
             currentStep.setActedAt(Instant.now());
             currentStep
                     .setActionNote(normalizeNote(req == null ? null : req.getNote(), "Chấp nhận hoàn trả để sửa đổi"));
-            approvalStepRepository.save(currentStep);
+            
+            try {
+                approvalStepRepository.saveAndFlush(currentStep);
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                throw new IdInvalidException("Hồ sơ đang được xử lý bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+            }
 
-            writeLog(dossier, "ACCEPT_RETURN_DOSSIER", "Chấp nhận hoàn trả bộ chứng từ: " + currentStep.getActionNote(),
+            dossierAuditService.writeLog(dossier, "ACCEPT_RETURN_DOSSIER", "Chấp nhận hoàn trả bộ chứng từ: " + currentStep.getActionNote(),
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     String.valueOf(dossier.getReturnCount() - 1), String.valueOf(dossier.getReturnCount()));
+            writeOutbox(dossier.getId(), "RETURN", "Dossier returned with reason: " + currentStep.getActionNote(), "DOSSIER_" + dossier.getId() + "_RETURN_STEP_" + currentStep.getId());
         } else if ("REJECT".equalsIgnoreCase(action)) {
             dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
-            repository.save(dossier);
+            saveDossierWithOptimisticLockCheck(dossier);
 
-            writeLog(dossier, "REJECT_RETURN_DOSSIER",
+            dossierAuditService.writeLog(dossier, "REJECT_RETURN_DOSSIER",
                     "Từ chối hoàn trả bộ chứng từ: " + (req == null ? "" : req.getNote()),
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, req == null ? null : req.getNote());
+            writeOutbox(dossier.getId(), "REJECT_RETURN", "Rejected return with reason: " + (req == null ? "" : req.getNote()), "DOSSIER_" + dossier.getId() + "_REJECT_RETURN_" + currentStep.getId());
         } else {
             throw new IdInvalidException("Hành động không hợp lệ: ACCEPT hoặc REJECT");
         }
@@ -463,58 +653,92 @@ public class AccountingDossierService {
         return convertToDTO(dossier);
     }
 
+    @Transactional(readOnly = true)
     public List<ResAccountingDossierApprovalStepDTO> getApprovalSteps(Long dossierId) {
+        fetchById(dossierId);
         List<AccountingDossierApprovalStep> steps = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(dossierId);
-        return steps.stream().map(this::convertToStepDTO).collect(Collectors.toList());
+        Set<String> approverIds = steps.stream().map(AccountingDossierApprovalStep::getApproverUserId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<String, String> approverNames = approverIds.isEmpty() ? Map.of() : userRepository.findAllById(approverIds).stream()
+                .collect(Collectors.toMap(vn.system.app.modules.user.domain.User::getId, vn.system.app.modules.user.domain.User::getName, (a, b) -> a));
+        return steps.stream().map(step -> convertToStepDTO(step, approverNames)).collect(Collectors.toList());
     }
 
-    private ResAccountingDossierApprovalStepDTO convertToStepDTO(AccountingDossierApprovalStep entity) {
+    private ResAccountingDossierApprovalStepDTO convertToStepDTO(AccountingDossierApprovalStep entity, Map<String, String> approverNames) {
         ResAccountingDossierApprovalStepDTO dto = new ResAccountingDossierApprovalStepDTO();
         dto.setId(entity.getId());
         dto.setDossierId(entity.getDossier().getId());
         dto.setStepOrder(entity.getStepOrder());
         dto.setStepName(entity.getStepName());
-        dto.setApproverType(entity.getApproverType());
+        dto.setApproverType(entity.getApproverType() == null ? null : entity.getApproverType().name());
         dto.setApproverUserId(entity.getApproverUserId());
-        dto.setStatus(entity.getStatus());
+        dto.setStatus(entity.getStatus() == null ? null : entity.getStatus().name());
         dto.setActionNote(entity.getActionNote());
         dto.setActedAt(entity.getActedAt());
         dto.setCreatedAt(entity.getCreatedAt());
 
-        if (entity.getApproverUserId() != null) {
-            vn.system.app.modules.user.domain.User approver = userRepository.findById(entity.getApproverUserId())
-                    .orElse(null);
-            if (approver != null) {
-                dto.setApproverName(approver.getName());
-            }
-        }
+        dto.setApproverName(approverNames.get(entity.getApproverUserId()));
         return dto;
     }
 
     private void validateApprover(AccountingDossierApprovalStep step, vn.system.app.modules.user.domain.User user) {
+        String dossierId = step.getDossier() != null ? step.getDossier().getCreatorId() : null;
+        if (dossierId != null && user.getId().equals(dossierId)) {
+            throw new PermissionException("Bạn không thể tự phê duyệt bước này trong hồ sơ do chính mình lập (SELF_APPROVAL_BLOCKED)");
+        }
+
         if (user.getRole() != null && user.getRole().getName().equals("SUPER_ADMIN")) {
+            if (step.getApproverType() == ApproverType.DIRECTOR) {
+                throw new PermissionException("SUPER_ADMIN không được duyệt thay bước Giám đốc. Vui lòng sử dụng chức năng Emergency Reassign.");
+            }
             return;
         }
+
         if (step.getApproverUserId() != null) {
-            if (!step.getApproverUserId().equals(user.getId())) {
+            boolean directAssignee = step.getApproverUserId().equals(user.getId());
+            boolean delegatedAssignee = step.isAllowDelegation() && delegationService.canActAsDelegate(step.getApproverUserId(), user.getId(), step.getDossier());
+            if (!directAssignee && !delegatedAssignee) {
                 throw new PermissionException("Bạn không có quyền xử lý bước phê duyệt này");
             }
         } else {
+            if (step.getEligibleApproverIds() != null && !step.getEligibleApproverIds().isBlank()) {
+                boolean eligible = java.util.Arrays.stream(step.getEligibleApproverIds().split(","))
+                        .anyMatch(user.getId()::equals);
+                if (!eligible) {
+                    throw new PermissionException("Bạn không thuộc hàng đợi người duyệt phù hợp của bước này");
+                }
+                return;
+            }
             String roleName = user.getRole() == null ? "" : user.getRole().getName().toUpperCase();
-            if (step.getApproverType().equals("ACCOUNTANT")) {
+            if (step.getApproverType() == ApproverType.ACCOUNTANT) {
                 if (!roleName.contains("ACCOUNTANT") && !roleName.contains("KETOAN") && !roleName.contains("KẾ TOÁN")) {
                     throw new PermissionException("Chỉ kế toán mới có quyền xử lý bước này");
                 }
-            } else if (step.getApproverType().equals("CHIEF_ACCOUNTANT")) {
+            } else if (step.getApproverType() == ApproverType.CHIEF_ACCOUNTANT) {
                 if (!roleName.contains("CHIEF_ACCOUNTANT") && !roleName.contains("KETOANTRUONG")
                         && !roleName.contains("KẾ TOÁN TRƯỞNG")) {
                     throw new PermissionException("Chỉ kế toán trưởng mới có quyền xử lý bước này");
                 }
-            } else if (step.getApproverType().equals("DEPARTMENT_MANAGER")) {
+            } else if (step.getApproverType() == ApproverType.DEPARTMENT_MANAGER) {
                 throw new PermissionException("Bạn không có quyền xử lý bước phê duyệt này");
+            } else if (step.getApproverType() == ApproverType.DIRECTOR) {
+                boolean hasDirectorPermission = user.getRole() != null && user.getRole().getPermissions().stream()
+                        .anyMatch(p -> "Phê duyệt bộ chứng từ kế toán - Giám đốc".equals(p.getName()));
+                if (!hasDirectorPermission) {
+                    throw new PermissionException("Chỉ Giám đốc mới có quyền xử lý bước này");
+                }
+            } else {
+                throw new PermissionException("Bạn không có quyền xử lý bước phê duyệt này (CUSTOM_STEP_NO_APPROVERS)");
             }
         }
+    }
+
+    private Instant calculateApprovalDueAt(AccountingDossierApprovalStep step) {
+        int slaMinutes = step.getSlaMinutes() != null && step.getSlaMinutes() > 0
+                ? step.getSlaMinutes()
+                : (int) (DEFAULT_APPROVAL_SLA_HOURS * 60);
+        return Instant.now().plusSeconds(slaMinutes * 60L);
     }
 
     private void validateDocumentReviewer(AccountingDossier dossier) {
@@ -530,29 +754,113 @@ public class AccountingDossierService {
         AccountingDossierApprovalStep currentStep = approvalStepRepository
                 .findByDossierIdAndActiveTrueOrderByStepOrderAsc(dossier.getId())
                 .stream()
-                .filter(step -> "CURRENT".equals(step.getStatus()))
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
                 .findFirst()
                 .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
 
-        if (!"ACCOUNTANT".equals(currentStep.getApproverType())) {
+        if (currentStep.getApproverType() != ApproverType.ACCOUNTANT) {
             throw new PermissionException("Chỉ bước kế toán kiểm tra mới được kiểm tra chứng từ con");
         }
         validateApprover(currentStep, currentUser);
     }
 
     private void validateDocumentMutator(AccountingDossier dossier) {
+        validateDossierMutator(dossier);
+    }
+
+    /** Draft and returned dossiers may only be changed by their creator or an administrator. */
+    private void validateDossierMutator(AccountingDossier dossier) {
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         vn.system.app.modules.user.domain.User currentUser = userRepository.findByEmail(email);
         if (currentUser == null) {
-            throw new IdInvalidException("Không xác định được người thao tác chứng từ");
+            throw new IdInvalidException("Không xác định được người thao tác bộ chứng từ");
         }
-        if (currentUser.getRole() != null && "SUPER_ADMIN".equals(currentUser.getRole().getName())) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if ((scope != null && (scope.isSuperAdmin() || scope.isAdminLevel()))
+                || (currentUser.getRole() != null && "SUPER_ADMIN".equals(currentUser.getRole().getName()))) {
             return;
         }
-        if (dossier.getCreatorId() != null && dossier.getCreatorId().equals(currentUser.getId())) {
+        if (dossier.getCreatorId() == null) {
+            throw new PermissionException("Hồ sơ cũ không có thông tin người lập, chỉ Quản trị viên mới được phép thao tác");
+        }
+        if (dossier.getCreatorId().equals(currentUser.getId())) {
             return;
         }
-        throw new PermissionException("Chỉ người lập hồ sơ mới được thêm chứng từ vào bộ này");
+        throw new PermissionException("Chỉ người lập hồ sơ mới được thay đổi hoặc chuyển xử lý bộ này");
+    }
+
+    private void assertCanReadDossier(AccountingDossier dossier, vn.system.app.modules.user.domain.User currentUser) {
+        // Scope check first — superAdmin/adminLevel bypasses all further checks
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope != null && (scope.isSuperAdmin() || scope.isAdminLevel())) {
+            return;
+        }
+
+        if (currentUser == null) {
+            throw new PermissionException("Chưa đăng nhập");
+        }
+        if (currentUser.getRole() != null && "SUPER_ADMIN".equalsIgnoreCase(currentUser.getRole().getName())) {
+            return;
+        }
+
+        // 1. Creator always has read access
+        if (currentUser.getId().equals(dossier.getCreatorId())) {
+            return;
+        }
+
+        // 2. Anyone involved in the approval flow (approver, eligible, or delegate) has read access
+        List<AccountingDossierApprovalStep> steps = approvalStepRepository.findByDossierIdAndActiveTrue(dossier.getId());
+        for (AccountingDossierApprovalStep step : steps) {
+            if (currentUser.getId().equals(step.getApproverUserId())) {
+                return;
+            }
+            if (step.getEligibleApproverIds() != null && !step.getEligibleApproverIds().isBlank()) {
+                boolean inEligible = java.util.Arrays.stream(step.getEligibleApproverIds().split(","))
+                        .anyMatch(currentUser.getId()::equals);
+                if (inEligible) {
+                    return;
+                }
+            }
+            if (step.getApproverUserId() != null && step.isAllowDelegation() 
+                    && delegationService.canActAsDelegate(step.getApproverUserId(), currentUser.getId(), dossier)) {
+                return;
+            }
+        }
+
+        // 3. Role-based scope restrictions
+        if (currentUser.getRole() != null) {
+            String roleName = currentUser.getRole().getName();
+            if ("EMPLOYEE".equalsIgnoreCase(roleName)) {
+                throw new PermissionException("Bạn không có quyền xem chi tiết bộ chứng từ này");
+            } else if ("DEPARTMENT_MANAGER".equalsIgnoreCase(roleName) || "ADMIN_SUB_3".equalsIgnoreCase(roleName)) {
+                if (scope != null && scope.departmentIds() != null && scope.departmentIds().contains(dossier.getDepartment().getId())) {
+                    return;
+                }
+                if (scope == null) {
+                    return; // no scope context = allow (consistent with validateCompanyScope null-scope behavior)
+                }
+                throw new PermissionException("Bộ chứng từ không thuộc phạm vi bộ phận được phép truy cập của bạn");
+            } else {
+                // For all other roles (DIRECTOR, CHIEF_ACCOUNTANT, etc.) fall back to company-scope check
+                validateCompanyScope(dossier.getCompany().getId());
+            }
+        }
+        validateCompanyScope(dossier.getCompany().getId());
+    }
+
+    private Long resolveAndValidateReportCompanyId(Long companyId) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return companyId;
+        }
+        if (companyId != null) {
+            validateCompanyScope(companyId);
+            return companyId;
+        }
+        if (scope.companyIds() != null && !scope.companyIds().isEmpty()) {
+            return scope.companyIds().iterator().next();
+        }
+        throw new PermissionException("Không xác định được phạm vi công ty để truy vấn báo cáo");
     }
 
     public AccountingDossier fetchById(Long id) {
@@ -561,10 +869,27 @@ public class AccountingDossierService {
         if (!dossier.isActive()) {
             throw new IdInvalidException("Bộ chứng từ kế toán đã bị xóa");
         }
-        validateCompanyScope(dossier.getCompany().getId());
+        
+        String email = SecurityUtil.getCurrentUserLogin().orElse(null);
+        if (email != null) {
+            vn.system.app.modules.user.domain.User currentUser = resolveActionUser(email);
+            assertCanReadDossier(dossier, currentUser);
+        } else {
+            throw new PermissionException("Chưa đăng nhập");
+        }
+        
         return dossier;
     }
 
+    private AccountingDossier saveDossierWithOptimisticLockCheck(AccountingDossier dossier) {
+        try {
+            return repository.saveAndFlush(dossier);
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+            throw new IdInvalidException("Hồ sơ đang được xử lý bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+        }
+    }
+
+    @Transactional(readOnly = true)
     public ResAccountingDossierDTO getOne(Long id) {
         return convertToDTO(fetchById(id));
     }
@@ -590,11 +915,12 @@ public class AccountingDossierService {
         return fetchAll(spec, pageable, null);
     }
 
+    @Transactional(readOnly = true)
     public ResultPaginationDTO fetchAll(
             Specification<AccountingDossier> spec,
             Pageable pageable,
             String approverUserId) {
-        return fetchAll(spec, pageable, approverUserId, null, null, null, null, null, null, null);
+        return fetchAll(spec, pageable, approverUserId, null, null, null, null, null, null, null, null);
     }
 
     public ResultPaginationDTO fetchAll(
@@ -605,6 +931,7 @@ public class AccountingDossierService {
             Integer retentionYear,
             Integer retentionMonth,
             Integer retentionDay,
+            String creatorId,
             Long companyId,
             Long departmentId,
             Long dossierCategoryId) {
@@ -642,6 +969,7 @@ public class AccountingDossierService {
                 retentionYear,
                 retentionMonth,
                 retentionDay,
+                creatorId,
                 companyId,
                 departmentId,
                 dossierCategoryId);
@@ -652,7 +980,7 @@ public class AccountingDossierService {
         if (storageSpec != null) {
             finalSpec = finalSpec.and(storageSpec);
         }
-        Page<AccountingDossier> page = repository.findAll(finalSpec, pageable);
+        Page<AccountingDossierListProjection> page = repository.findBy(finalSpec, q -> q.as(AccountingDossierListProjection.class).page(pageable));
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
@@ -661,7 +989,7 @@ public class AccountingDossierService {
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
-        rs.setResult(page.getContent().stream().map(this::convertToDTO).collect(Collectors.toList()));
+        rs.setResult(page.getContent().stream().map(this::convertToListDTO).collect(Collectors.toList()));
         return rs;
     }
 
@@ -670,6 +998,7 @@ public class AccountingDossierService {
             Integer retentionYear,
             Integer retentionMonth,
             Integer retentionDay,
+            String creatorId,
             Long companyId,
             Long departmentId,
             Long dossierCategoryId) {
@@ -696,6 +1025,9 @@ public class AccountingDossierService {
                 Instant[] range = buildRetentionRange(retentionYear, retentionMonth, retentionDay);
                 predicates.add(cb.greaterThanOrEqualTo(root.get("retentionUntil"), range[0]));
                 predicates.add(cb.lessThan(root.get("retentionUntil"), range[1]));
+            }
+            if (creatorId != null && !creatorId.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("creatorId"), creatorId.trim()));
             }
             if (predicates.isEmpty()) {
                 return cb.conjunction();
@@ -725,6 +1057,7 @@ public class AccountingDossierService {
         }
     }
 
+    @Transactional(readOnly = true)
     public ResultPaginationDTO fetchPendingMyApproval(Pageable pageable) {
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
         vn.system.app.modules.user.domain.User currentUser = userRepository.findByEmail(email);
@@ -740,14 +1073,14 @@ public class AccountingDossierService {
             return rs;
         }
 
-        List<String> approverTypes = new ArrayList<>();
+        List<ApproverType> approverTypes = new ArrayList<>();
         String roleName = currentUser.getRole() == null ? "" : currentUser.getRole().getName().toUpperCase();
         if (roleName.contains("ACCOUNTANT") || roleName.contains("KETOAN") || roleName.contains("KẾ TOÁN")) {
-            approverTypes.add("ACCOUNTANT");
+            approverTypes.add(ApproverType.ACCOUNTANT);
         }
         if (roleName.contains("CHIEF_ACCOUNTANT") || roleName.contains("KETOANTRUONG")
                 || roleName.contains("KẾ TOÁN TRƯỞNG")) {
-            approverTypes.add("CHIEF_ACCOUNTANT");
+            approverTypes.add(ApproverType.CHIEF_ACCOUNTANT);
         }
         Specification<AccountingDossier> pendingSpec = buildPendingMyApprovalSpec(currentUser.getId(), approverTypes);
         return fetchAll(pendingSpec, pageable);
@@ -831,7 +1164,7 @@ public class AccountingDossierService {
                 now);
         for (AccountingDossier dossier : expiredDossiers) {
             dossier.setStorageStatus(AccountingDossierStorageStatus.EXPIRED);
-            writeLog(dossier, "RETENTION_EXPIRED",
+            dossierAuditService.writeLog(dossier, "RETENTION_EXPIRED",
                     "Tự động chuyển trạng thái hết thời hạn lưu trữ",
                     "STORAGE", dossier.getId(),
                     AccountingDossierStorageStatus.IN_RETENTION.name(),
@@ -841,6 +1174,23 @@ public class AccountingDossierService {
         }
         repository.saveAll(expiredDossiers);
         return expiredDossiers.size();
+    }
+
+    @Transactional
+    public int refreshExpiredRetentionStatusesByUser() {
+        String email = SecurityUtil.getCurrentUserLogin().orElse("");
+        vn.system.app.modules.user.domain.User actor = userRepository.findByEmail(email);
+        if (actor == null) {
+            throw new IdInvalidException("Không xác định được người thao tác");
+        }
+        boolean hasPermission = actor.getRole() != null && (
+            "SUPER_ADMIN".equals(actor.getRole().getName()) || 
+            (actor.getRole().getPermissions() != null && actor.getRole().getPermissions().stream().anyMatch(p -> "Cập nhật trạng thái hết thời hạn lưu trữ".equals(p.getName())))
+        );
+        if (!hasPermission) {
+            throw new PermissionException("Bạn không có quyền thực hiện chức năng cập nhật trạng thái hết thời hạn lưu trữ");
+        }
+        return refreshExpiredRetentionStatuses();
     }
 
     @Transactional
@@ -854,8 +1204,8 @@ public class AccountingDossierService {
         AccountingDossierStorageStatus oldStorageStatus = dossier.getStorageStatus();
         dossier.setStatus(AccountingDossierStatus.ARCHIVED);
         dossier.setStorageStatus(AccountingDossierStorageStatus.ARCHIVED);
-        AccountingDossier saved = repository.save(dossier);
-        writeLog(saved, "ARCHIVE_DOSSIER",
+        AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
+        dossierAuditService.writeLog(saved, "ARCHIVE_DOSSIER",
                 normalizeNote(req == null ? null : req.getNote(), "Đưa bộ chứng từ vào lưu trữ"),
                 "STORAGE", saved.getId(),
                 oldStorageStatus == null ? null : oldStorageStatus.name(),
@@ -865,26 +1215,46 @@ public class AccountingDossierService {
         return convertToDTO(saved);
     }
 
-    public ResAccountingDossierStorageSummaryDTO getStorageSummary() {
+    @Transactional(readOnly = true)
+    public ResAccountingDossierStorageSummaryDTO getStorageSummary(Long companyId) {
+        companyId = resolveAndValidateReportCompanyId(companyId);
         ResAccountingDossierStorageSummaryDTO dto = new ResAccountingDossierStorageSummaryDTO();
-        dto.setTotal(repository.countByActiveTrue());
-        dto.setInRetention(repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.IN_RETENTION));
-        dto.setExpired(repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.EXPIRED));
-        dto.setArchived(repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.ARCHIVED));
         Instant now = Instant.now();
-        dto.setExpiringSoon(repository.countByActiveTrueAndRetentionUntilBetween(
-                now,
-                LocalDate.now().plusDays(30).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant()));
-        dto.setByStatus(toCountMap(repository.countActiveGroupByStatus()));
-        dto.setByStorageStatus(toCountMap(repository.countActiveGroupByStorageStatus()));
+        Object[] counts = repository.getStorageSummaryCounts(companyId, now, LocalDate.now().plusDays(30).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant());
+        if (counts == null) {
+            // Keeps legacy mocked repositories/tests compatible; production repository returns the aggregate row.
+            dto.setTotal(companyId == null ? repository.countByActiveTrue() : repository.countByActiveTrueAndCompanyId(companyId));
+            dto.setInRetention(companyId == null ? repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.IN_RETENTION) : repository.countByActiveTrueAndStorageStatusAndCompanyId(AccountingDossierStorageStatus.IN_RETENTION, companyId));
+            dto.setExpired(companyId == null ? repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.EXPIRED) : repository.countByActiveTrueAndStorageStatusAndCompanyId(AccountingDossierStorageStatus.EXPIRED, companyId));
+            dto.setArchived(companyId == null ? repository.countByActiveTrueAndStorageStatus(AccountingDossierStorageStatus.ARCHIVED) : repository.countByActiveTrueAndStorageStatusAndCompanyId(AccountingDossierStorageStatus.ARCHIVED, companyId));
+            dto.setExpiringSoon(companyId == null ? repository.countByActiveTrueAndRetentionUntilBetween(now, LocalDate.now().plusDays(30).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant()) : repository.countByActiveTrueAndRetentionUntilBetweenAndCompanyId(now, LocalDate.now().plusDays(30).atTime(LocalTime.MAX).atZone(ZoneId.systemDefault()).toInstant(), companyId));
+            dto.setByStatus(toCountMap(repository.countActiveGroupByStatus(companyId))); dto.setByStorageStatus(toCountMap(repository.countActiveGroupByStorageStatus(companyId)));
+            dto.setPendingApproval(dto.getByStatus().getOrDefault(AccountingDossierStatus.SUBMITTED.name(), 0L) + dto.getByStatus().getOrDefault(AccountingDossierStatus.IN_REVIEW.name(), 0L) + dto.getByStatus().getOrDefault(AccountingDossierStatus.RETURN_REQUESTED.name(), 0L));
+            return dto;
+        }
+        // Hibernate / MySQL dialect may wrap the single aggregate row as Object[]{ Object[] row }
+        // Unbox one level if the first element is itself an array.
+        if (counts[0] instanceof Object[] nested) {
+            counts = nested;
+        }
+        dto.setTotal(numberAt(counts, 0)); dto.setInRetention(numberAt(counts, 1)); dto.setExpired(numberAt(counts, 2)); dto.setArchived(numberAt(counts, 3)); dto.setExpiringSoon(numberAt(counts, 4));
+        Map<String, Long> byStatus = new java.util.LinkedHashMap<>(); Map<String, Long> byStorage = new java.util.LinkedHashMap<>();
+        for (Object[] row : repository.getStorageSummaryGroups(companyId)) {
+            ("STATUS".equals(row[0]) ? byStatus : byStorage).put(String.valueOf(row[1]), ((Number) row[2]).longValue());
+        }
+        dto.setByStatus(byStatus); dto.setByStorageStatus(byStorage);
         dto.setPendingApproval(dto.getByStatus().getOrDefault(AccountingDossierStatus.SUBMITTED.name(), 0L)
                 + dto.getByStatus().getOrDefault(AccountingDossierStatus.IN_REVIEW.name(), 0L)
                 + dto.getByStatus().getOrDefault(AccountingDossierStatus.RETURN_REQUESTED.name(), 0L));
         return dto;
     }
 
-    public List<ResAccountingDossierReportRowDTO> reportByStatus() {
-        return repository.countActiveGroupByStatus().stream()
+    private long numberAt(Object[] values, int index) { return values[index] == null ? 0L : ((Number) values[index]).longValue(); }
+
+    @Transactional(readOnly = true)
+    public List<ResAccountingDossierReportRowDTO> reportByStatus(Long companyId) {
+        companyId = resolveAndValidateReportCompanyId(companyId);
+        return repository.countActiveGroupByStatus(companyId).stream()
                 .map(row -> new ResAccountingDossierReportRowDTO(
                         String.valueOf(row[0]),
                         String.valueOf(row[0]),
@@ -892,8 +1262,10 @@ public class AccountingDossierService {
                 .collect(Collectors.toList());
     }
 
-    public List<ResAccountingDossierReportRowDTO> reportByDepartment() {
-        return repository.countActiveGroupByDepartment().stream()
+    @Transactional(readOnly = true)
+    public List<ResAccountingDossierReportRowDTO> reportByDepartment(Long companyId) {
+        companyId = resolveAndValidateReportCompanyId(companyId);
+        return repository.countActiveGroupByDepartment(companyId).stream()
                 .map(row -> new ResAccountingDossierReportRowDTO(
                         String.valueOf(row[0]),
                         row[1] == null ? "Chưa phân phòng ban" : String.valueOf(row[1]),
@@ -901,8 +1273,10 @@ public class AccountingDossierService {
                 .collect(Collectors.toList());
     }
 
-    public List<ResAccountingDossierReportRowDTO> reportByCategory() {
-        return repository.countActiveGroupByCategory().stream()
+    @Transactional(readOnly = true)
+    public List<ResAccountingDossierReportRowDTO> reportByCategory(Long companyId) {
+        companyId = resolveAndValidateReportCompanyId(companyId);
+        return repository.countActiveGroupByCategory(companyId).stream()
                 .map(row -> {
                     String key = row[0] == null ? "UNSTRUCTURED" : String.valueOf(row[0]);
                     String label = row[1] != null ? String.valueOf(row[1])
@@ -913,8 +1287,10 @@ public class AccountingDossierService {
                 .collect(Collectors.toList());
     }
 
-    public List<ResAccountingDossierReportRowDTO> pendingByRole() {
-        return approvalStepRepository.countCurrentStepsGroupByApproverType().stream()
+    @Transactional(readOnly = true)
+    public List<ResAccountingDossierReportRowDTO> pendingByRole(Long companyId) {
+        companyId = resolveAndValidateReportCompanyId(companyId);
+        return approvalStepRepository.countCurrentStepsGroupByApproverType(companyId).stream()
                 .map(row -> new ResAccountingDossierReportRowDTO(
                         String.valueOf(row[0]),
                         String.valueOf(row[0]),
@@ -943,18 +1319,18 @@ public class AccountingDossierService {
             subquery.where(
                     cb.equal(stepRoot.get("dossier").get("id"), root.get("id")),
                     cb.isTrue(stepRoot.get("active")),
-                    cb.equal(stepRoot.get("status"), "CURRENT"),
+                    cb.equal(stepRoot.get("status"), ApprovalStepStatus.CURRENT),
                     cb.equal(stepRoot.get("approverUserId"), approverUserId.trim()));
             return cb.exists(subquery);
         };
     }
 
-    private Specification<AccountingDossier> buildPendingMyApprovalSpec(String userId, List<String> approverTypes) {
+    private Specification<AccountingDossier> buildPendingMyApprovalSpec(String userId, List<ApproverType> approverTypes) {
         if (userId == null || userId.trim().isEmpty()) {
             return (root, query, cb) -> cb.disjunction();
         }
 
-        List<String> safeApproverTypes = approverTypes == null ? java.util.Collections.emptyList() : approverTypes;
+        List<ApproverType> safeApproverTypes = approverTypes == null ? java.util.Collections.emptyList() : approverTypes;
         return (root, query, cb) -> {
             Subquery<Long> subquery = query.subquery(Long.class);
             Root<AccountingDossierApprovalStep> stepRoot = subquery.from(AccountingDossierApprovalStep.class);
@@ -969,7 +1345,7 @@ public class AccountingDossierService {
             subquery.where(
                     cb.equal(stepRoot.get("dossier").get("id"), root.get("id")),
                     cb.isTrue(stepRoot.get("active")),
-                    cb.equal(stepRoot.get("status"), "CURRENT"),
+                    cb.equal(stepRoot.get("status"), ApprovalStepStatus.CURRENT),
                     cb.or(directApprover, roleApprover));
             return cb.exists(subquery);
         };
@@ -1041,14 +1417,16 @@ public class AccountingDossierService {
                 || dossier.getDossierCategory().getDocumentCategories() == null) {
             return;
         }
+        List<AccountingDossierDocument> items = new ArrayList<>();
         for (AccountingDocumentCategory category : dossier.getDossierCategory().getDocumentCategories()) {
             AccountingDossierDocument item = new AccountingDossierDocument();
             item.setDossier(dossier);
             item.setAccountingCategory(category);
             item.setDocumentName(category.getCategoryName());
             item.setDocumentType("OTHER");
-            documentItemRepository.save(item);
+            items.add(item);
         }
+        if (!items.isEmpty()) documentItemRepository.saveAll(items);
     }
 
     private Company resolveCompany(Long companyId) {
@@ -1079,8 +1457,9 @@ public class AccountingDossierService {
 
     private void validateEditable(AccountingDossier dossier) {
         if (dossier.getStatus() != AccountingDossierStatus.DRAFT
-                && dossier.getStatus() != AccountingDossierStatus.RETURNED) {
-            throw new PermissionException("Chỉ bộ chứng từ ở trạng thái nháp/hoàn mới được chỉnh sửa hoặc xoá");
+                && dossier.getStatus() != AccountingDossierStatus.RETURNED
+                && dossier.getStatus() != AccountingDossierStatus.REJECTED) {
+            throw new PermissionException("Chỉ bộ chứng từ ở trạng thái Nháp, Bị hoàn trả hoặc Bị từ chối mới được chỉnh sửa hoặc xóa");
         }
     }
 
@@ -1114,14 +1493,6 @@ public class AccountingDossierService {
         dto.setReturnCount(entity.getReturnCount());
         dto.setActive(entity.isActive());
 
-        if (entity.getDossierCode() != null && !entity.getDossierCode().trim().isEmpty()
-                && (entity.getQrToken() == null || entity.getQrToken().isEmpty())) {
-            entity.setQrToken(UUID.randomUUID().toString());
-            String qrUrl = appProperties.getBaseUrl() + "/admin/accounting-dossiers/qr/" + entity.getQrToken();
-            entity.setQrCode(vn.system.app.common.util.QrCodeUtil.generateBase64(qrUrl));
-            repository.save(entity);
-        }
-
         dto.setQrToken(entity.getQrToken());
         dto.setQrCode(entity.getQrCode());
 
@@ -1148,6 +1519,22 @@ public class AccountingDossierService {
                     entity.getDossierCategory().getCategoryName()));
         }
 
+        return dto;
+    }
+
+    private ResAccountingDossierDTO convertToListDTO(AccountingDossierListProjection entity) {
+        ResAccountingDossierDTO dto = new ResAccountingDossierDTO();
+        dto.setId(entity.getId()); dto.setDossierCode(entity.getDossierCode()); dto.setContent(entity.getContent());
+        dto.setCategoryMode(entity.getCategoryMode()); dto.setCustomCategoryName(entity.getCustomCategoryName());
+        dto.setDossierCategoryVersion(entity.getDossierCategoryVersion()); dto.setSyncCategoryRequested(entity.isSyncCategoryRequested());
+        dto.setCreatorId(entity.getCreatorId()); dto.setStatus(entity.getStatus()); dto.setStorageStatus(entity.getStorageStatus());
+        dto.setRetentionYears(entity.getRetentionYears()); dto.setRetentionUntil(entity.getRetentionUntil()); dto.setSubmittedAt(entity.getSubmittedAt());
+        dto.setApprovedAt(entity.getApprovedAt()); dto.setTerminatedAt(entity.getTerminatedAt()); dto.setReturnCount(entity.getReturnCount()); dto.setActive(entity.isActive());
+        dto.setQrToken(entity.getQrToken()); dto.setCreatedAt(entity.getCreatedAt()); dto.setUpdatedAt(entity.getUpdatedAt()); dto.setCreatedBy(entity.getCreatedBy()); dto.setUpdatedBy(entity.getUpdatedBy());
+        if (entity.getCompany() != null) dto.setCompany(toRef(entity.getCompany().getId(), entity.getCompany().getCode(), entity.getCompany().getName()));
+        if (entity.getDepartment() != null) dto.setDepartment(toRef(entity.getDepartment().getId(), entity.getDepartment().getCode(), entity.getDepartment().getName()));
+        if (entity.getSection() != null) dto.setSection(toRef(entity.getSection().getId(), entity.getSection().getCode(), entity.getSection().getName()));
+        if (entity.getDossierCategory() != null) dto.setDossierCategory(toRef(entity.getDossierCategory().getId(), entity.getDossierCategory().getCategoryCode(), entity.getDossierCategory().getCategoryName()));
         return dto;
     }
 
@@ -1316,25 +1703,8 @@ public class AccountingDossierService {
     @Transactional
     public ResAccountingDossierDocumentDTO addDocument(Long dossierId, AccountingDossierDocumentRequest req) {
         AccountingDossier dossier = fetchById(dossierId);
-
-        if (dossier.getStatus() == AccountingDossierStatus.APPROVED
-                || dossier.getStatus() == AccountingDossierStatus.TERMINATED
-                || dossier.getStatus() == AccountingDossierStatus.ARCHIVED) {
-            throw new PermissionException(
-                    "Không thể thêm chứng từ vào bộ chứng từ đã duyệt, đã lưu trữ hoặc đã chấm dứt");
-        }
+        validateEditable(dossier);
         validateDocumentMutator(dossier);
-
-        boolean statusChanged = false;
-        AccountingDossierStatus oldStatus = dossier.getStatus();
-        if (dossier.getStatus() == AccountingDossierStatus.SUBMITTED
-                || dossier.getStatus() == AccountingDossierStatus.IN_REVIEW
-                || dossier.getStatus() == AccountingDossierStatus.RETURN_REQUESTED) {
-            dossier.setStatus(AccountingDossierStatus.RETURNED);
-            dossier.setReturnCount(dossier.getReturnCount() + 1);
-            repository.save(dossier);
-            statusChanged = true;
-        }
 
         AccountingDossierDocument item = new AccountingDossierDocument();
         item.setDossier(dossier);
@@ -1345,16 +1715,9 @@ public class AccountingDossierService {
             createDocumentVersion(saved, "Tạo chứng từ con");
         }
 
-        if (statusChanged) {
-            writeLog(dossier, "QUICK_ADD_DOCUMENT_RETURN",
-                    "Thêm nhanh chứng từ con và hoàn trả bộ chứng từ về người lập: " + saved.getDocumentName(),
-                    "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
-                    null, saved.getDocumentName());
-        } else {
-            writeLog(dossier, "ADD_DOCUMENT_ITEM", "Thêm chứng từ con: " + saved.getDocumentName(),
-                    "DOSSIER_DOCUMENT", saved.getId(), null, saved.getCheckStatus(), null,
-                    buildDocumentFileSnapshot(saved));
-        }
+        dossierAuditService.writeLog(dossier, "ADD_DOCUMENT_ITEM", "Thêm chứng từ con: " + saved.getDocumentName(),
+                "DOSSIER_DOCUMENT", saved.getId(), null, saved.getCheckStatus(), null,
+                buildDocumentFileSnapshot(saved));
 
         return convertToDocumentDTO(saved);
     }
@@ -1364,6 +1727,7 @@ public class AccountingDossierService {
             AccountingDossierDocumentRequest req) {
         AccountingDossier dossier = fetchById(dossierId);
         validateEditable(dossier);
+        validateDocumentMutator(dossier);
 
         AccountingDossierDocument item = documentItemRepository.findById(docId)
                 .orElseThrow(() -> new IdInvalidException("Chứng từ con không tồn tại"));
@@ -1380,7 +1744,7 @@ public class AccountingDossierService {
         item.setCheckStatus("PENDING");
         item.setCheckNote(null);
         AccountingDossierDocument saved = documentItemRepository.save(item);
-        writeLog(dossier, "UPDATE_DOCUMENT_ITEM", "Sửa chứng từ con: " + saved.getDocumentName(),
+        dossierAuditService.writeLog(dossier, "UPDATE_DOCUMENT_ITEM", "Sửa chứng từ con: " + saved.getDocumentName(),
                 "DOSSIER_DOCUMENT", saved.getId(), null, "PENDING", beforeValue, buildDocumentFileSnapshot(saved));
         return convertToDocumentDTO(saved);
     }
@@ -1389,6 +1753,7 @@ public class AccountingDossierService {
     public void deleteDocument(Long dossierId, Long docId) {
         AccountingDossier dossier = fetchById(dossierId);
         validateEditable(dossier);
+        validateDocumentMutator(dossier);
 
         AccountingDossierDocument item = documentItemRepository.findById(docId)
                 .orElseThrow(() -> new IdInvalidException("Chứng từ con không tồn tại"));
@@ -1404,7 +1769,7 @@ public class AccountingDossierService {
         item.setDeletedAt(Instant.now());
         item.setDeletedBy(vn.system.app.common.util.SecurityUtil.getCurrentUserLogin().orElse(""));
         documentItemRepository.save(item);
-        writeLog(dossier, "SOFT_DELETE_DOCUMENT_ITEM", "Xóa mềm chứng từ con: " + docName,
+        dossierAuditService.writeLog(dossier, "SOFT_DELETE_DOCUMENT_ITEM", "Xóa mềm chứng từ con: " + docName,
                 "DOSSIER_DOCUMENT", item.getId(), item.getCheckStatus(), item.getCheckStatus(), null, "active=false");
     }
 
@@ -1434,7 +1799,7 @@ public class AccountingDossierService {
         item.setCheckNote(normalizeNote(req.getNote(), null));
 
         AccountingDossierDocument saved = documentItemRepository.save(item);
-        writeLog(dossier, "CHECK_DOCUMENT_ITEM_" + checkStatus,
+        dossierAuditService.writeLog(dossier, "CHECK_DOCUMENT_ITEM_" + checkStatus,
                 buildDocumentCheckNote(saved.getDocumentName(), checkStatus, saved.getCheckNote()),
                 "DOSSIER_DOCUMENT", saved.getId(), fromStatus, checkStatus, null, saved.getCheckNote());
         return convertToDocumentDTO(saved);
@@ -1473,34 +1838,25 @@ public class AccountingDossierService {
         String partName = req.getPartnerName() != null ? req.getPartnerName().trim() : null;
 
         if (invNum != null && !invNum.isEmpty() && partName != null && !partName.isEmpty()) {
-            if (!Boolean.TRUE.equals(req.getConfirmDuplicate())) {
-                List<AccountingDossierStatus> activeStatuses = List.of(
-                    AccountingDossierStatus.SUBMITTED,
-                    AccountingDossierStatus.IN_REVIEW,
-                    AccountingDossierStatus.RETURN_REQUESTED,
-                    AccountingDossierStatus.RETURNED,
-                    AccountingDossierStatus.APPROVED,
-                    AccountingDossierStatus.ARCHIVED
-                );
-                Long currentDossierId = item.getDossier() != null ? item.getDossier().getId() : -1L;
-                List<AccountingDossierDocument> dups = documentItemRepository.findDuplicateInvoices(
-                    invNum, partName, currentDossierId, activeStatuses);
+            List<AccountingDossierStatus> activeStatuses = List.of(
+                AccountingDossierStatus.SUBMITTED,
+                AccountingDossierStatus.IN_REVIEW,
+                AccountingDossierStatus.RETURN_REQUESTED,
+                AccountingDossierStatus.RETURNED,
+                AccountingDossierStatus.APPROVED,
+                AccountingDossierStatus.ARCHIVED
+            );
+            Long currentDossierId = item.getDossier() != null ? item.getDossier().getId() : -1L;
+            List<AccountingDossierDocument> dups = documentItemRepository.findDuplicateInvoices(
+                invNum, partName, currentDossierId, activeStatuses);
 
-                if (dups != null && !dups.isEmpty()) {
-                    String codes = dups.stream()
-                        .map(d -> d.getDossier().getDossierCode() != null ? d.getDossier().getDossierCode() : "BCT-" + d.getDossier().getId())
-                        .distinct()
-                        .collect(Collectors.joining(", "));
-                    throw new DuplicateInvoiceWarningException(
-                        "Số hóa đơn '" + invNum + "' của '" + partName + "' đã tồn tại ở bộ chứng từ: " + codes + ". Xác nhận vẫn muốn lưu?");
-                }
-            } else {
-                AccountingDossier dossier = item.getDossier();
-                if (dossier != null && req.getDuplicateReason() != null && !req.getDuplicateReason().trim().isEmpty()) {
-                    String auditMsg = "Bỏ qua cảnh báo trùng hóa đơn '" + invNum + "' của '" + partName + "'. Lý do: " + req.getDuplicateReason().trim();
-                    writeLog(dossier, "OVERRIDE_DUPLICATE_INVOICE", auditMsg, "DOSSIER_DOCUMENT", item.getId(), null, null, null, req.getDuplicateReason().trim());
-                    item.setCheckNote(normalizeNote(req.getDuplicateReason().trim(), null));
-                }
+            if (dups != null && !dups.isEmpty()) {
+                String codes = dups.stream()
+                    .map(d -> d.getDossier().getDossierCode() != null ? d.getDossier().getDossierCode() : "BCT-" + d.getDossier().getId())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+                throw new DuplicateInvoiceWarningException(
+                    "Số hóa đơn '" + invNum + "' của '" + partName + "' đã tồn tại ở bộ chứng từ: " + codes + ". Không được phép lưu trùng lặp hóa đơn.");
             }
         }
     }
@@ -1714,73 +2070,11 @@ public class AccountingDossierService {
         return String.format("BCT-%d-%06d", currentYear, seq.getCurrentNumber());
     }
 
-    private void writeLog(AccountingDossier dossier, String actionType, String note) {
-        writeLog(dossier, actionType, note, null, null, null, null, null, null);
-    }
-
-    private void writeLog(
-            AccountingDossier dossier,
-            String actionType,
-            String note,
-            String targetType,
-            Long targetId,
-            String fromStatus,
-            String toStatus,
-            String beforeValue,
-            String afterValue) {
-        writeLog(dossier, actionType, note, targetType, targetId, fromStatus, toStatus, beforeValue, afterValue, null);
-    }
-
-    private void writeLog(
-            AccountingDossier dossier,
-            String actionType,
-            String note,
-            String targetType,
-            Long targetId,
-            String fromStatus,
-            String toStatus,
-            String beforeValue,
-            String afterValue,
-            String bulkActionId) {
-        AccountingDossierAuditLog log = new AccountingDossierAuditLog();
-        log.setDossier(dossier);
-        log.setActionType(actionType);
-        log.setNote(note);
-        log.setIpAddress(resolveClientIp());
-        log.setUserAgent(resolveUserAgent());
-        log.setTargetType(targetType);
-        log.setTargetId(targetId);
-        log.setFromStatus(fromStatus);
-        log.setToStatus(toStatus);
-        log.setBeforeValue(beforeValue);
-        log.setAfterValue(afterValue);
-        log.setBulkActionId(bulkActionId);
-        auditLogRepository.save(log);
-    }
-
     private String normalizeNote(String note, String fallback) {
         if (note == null || note.trim().isEmpty()) {
             return fallback;
         }
         return note.trim();
-    }
-
-    private String resolveClientIp() {
-        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
-            return null;
-        }
-        String forwardedFor = attrs.getRequest().getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return attrs.getRequest().getRemoteAddr();
-    }
-
-    private String resolveUserAgent() {
-        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
-            return null;
-        }
-        return attrs.getRequest().getHeader("User-Agent");
     }
 
     private ResAccountingDossierAuditLogDTO convertToLogDTO(AccountingDossierAuditLog entity) {
@@ -1804,214 +2098,7 @@ public class AccountingDossierService {
         return dto;
     }
 
-    private String resolveAccountantUserId(Long companyId) {
-        List<vn.system.app.modules.user.domain.User> users = userRepository.findUsersByPermissionAndCompany(
-                List.of("Danh sách bộ chứng từ kế toán"), List.of(companyId), true);
-        for (vn.system.app.modules.user.domain.User u : users) {
-            if (u.isActive() && u.getRole() != null) {
-                String rName = u.getRole().getName().toUpperCase();
-                if ((rName.contains("ACCOUNTANT") || rName.contains("KETOAN") || rName.contains("KẾ TOÁN"))
-                        && !rName.contains("CHIEF") && !rName.contains("TRUONG") && !rName.contains("TRƯỞNG")) {
-                    return u.getId();
-                }
-            }
-        }
-        List<vn.system.app.modules.user.domain.User> allUsers = userRepository.findAll();
-        for (vn.system.app.modules.user.domain.User u : allUsers) {
-            if (u.isActive() && u.getRole() != null) {
-                String rName = u.getRole().getName().toUpperCase();
-                if ((rName.contains("ACCOUNTANT") || rName.contains("KETOAN") || rName.contains("KẾ TOÁN"))
-                        && !rName.contains("CHIEF") && !rName.contains("TRUONG") && !rName.contains("TRƯỞNG")) {
-                    return u.getId();
-                }
-            }
-        }
-        for (vn.system.app.modules.user.domain.User u : allUsers) {
-            if (u.isActive() && u.getRole() != null && u.getRole().getName().equals("SUPER_ADMIN")) {
-                return u.getId();
-            }
-        }
-        return null;
-    }
 
-    private String resolveChiefAccountantUserId(Long companyId) {
-        List<vn.system.app.modules.user.domain.User> allUsers = userRepository.findAll();
-        for (vn.system.app.modules.user.domain.User u : allUsers) {
-            if (u.isActive() && u.getRole() != null &&
-                    (u.getRole().getName().toUpperCase().contains("CHIEF_ACCOUNTANT") ||
-                            u.getRole().getName().toUpperCase().contains("KETOANTRUONG") ||
-                            u.getRole().getName().toUpperCase().contains("KẾ TOÁN TRƯỞNG"))) {
-                return u.getId();
-            }
-        }
-        String accountant = resolveAccountantUserId(companyId);
-        if (accountant != null) {
-            return accountant;
-        }
-        for (vn.system.app.modules.user.domain.User u : allUsers) {
-            if (u.isActive() && u.getRole() != null && u.getRole().getName().equals("SUPER_ADMIN")) {
-                return u.getId();
-            }
-        }
-        return null;
-    }
-
-    private void generateApprovalSteps(AccountingDossier dossier, AccountingDossierSubmitRequest req) {
-        List<AccountingDossierApprovalStep> oldSteps = approvalStepRepository
-                .findByDossierIdAndActiveTrue(dossier.getId());
-        oldSteps.forEach(step -> {
-            step.setActive(false);
-            approvalStepRepository.save(step);
-        });
-
-        String creatorEmail = SecurityUtil.getCurrentUserLogin().orElse("");
-        vn.system.app.modules.user.domain.User creator = userRepository.findByEmail(creatorEmail);
-        if (creator == null) {
-            throw new IdInvalidException("Không xác định được người lập hồ sơ");
-        }
-
-        List<AccountingDossierApprovalStep> steps = new ArrayList<>();
-
-        if (req != null && req.getCustomSteps() != null && !req.getCustomSteps().isEmpty()) {
-            for (AccountingDossierSubmitRequest.CustomStep customStep : req.getCustomSteps()) {
-                AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
-                step.setDossier(dossier);
-                step.setStepOrder(customStep.getStepOrder());
-                step.setStepName(customStep.getStepName());
-                step.setApproverType(customStep.getApproverType());
-                step.setApproverUserId(customStep.getApproverUserId());
-
-                if ("DEPARTMENT_MANAGER".equals(step.getApproverType()) && step.getApproverUserId() == null) {
-                    if (creator.getDirectManager() != null) {
-                        step.setApproverUserId(creator.getDirectManager().getId());
-                    } else if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
-                        throw new IdInvalidException(
-                                "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
-                    }
-                }
-
-                if (step.getApproverUserId() == null) {
-                    if ("CHIEF_ACCOUNTANT".equals(step.getApproverType())) {
-                        step.setApproverUserId(resolveChiefAccountantUserId(dossier.getCompany().getId()));
-                    }
-                }
-                steps.add(step);
-            }
-        } else if (dossier.getDossierCategory() != null && dossier.getDossierCategory().getApprovalStepsConfig() != null
-                && !dossier.getDossierCategory().getApprovalStepsConfig().trim().isEmpty()) {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-                List<Map<String, Object>> configSteps = mapper.readValue(
-                        dossier.getDossierCategory().getApprovalStepsConfig(),
-                        new TypeReference<List<Map<String, Object>>>() {
-                        });
-                for (Map<String, Object> cStep : configSteps) {
-                    AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
-                    step.setDossier(dossier);
-                    step.setStepOrder(Integer.parseInt(cStep.get("stepOrder").toString()));
-                    step.setStepName(cStep.get("stepName").toString());
-                    step.setApproverType(cStep.get("approverType").toString());
-                    if (cStep.get("approverUserId") != null) {
-                        step.setApproverUserId(cStep.get("approverUserId").toString());
-                    }
-
-                    if ("DEPARTMENT_MANAGER".equals(step.getApproverType()) && step.getApproverUserId() == null) {
-                        if (creator.getDirectManager() != null) {
-                            step.setApproverUserId(creator.getDirectManager().getId());
-                        } else if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
-                            throw new IdInvalidException(
-                                    "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
-                        }
-                    }
-                    if (step.getApproverUserId() == null) {
-                        if ("CHIEF_ACCOUNTANT".equals(step.getApproverType())) {
-                            step.setApproverUserId(resolveChiefAccountantUserId(dossier.getCompany().getId()));
-                        }
-                    }
-                    steps.add(step);
-                }
-            } catch (Exception e) {
-                steps.clear();
-            }
-        }
-
-        if (steps.isEmpty()) {
-            AccountingDossierApprovalStep step1 = new AccountingDossierApprovalStep();
-            step1.setDossier(dossier);
-            step1.setStepOrder(1);
-            step1.setStepName("Trưởng bộ phận duyệt");
-            step1.setApproverType("DEPARTMENT_MANAGER");
-            if (creator.getDirectManager() != null) {
-                step1.setApproverUserId(creator.getDirectManager().getId());
-                step1.setStatus("CURRENT");
-            } else {
-                if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
-                    throw new IdInvalidException(
-                            "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
-                }
-                step1.setStatus("SKIPPED");
-            }
-            steps.add(step1);
-
-            AccountingDossierApprovalStep step2 = new AccountingDossierApprovalStep();
-            step2.setDossier(dossier);
-            step2.setStepOrder(2);
-            step2.setStepName("Kế toán kiểm tra");
-            step2.setApproverType("ACCOUNTANT");
-            step2.setStatus(step1.getStatus().equals("SKIPPED") ? "CURRENT" : "PENDING");
-            steps.add(step2);
-
-            AccountingDossierApprovalStep step3 = new AccountingDossierApprovalStep();
-            step3.setDossier(dossier);
-            step3.setStepOrder(3);
-            step3.setStepName("Kế toán trưởng duyệt");
-            step3.setApproverType("CHIEF_ACCOUNTANT");
-            String chiefAccountantId = resolveChiefAccountantUserId(dossier.getCompany().getId());
-            step3.setApproverUserId(chiefAccountantId);
-            step3.setStatus("PENDING");
-            steps.add(step3);
-        } else {
-            if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
-                boolean hasManagerStep = steps.stream()
-                        .anyMatch(
-                                s -> "DEPARTMENT_MANAGER".equals(s.getApproverType()) && s.getApproverUserId() != null);
-                if (!hasManagerStep) {
-                    AccountingDossierApprovalStep mgrStep = new AccountingDossierApprovalStep();
-                    mgrStep.setDossier(dossier);
-                    mgrStep.setStepOrder(0);
-                    mgrStep.setStepName("Trưởng bộ phận duyệt (Bắt buộc do hoàn trả >= 3 lần)");
-                    mgrStep.setApproverType("DEPARTMENT_MANAGER");
-                    if (creator.getDirectManager() == null) {
-                        throw new IdInvalidException(
-                                "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
-                    }
-                    mgrStep.setApproverUserId(creator.getDirectManager().getId());
-                    steps.add(mgrStep);
-                }
-            }
-            steps.sort(Comparator.comparingInt(AccountingDossierApprovalStep::getStepOrder));
-            boolean currentSet = false;
-            for (int i = 0; i < steps.size(); i++) {
-                AccountingDossierApprovalStep s = steps.get(i);
-                s.setStepOrder(i + 1);
-                if ("DEPARTMENT_MANAGER".equals(s.getApproverType()) && s.getApproverUserId() == null) {
-                    s.setStatus("SKIPPED");
-                } else {
-                    if (!currentSet) {
-                        s.setStatus("CURRENT");
-                        currentSet = true;
-                    } else {
-                        s.setStatus("PENDING");
-                    }
-                }
-            }
-            if (!currentSet && !steps.isEmpty()) {
-                steps.get(steps.size() - 1).setStatus("CURRENT");
-            }
-        }
-
-        approvalStepRepository.saveAll(steps);
-    }
 
     // ==================== PHASE 3: SYNC TEMPLATE ====================
 
@@ -2028,7 +2115,7 @@ public class AccountingDossierService {
 
         dossier.setSyncCategoryRequested(false);
         AccountingDossier saved = repository.save(dossier);
-        writeLog(saved, "REJECT_SYNC_TO_TEMPLATE",
+        dossierAuditService.writeLog(saved, "REJECT_SYNC_TO_TEMPLATE",
                 normalizeNote(req == null ? null : req.getNote(), "Từ chối đồng bộ bộ chứng từ phi cấu trúc thành mẫu"),
                 "DOSSIER", saved.getId(), null, null, "syncCategoryRequested=true", "syncCategoryRequested=false");
         return convertToDTO(saved);
@@ -2070,7 +2157,7 @@ public class AccountingDossierService {
                 savedCategory.getCategoryDocuments().addAll(catDocs);
                 dossierCategoryRepository.save(savedCategory);
             }
-            writeLog(dossier, "SYNC_TO_TEMPLATE", "Đồng bộ phi cấu trúc thành mẫu danh mục: " + syncCode,
+            dossierAuditService.writeLog(dossier, "SYNC_TO_TEMPLATE", "Đồng bộ phi cấu trúc thành mẫu danh mục: " + syncCode,
                     "DOSSIER_CATEGORY", savedCategory.getId(), null, null, null, syncCode);
         } catch (Exception e) {
             // Log but don't fail the approval
@@ -2116,7 +2203,10 @@ public class AccountingDossierService {
         if (ids == null || ids.isEmpty()) {
             return response;
         }
-
+        vn.system.app.modules.user.domain.User resolvedUser = userRepository.findByEmail(SecurityUtil.getCurrentUserLogin().orElse(""));
+        if (resolvedUser == null) throw new IdInvalidException("Không xác định được người thao tác");
+        bulkActionUser.set(resolvedUser);
+        try {
         for (Long dossierId : ids) {
             ResAccountingDossierBulkActionDTO.Item item = new ResAccountingDossierBulkActionDTO.Item();
             item.setId(dossierId);
@@ -2127,9 +2217,9 @@ public class AccountingDossierService {
                 item.setStatus(dto.getStatus().name());
                 response.setSuccessCount(response.getSuccessCount() + 1);
 
-                AccountingDossier dossier = fetchById(dossierId);
+                AccountingDossier dossier = repository.getReferenceById(dossierId);
                 firstLogDossier = firstLogDossier == null ? dossier : firstLogDossier;
-                writeLog(dossier, "BULK_" + action + "_DOSSIER_ITEM",
+                dossierAuditService.writeLog(dossier, "BULK_" + action + "_DOSSIER_ITEM",
                         "Thao tác hàng loạt " + action + " thành công",
                         "DOSSIER", dossierId, null, dto.getStatus().name(), null, null, bulkActionId);
             } catch (Exception e) {
@@ -2145,11 +2235,19 @@ public class AccountingDossierService {
             }
             response.getItems().add(item);
         }
+        } finally {
+            bulkActionUser.remove();
+        }
 
         writeBulkSummaryLogIfPossible(firstLogDossier, "BULK_" + action + "_DOSSIER",
                 "Tổng kết thao tác hàng loạt " + action,
                 response);
         return response;
+    }
+
+    private vn.system.app.modules.user.domain.User resolveActionUser(String email) {
+        vn.system.app.modules.user.domain.User cached = bulkActionUser.get();
+        return cached != null ? cached : userRepository.findByEmail(email);
     }
 
     // ==================== PHASE 3: BULK CHECK DOCUMENTS ====================
@@ -2190,7 +2288,7 @@ public class AccountingDossierService {
             item.setSuccess(true);
             item.setStatus(normalizedCheckStatus);
             response.getItems().add(item);
-            writeLog(dossier, "BULK_CHECK_DOCUMENT_ITEM", "Kiểm tra hàng loạt: " + normalizedCheckStatus,
+            dossierAuditService.writeLog(dossier, "BULK_CHECK_DOCUMENT_ITEM", "Kiểm tra hàng loạt: " + normalizedCheckStatus,
                     "DOSSIER_DOCUMENT", doc.getId(), fromStatus, normalizedCheckStatus, null, doc.getDocumentName(),
                     bulkActionId);
         }
@@ -2203,7 +2301,7 @@ public class AccountingDossierService {
                 item.setSuccess(false);
                 item.setError("Chứng từ con không tồn tại hoặc không thuộc bộ chứng từ này");
                 response.getItems().add(item);
-                writeLog(dossier, "BULK_CHECK_DOCUMENT_ITEM_FAILED",
+                dossierAuditService.writeLog(dossier, "BULK_CHECK_DOCUMENT_ITEM_FAILED",
                         item.getError(),
                         "DOSSIER_DOCUMENT", documentId, null, null, null, null, bulkActionId);
             }
@@ -2235,7 +2333,7 @@ public class AccountingDossierService {
         if (dossier == null) {
             return firstLogDossier;
         }
-        writeLog(dossier, actionType, error, "DOSSIER", dossierId, null, null, null, error, bulkActionId);
+        dossierAuditService.writeLog(dossier, actionType, error, "DOSSIER", dossierId, null, null, null, error, bulkActionId);
         return firstLogDossier == null ? dossier : firstLogDossier;
     }
 
@@ -2250,7 +2348,84 @@ public class AccountingDossierService {
         String summary = "total=" + response.getTotal()
                 + ", success=" + response.getSuccessCount()
                 + ", failure=" + response.getFailureCount();
-        writeLog(dossier, actionType, note, "BULK_ACTION", null, null, null,
+        dossierAuditService.writeLog(dossier, actionType, note, "BULK_ACTION", null, null, null,
                 response.getBulkActionId(), summary, response.getBulkActionId());
+    }
+
+    @Transactional
+    public ResAccountingDossierDTO reassignDirector(Long id, String newApproverUserId, String reason) {
+        // Check if current user has reassign permission or is SUPER_ADMIN
+        String email = SecurityUtil.getCurrentUserLogin().orElse("");
+        vn.system.app.modules.user.domain.User actor = userRepository.findByEmail(email);
+        if (actor == null) {
+            throw new IdInvalidException("Không xác định được người thao tác");
+        }
+        boolean hasReassignPermission = actor.getRole() != null && (
+            "SUPER_ADMIN".equals(actor.getRole().getName()) || 
+            (actor.getRole().getPermissions() != null && actor.getRole().getPermissions().stream().anyMatch(p -> "Emergency Reassign Giám đốc".equals(p.getName()) || "ACCOUNTING_APPROVAL_REASSIGN".equals(p.getName())))
+        );
+        if (!hasReassignPermission) {
+            throw new PermissionException("Bạn không có quyền thực hiện chức năng Emergency Reassign");
+        }
+
+        AccountingDossier dossier = fetchById(id);
+        if (dossier.getStatus() != AccountingDossierStatus.SUBMITTED && dossier.getStatus() != AccountingDossierStatus.IN_REVIEW) {
+            throw new IdInvalidException("Chỉ có thể đổi người duyệt khi hồ sơ đang trong quá trình duyệt");
+        }
+        List<AccountingDossierApprovalStep> steps = approvalStepRepository
+                .findByDossierIdAndActiveTrueOrderByStepOrderAsc(id);
+        
+        // Find current step
+        AccountingDossierApprovalStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == ApprovalStepStatus.CURRENT)
+                .findFirst()
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy bước hiện tại đang chờ duyệt"));
+        
+        // Lock down to ONLY DIRECTOR step
+        if (currentStep.getApproverType() != ApproverType.DIRECTOR) {
+            throw new IdInvalidException("Chỉ được phép thực hiện Emergency Reassign cho bước Giám đốc (DIRECTOR)");
+        }
+
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IdInvalidException("Lý do reassign không được để trống");
+        }
+
+        vn.system.app.modules.user.domain.User newDirector = userRepository.findById(newApproverUserId)
+                .orElseThrow(() -> new IdInvalidException("Người nhận mới không tồn tại"));
+                
+        if (!newDirector.isActive()) {
+            throw new IdInvalidException("Người nhận mới phải ở trạng thái hoạt động (active)");
+        }
+
+        // Check if user has Director permission and belongs to company
+        List<vn.system.app.modules.user.domain.User> validDirectors = approverResolutionService.resolveAllDirectorUserIds(dossier.getCompany().getId());
+        boolean isValidDirectorForCompany = validDirectors.stream()
+                .anyMatch(d -> d.getId().equals(newApproverUserId));
+        if (!isValidDirectorForCompany) {
+            throw new IdInvalidException("Người nhận mới phải là Giám đốc hoạt động hợp lệ thuộc cùng công ty của hồ sơ");
+        }
+
+        String oldAssigneeId = currentStep.getApproverUserId();
+        String oldAssigneeName = "N/A";
+        if (oldAssigneeId != null) {
+            oldAssigneeName = userRepository.findById(oldAssigneeId).map(vn.system.app.modules.user.domain.User::getName).orElse("N/A");
+        }
+
+        currentStep.setApproverUserId(newApproverUserId);
+        try {
+            approvalStepRepository.saveAndFlush(currentStep);
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+            throw new IdInvalidException("Bước duyệt vừa được cập nhật bởi người khác (DOSSIER_CONCURRENTLY_MODIFIED)");
+        }
+
+        // Write audit log
+        String logMsg = String.format("[Emergency Reassign] Thay đổi người duyệt bước Giám đốc từ [%s] sang [%s]. Người thực hiện: [%s]. Lý do: %s", 
+                oldAssigneeName, newDirector.getName(), actor.getName(), reason);
+        dossierAuditService.writeLog(dossier, "REASSIGN_DIRECTOR", logMsg, "APPROVAL_STEP", currentStep.getId(), 
+                oldAssigneeId, newApproverUserId, null, reason);
+
+        writeOutbox(dossier.getId(), "REASSIGN", "Director reassigned to: " + newDirector.getName() + " reason: " + reason, "DOSSIER_" + dossier.getId() + "_REASSIGN_DIRECTOR_STEP_" + currentStep.getId());
+
+        return convertToDTO(dossier);
     }
 }

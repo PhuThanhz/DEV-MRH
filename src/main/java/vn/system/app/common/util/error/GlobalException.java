@@ -13,7 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-
+import jakarta.validation.ConstraintViolationException;
 import vn.system.app.common.response.RestResponse;
 
 @RestControllerAdvice
@@ -62,10 +62,10 @@ public class GlobalException {
     @ExceptionHandler(DuplicateInvoiceWarningException.class)
     public ResponseEntity<RestResponse<Object>> handleDuplicateInvoiceWarningException(DuplicateInvoiceWarningException ex) {
         RestResponse<Object> res = new RestResponse<>();
-        res.setStatusCode(HttpStatus.BAD_REQUEST.value());
+        res.setStatusCode(HttpStatus.CONFLICT.value());
         res.setMessage(ex.getMessage());
         res.setError("DUPLICATE_INVOICE_WARNING");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(res);
     }
 
     // ============================================================
@@ -96,6 +96,23 @@ public class GlobalException {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.toList());
         res.setMessage(errors.size() > 1 ? errors : errors.get(0));
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
+    }
+
+    // ============================================================
+    // Xử lý lỗi validate dữ liệu @Validated (ConstraintViolationException)
+    // ============================================================
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<RestResponse<Object>> handleConstraintViolationException(ConstraintViolationException ex) {
+        RestResponse<Object> res = new RestResponse<>();
+        res.setStatusCode(HttpStatus.BAD_REQUEST.value());
+        res.setError("Validation error");
+
+        List<String> errors = ex.getConstraintViolations().stream()
+                .map(violation -> violation.getMessage())
+                .collect(Collectors.toList());
+        res.setMessage(errors.size() > 1 ? errors : (errors.isEmpty() ? ex.getMessage() : errors.get(0)));
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
     }

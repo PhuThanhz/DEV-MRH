@@ -26,6 +26,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import vn.system.app.modules.accountingdossier.repository.AccountingDossierListProjection;
+import org.springframework.data.repository.query.FluentQuery;
+import java.util.function.Function;
 
 import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.common.util.error.PermissionException;
@@ -35,8 +38,18 @@ import vn.system.app.modules.accountingdossier.domain.AccountingDossier;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierCategory;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierCategoryDocument;
 import vn.system.app.modules.accountingdossier.domain.AccountingDossierDocument;
+import vn.system.app.modules.accountingdossier.domain.AccountingApprovalInstance;
+import vn.system.app.modules.accountingdossier.domain.AccountingApprovalWorkflowScope;
+import vn.system.app.modules.accountingdossier.domain.AccountingApprovalWorkflowStep;
+import vn.system.app.modules.accountingdossier.domain.AccountingApprovalWorkflowTemplate;
 import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierCategoryMode;
 import vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStatus;
+import vn.system.app.modules.accountingdossier.domain.enums.ApproverType;
+import vn.system.app.modules.accountingdossier.domain.enums.ApprovalStepStatus;
+import vn.system.app.modules.accountingdossier.domain.enums.ApproverStrategy;
+import vn.system.app.modules.accountingdossier.domain.enums.WorkflowInstanceStatus;
+import vn.system.app.modules.accountingdossier.domain.enums.WorkflowScopeType;
+import vn.system.app.modules.accountingdossier.domain.enums.WorkflowTemplateStatus;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierBulkActionDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDTO;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierSubmitRequest;
@@ -48,6 +61,9 @@ import vn.system.app.modules.accountingdossier.repository.AccountingDossierDocum
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierDocumentVersionRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierApprovalStepRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierRepository;
+import vn.system.app.modules.accountingdossier.repository.AccountingDossierOutboxRepository;
+import vn.system.app.modules.accountingdossier.repository.AccountingApprovalInstanceRepository;
+import vn.system.app.modules.accountingdossier.repository.AccountingApprovalWorkflowTemplateRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierSequenceRepository;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.company.domain.Company;
@@ -62,6 +78,9 @@ import vn.system.app.modules.section.repository.SectionRepository;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AccountingDossierServiceTest {
+    private static final String ACCOUNTANT_APPROVAL_PERMISSION = "Phê duyệt bộ chứng từ kế toán - Kế toán";
+    private static final String CHIEF_ACCOUNTANT_APPROVAL_PERMISSION = "Phê duyệt bộ chứng từ kế toán - Kế toán trưởng";
+    private static final String DIRECTOR_APPROVAL_PERMISSION = "Phê duyệt bộ chứng từ kế toán - Giám đốc";
 
     @Mock
     private AccountingDossierRepository repository;
@@ -91,14 +110,45 @@ class AccountingDossierServiceTest {
     private AccountingDossierApprovalStepRepository approvalStepRepository;
     @Mock
     private AppProperties appProperties;
+    @Mock
+    private AccountingDossierOutboxRepository outboxRepository;
+    @Mock
+    private AccountingApprovalDelegationService delegationService;
+    @Mock
+    private AccountingApprovalWorkflowTemplateRepository workflowTemplateRepository;
+    @Mock
+    private AccountingApprovalInstanceRepository approvalInstanceRepository;
 
-    @InjectMocks
     private AccountingDossierService service;
 
     private SecurityContext originalSecurityContext;
 
     @BeforeEach
     void setUp() {
+        ApproverResolutionService approverResolutionService = new ApproverResolutionService(userRepository);
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        DossierAuditService dossierAuditService = new DossierAuditService(auditLogRepository);
+        ApprovalStepGenerationService approvalStepGenerationService = new ApprovalStepGenerationService(
+                approvalStepRepository, workflowTemplateRepository, approvalInstanceRepository,
+                userRepository, approverResolutionService, mapper, dossierAuditService
+        );
+
+        service = new AccountingDossierService(
+                repository, companyRepository, departmentRepository, sectionRepository,
+                sequenceRepository, auditLogRepository, documentItemRepository,
+                dossierCategoryRepository, accountingCategoryRepository, documentRepository,
+                documentVersionRepository, userRepository, approvalStepRepository, appProperties,
+                approverResolutionService, approvalStepGenerationService, dossierAuditService,
+                outboxRepository, delegationService
+        );
+
+        // Unit tests: bypass security by setting superAdmin scope
+        vn.system.app.common.util.UserScopeContext.set(
+            new vn.system.app.common.util.UserScopeContext.UserScope(
+                "test-user", null, null, true, true, false, false
+            )
+        );
+
         originalSecurityContext = SecurityContextHolder.getContext();
         SecurityContext securityContext = mock(SecurityContext.class);
         Authentication authentication = mock(Authentication.class);
@@ -106,11 +156,20 @@ class AccountingDossierServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
         when(appProperties.getBaseUrl()).thenReturn("http://localhost:8080");
+        when(workflowTemplateRepository.findByStatusOrderByPriorityAscIdAsc(WorkflowTemplateStatus.ACTIVE))
+                .thenReturn(Collections.emptyList());
+        User authenticatedUser = new User();
+        authenticatedUser.setId("test-user");
+        authenticatedUser.setEmail("test-user");
+        lenient().when(userRepository.findByEmail("test-user")).thenReturn(authenticatedUser);
+        // saveDossierWithOptimisticLockCheck uses saveAndFlush — stub it globally
+        lenient().when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @AfterEach
     void tearDown() {
         SecurityContextHolder.setContext(originalSecurityContext);
+        vn.system.app.common.util.UserScopeContext.clear();
     }
 
     @Test
@@ -248,12 +307,15 @@ class AccountingDossierServiceTest {
         role.setName("CHIEF_ACCOUNTANT");
         chief.setRole(role);
 
+        User director = new User();
+        director.setId("user-director-id");
+        director.setActive(true);
+
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
         when(approvalStepRepository.findByDossierIdAndActiveTrue(dossierId)).thenReturn(Collections.emptyList());
-        when(userRepository.findUsersByPermissionAndCompany(anyList(), anyList(), anyBoolean())).thenReturn(List.of(accountant));
-        when(userRepository.findAll()).thenReturn(List.of(chief));
+        stubApproverLookup(accountant, chief, director);
         when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ResAccountingDossierDTO result = service.submit(dossierId);
@@ -286,11 +348,15 @@ class AccountingDossierServiceTest {
         chiefRole.setName("CHIEF_ACCOUNTANT");
         chief.setRole(chiefRole);
 
+        User director = new User();
+        director.setId("director-id");
+        director.setActive(true);
+
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
         when(approvalStepRepository.findByDossierIdAndActiveTrue(dossierId)).thenReturn(Collections.emptyList());
-        when(userRepository.findAll()).thenReturn(List.of(chief));
+        stubApproverLookup(null, chief, director);
         when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.submit(dossierId);
@@ -298,7 +364,7 @@ class AccountingDossierServiceTest {
         verify(approvalStepRepository).saveAll(argThat(steps -> {
             List<AccountingDossierApprovalStep> list = (List<AccountingDossierApprovalStep>) steps;
             return list.stream().anyMatch(step ->
-                    "ACCOUNTANT".equals(step.getApproverType())
+                    step.getApproverType() == ApproverType.ACCOUNTANT
                             && step.getApproverUserId() == null);
         }));
     }
@@ -318,9 +384,18 @@ class AccountingDossierServiceTest {
         creator.setId("user-creator-id");
         creator.setEmail("test-user");
 
+        User director = new User();
+        director.setId("director-id");
+        director.setActive(true);
+
+        User chief = new User();
+        chief.setId("chief-id");
+        chief.setActive(true);
+
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
+        stubApproverLookup(null, chief, director);
         when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AccountingDossierSubmitRequest req = new AccountingDossierSubmitRequest();
@@ -360,16 +435,212 @@ class AccountingDossierServiceTest {
         User accountant = new User();
         accountant.setId("user-accountant-id");
 
+        User chief = new User();
+        chief.setId("user-chief-id");
+        chief.setActive(true);
+
+        User director = new User();
+        director.setId("user-director-id");
+        director.setActive(true);
+
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
-        when(userRepository.findUsersByPermissionAndCompany(anyList(), anyList(), anyBoolean())).thenReturn(List.of(accountant));
+        stubApproverLookup(accountant, chief, director);
         when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ResAccountingDossierDTO result = service.submit(dossierId, null);
 
         assertEquals(AccountingDossierStatus.SUBMITTED, result.getStatus());
         verify(approvalStepRepository, times(1)).saveAll(anyList());
+    }
+
+    @Test
+    void testSubmitDossierUsesActiveWorkflowTemplateV2AndCreatesInstance() {
+        Long dossierId = 1L;
+        Company company = new Company();
+        company.setId(10L);
+
+        Department department = new Department();
+        department.setId(20L);
+        department.setCompany(company);
+
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(dossierId);
+        dossier.setStatus(AccountingDossierStatus.DRAFT);
+        dossier.setCategoryMode(AccountingDossierCategoryMode.UNSTRUCTURED);
+        dossier.setCompany(company);
+        dossier.setDepartment(department);
+        dossier.setDossierCode("BCT-2026-000001");
+
+        User creator = new User();
+        creator.setId("user-creator-id");
+        creator.setEmail("test-user");
+
+        User manager = new User();
+        manager.setId("user-manager-id");
+        creator.setDirectManager(manager);
+
+        User accountant = new User();
+        accountant.setId("user-accountant-id");
+
+        User chief = new User();
+        chief.setId("user-chief-id");
+        chief.setActive(true);
+
+        User director = new User();
+        director.setId("user-director-id");
+        director.setActive(true);
+
+        AccountingApprovalWorkflowTemplate template = new AccountingApprovalWorkflowTemplate();
+        template.setId(500L);
+        template.setCode("WF-PAYMENT");
+        template.setName("Luồng thanh toán chuẩn");
+        template.setCompanyId(10L);
+        template.setPriority(1);
+        template.setDefaultTemplate(true);
+        template.setStatus(WorkflowTemplateStatus.ACTIVE);
+        template.setVersion(3);
+
+        AccountingApprovalWorkflowScope scope = new AccountingApprovalWorkflowScope();
+        scope.setTemplate(template);
+        scope.setScopeType(WorkflowScopeType.COMPANY);
+        scope.setScopeId(10L);
+        template.getScopes().add(scope);
+
+        template.getSteps().add(templateStep(template, "MANAGER", 1, "Trưởng bộ phận duyệt",
+                ApproverStrategy.REQUESTER_MANAGER, null));
+        template.getSteps().add(templateStep(template, "ACCOUNTANT", 2, "Kế toán kiểm tra",
+                ApproverStrategy.COMPANY_ROLE, ACCOUNTANT_APPROVAL_PERMISSION));
+        template.getSteps().add(templateStep(template, "CHIEF", 3, "Kế toán trưởng duyệt",
+                ApproverStrategy.COMPANY_ROLE, CHIEF_ACCOUNTANT_APPROVAL_PERMISSION));
+        template.getSteps().add(templateStep(template, "DIRECTOR", 4, "Giám đốc phê duyệt",
+                ApproverStrategy.COMPANY_DIRECTOR, null));
+
+        when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
+        when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
+        when(userRepository.findByEmail("test-user")).thenReturn(creator);
+        when(approvalStepRepository.findByDossierIdAndActiveTrue(dossierId)).thenReturn(Collections.emptyList());
+        when(workflowTemplateRepository.findByStatusOrderByPriorityAscIdAsc(WorkflowTemplateStatus.ACTIVE))
+                .thenReturn(List.of(template));
+        when(approvalInstanceRepository.findFirstByDossierIdAndStatusOrderByIdDesc(dossierId, WorkflowInstanceStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+        when(approvalInstanceRepository.countByDossierId(dossierId)).thenReturn(0L);
+        when(approvalInstanceRepository.saveAndFlush(any(AccountingApprovalInstance.class))).thenAnswer(invocation -> {
+            AccountingApprovalInstance instance = invocation.getArgument(0);
+            instance.setId(900L);
+            return instance;
+        });
+        stubApproverLookup(accountant, chief, director);
+        when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AccountingDossierSubmitRequest req = new AccountingDossierSubmitRequest();
+        AccountingDossierSubmitRequest.CustomStep maliciousStep = new AccountingDossierSubmitRequest.CustomStep();
+        maliciousStep.setStepOrder(1);
+        maliciousStep.setStepName("Không được dùng");
+        maliciousStep.setApproverType("CUSTOM_USER");
+        maliciousStep.setApproverUserId("malicious-user-id");
+        req.setCustomSteps(List.of(maliciousStep));
+
+        ResAccountingDossierDTO result = service.submit(dossierId, req);
+
+        assertEquals(AccountingDossierStatus.SUBMITTED, result.getStatus());
+        verify(approvalInstanceRepository).saveAndFlush(argThat(instance ->
+                instance.getTemplateId().equals(500L)
+                        && instance.getTemplateVersion().equals(3)
+                        && instance.getSubmissionNo().equals(1)
+                        && instance.getSnapshotJson().contains("\"source\":\"WORKFLOW_TEMPLATE_V2\"")));
+        verify(approvalStepRepository).saveAll(argThat(steps -> {
+            List<AccountingDossierApprovalStep> list = (List<AccountingDossierApprovalStep>) steps;
+            return list.size() == 4
+                    && list.stream().allMatch(step -> Long.valueOf(900L).equals(step.getInstanceId()))
+                    && list.stream().noneMatch(step -> "malicious-user-id".equals(step.getApproverUserId()))
+                    && list.get(0).getStatus() == ApprovalStepStatus.CURRENT
+                    && list.get(0).getApproverUserId().equals("user-manager-id")
+                    && list.get(3).getApproverType() == ApproverType.DIRECTOR
+                    && list.get(3).getApproverUserId().equals("user-director-id");
+        }));
+    }
+
+    @Test
+    void testSubmitDossierTemplateV2SupportsUserSelectableStepByStepKey() {
+        Long dossierId = 1L;
+        Company company = new Company();
+        company.setId(10L);
+
+        Department department = new Department();
+        department.setId(20L);
+        department.setCompany(company);
+
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(dossierId);
+        dossier.setStatus(AccountingDossierStatus.DRAFT);
+        dossier.setCompany(company);
+        dossier.setDepartment(department);
+        dossier.setDossierCode("BCT-2026-000001");
+
+        User creator = new User();
+        creator.setId("user-creator-id");
+        creator.setEmail("test-user");
+
+        User chief = new User();
+        chief.setId("user-chief-id");
+        chief.setActive(true);
+
+        User director = new User();
+        director.setId("user-director-id");
+        director.setActive(true);
+
+        AccountingApprovalWorkflowTemplate template = new AccountingApprovalWorkflowTemplate();
+        template.setId(501L);
+        template.setCode("WF-USER-SELECTABLE");
+        template.setName("Luồng có bước người lập chọn");
+        template.setCompanyId(10L);
+        template.setPriority(1);
+        template.setStatus(WorkflowTemplateStatus.ACTIVE);
+        template.setVersion(1);
+
+        template.getSteps().add(templateStep(template, "MANUAL_REVIEWER", 1, "Người xử lý do người lập chọn",
+                ApproverStrategy.USER_SELECTABLE, null));
+        template.getSteps().add(templateStep(template, "CHIEF", 2, "Kế toán trưởng duyệt",
+                ApproverStrategy.COMPANY_ROLE, CHIEF_ACCOUNTANT_APPROVAL_PERMISSION));
+        template.getSteps().add(templateStep(template, "DIRECTOR", 3, "Giám đốc phê duyệt",
+                ApproverStrategy.COMPANY_DIRECTOR, null));
+
+        when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
+        when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
+        when(userRepository.findByEmail("test-user")).thenReturn(creator);
+        when(approvalStepRepository.findByDossierIdAndActiveTrue(dossierId)).thenReturn(Collections.emptyList());
+        when(workflowTemplateRepository.findByStatusOrderByPriorityAscIdAsc(WorkflowTemplateStatus.ACTIVE))
+                .thenReturn(List.of(template));
+        when(approvalInstanceRepository.findFirstByDossierIdAndStatusOrderByIdDesc(dossierId, WorkflowInstanceStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+        when(approvalInstanceRepository.countByDossierId(dossierId)).thenReturn(0L);
+        when(approvalInstanceRepository.saveAndFlush(any(AccountingApprovalInstance.class))).thenAnswer(invocation -> {
+            AccountingApprovalInstance instance = invocation.getArgument(0);
+            instance.setId(901L);
+            return instance;
+        });
+        stubApproverLookup(null, chief, director);
+        when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AccountingDossierSubmitRequest req = new AccountingDossierSubmitRequest();
+        AccountingDossierSubmitRequest.CustomStep selected = new AccountingDossierSubmitRequest.CustomStep();
+        selected.setStepKey("MANUAL_REVIEWER");
+        selected.setStepOrder(1);
+        selected.setStepName("Người xử lý do người lập chọn");
+        selected.setApproverUserId("selected-reviewer-id");
+        req.setCustomSteps(List.of(selected));
+
+        service.submit(dossierId, req);
+
+        verify(approvalStepRepository).saveAll(argThat(steps -> {
+            List<AccountingDossierApprovalStep> list = (List<AccountingDossierApprovalStep>) steps;
+            return list.get(0).getStepKey().equals("MANUAL_REVIEWER")
+                    && list.get(0).getApproverType() == ApproverType.CUSTOM
+                    && list.get(0).getApproverUserId().equals("selected-reviewer-id")
+                    && list.get(0).getStatus() == ApprovalStepStatus.CURRENT;
+        }));
     }
 
     @Test
@@ -389,16 +660,16 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep step1 = new AccountingDossierApprovalStep();
         step1.setId(101L);
-        step1.setStatus("CURRENT");
+        step1.setStatus(ApprovalStepStatus.CURRENT);
         step1.setApproverUserId("user-manager-id");
         step1.setStepOrder(1);
-        step1.setApproverType("DEPARTMENT_MANAGER");
+        step1.setApproverType(ApproverType.DEPARTMENT_MANAGER);
 
         AccountingDossierApprovalStep step2 = new AccountingDossierApprovalStep();
         step2.setId(102L);
-        step2.setStatus("PENDING");
+        step2.setStatus(ApprovalStepStatus.PENDING);
         step2.setStepOrder(2);
-        step2.setApproverType("ACCOUNTANT");
+        step2.setApproverType(ApproverType.ACCOUNTANT);
         step2.setApproverUserId("user-accountant-id"); // Set approverUserId so it doesn't try dynamic resolution
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
@@ -408,8 +679,8 @@ class AccountingDossierServiceTest {
 
         service.approve(dossierId, null);
 
-        assertEquals("APPROVED", step1.getStatus());
-        assertEquals("CURRENT", step2.getStatus());
+        assertEquals(ApprovalStepStatus.APPROVED, step1.getStatus());
+        assertEquals(ApprovalStepStatus.CURRENT, step2.getStatus());
         verify(approvalStepRepository, atLeastOnce()).save(any(AccountingDossierApprovalStep.class));
     }
 
@@ -433,8 +704,8 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
         step.setId(101L);
-        step.setStatus("CURRENT");
-        step.setApproverType("ACCOUNTANT");
+        step.setStatus(ApprovalStepStatus.CURRENT);
+        step.setApproverType(ApproverType.ACCOUNTANT);
         step.setStepOrder(2);
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
@@ -444,7 +715,7 @@ class AccountingDossierServiceTest {
 
         ResAccountingDossierDTO result = service.approve(dossierId, null);
 
-        assertEquals("APPROVED", step.getStatus());
+        assertEquals(ApprovalStepStatus.APPROVED, step.getStatus());
         assertEquals(AccountingDossierStatus.APPROVED, result.getStatus());
     }
 
@@ -465,10 +736,10 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep step1 = new AccountingDossierApprovalStep();
         step1.setId(101L);
-        step1.setStatus("CURRENT");
+        step1.setStatus(ApprovalStepStatus.CURRENT);
         step1.setApproverUserId("user-chief-id");
         step1.setStepOrder(3);
-        step1.setApproverType("CHIEF_ACCOUNTANT");
+        step1.setApproverType(ApproverType.CHIEF_ACCOUNTANT);
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(userRepository.findByEmail("test-user")).thenReturn(approver);
@@ -477,7 +748,7 @@ class AccountingDossierServiceTest {
 
         ResAccountingDossierDTO result = service.approve(dossierId, null);
 
-        assertEquals("APPROVED", step1.getStatus());
+        assertEquals(ApprovalStepStatus.APPROVED, step1.getStatus());
         assertEquals(AccountingDossierStatus.APPROVED, result.getStatus());
         assertNotNull(result.getApprovedAt());
     }
@@ -499,9 +770,9 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep step1 = new AccountingDossierApprovalStep();
         step1.setId(101L);
-        step1.setStatus("CURRENT");
+        step1.setStatus(ApprovalStepStatus.CURRENT);
         step1.setApproverUserId("user-manager-id");
-        step1.setApproverType("DEPARTMENT_MANAGER");
+        step1.setApproverType(ApproverType.DEPARTMENT_MANAGER);
 
         vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest req = 
             new vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest();
@@ -514,7 +785,7 @@ class AccountingDossierServiceTest {
 
         ResAccountingDossierDTO result = service.reject(dossierId, req);
 
-        assertEquals("REJECTED", step1.getStatus());
+        assertEquals(ApprovalStepStatus.REJECTED, step1.getStatus());
         assertEquals(AccountingDossierStatus.REJECTED, result.getStatus());
     }
 
@@ -601,15 +872,36 @@ class AccountingDossierServiceTest {
         dossier.setActive(true);
 
         when(userRepository.findByEmail("test-user")).thenReturn(currentUser);
-        when(repository.findAll((Specification<AccountingDossier>) any(), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(dossier), PageRequest.of(0, 10), 1));
+
+        AccountingDossierListProjection projection = mock(AccountingDossierListProjection.class);
+        when(projection.getId()).thenReturn(99L);
+        when(projection.getStatus()).thenReturn(AccountingDossierStatus.IN_REVIEW);
+        when(projection.isActive()).thenReturn(true);
+
+        AccountingDossierListProjection.CompanyRef compRef = mock(AccountingDossierListProjection.CompanyRef.class);
+        when(compRef.getId()).thenReturn(10L);
+        when(projection.getCompany()).thenReturn(compRef);
+
+        AccountingDossierListProjection.DepartmentRef deptRef = mock(AccountingDossierListProjection.DepartmentRef.class);
+        when(deptRef.getId()).thenReturn(20L);
+        when(projection.getDepartment()).thenReturn(deptRef);
+
+        FluentQuery.FetchableFluentQuery fluentQuery = mock(FluentQuery.FetchableFluentQuery.class);
+        when(fluentQuery.as(AccountingDossierListProjection.class)).thenReturn(fluentQuery);
+        when(fluentQuery.page(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(projection), PageRequest.of(0, 10), 1));
+
+        when(repository.findBy(any(Specification.class), any(Function.class)))
+                .thenAnswer(invocation -> {
+                    Function fn = invocation.getArgument(1);
+                    return fn.apply(fluentQuery);
+                });
 
         var result = service.fetchPendingMyApproval(PageRequest.of(0, 10));
 
         assertNotNull(result);
         assertEquals(1, result.getMeta().getTotal());
         assertEquals(1, ((List<?>) result.getResult()).size());
-        verify(repository, times(1)).findAll((Specification<AccountingDossier>) any(), any(Pageable.class));
+        verify(repository, times(1)).findBy(any(Specification.class), any(Function.class));
     }
 
     @Test
@@ -636,16 +928,16 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep approvedStep = new AccountingDossierApprovalStep();
         approvedStep.setId(11L);
-        approvedStep.setStatus("CURRENT");
+        approvedStep.setStatus(ApprovalStepStatus.CURRENT);
         approvedStep.setApproverUserId("user-approver-id");
-        approvedStep.setApproverType("ACCOUNTANT");
+        approvedStep.setApproverType(ApproverType.ACCOUNTANT);
         approvedStep.setStepOrder(1);
 
         AccountingDossierApprovalStep rejectedStep = new AccountingDossierApprovalStep();
         rejectedStep.setId(12L);
-        rejectedStep.setStatus("CURRENT");
+        rejectedStep.setStatus(ApprovalStepStatus.CURRENT);
         rejectedStep.setApproverUserId("different-user-id");
-        rejectedStep.setApproverType("ACCOUNTANT");
+        rejectedStep.setApproverType(ApproverType.ACCOUNTANT);
         rejectedStep.setStepOrder(1);
 
         when(repository.findById(approvedId)).thenReturn(Optional.of(approvedDossier));
@@ -687,8 +979,8 @@ class AccountingDossierServiceTest {
         accountant.setEmail("test-user");
 
         AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
-        step.setStatus("CURRENT");
-        step.setApproverType("ACCOUNTANT");
+        step.setStatus(ApprovalStepStatus.CURRENT);
+        step.setApproverType(ApproverType.ACCOUNTANT);
         step.setApproverUserId("user-accountant-id");
 
         AccountingDossierDocument doc = new AccountingDossierDocument();
@@ -762,8 +1054,8 @@ class AccountingDossierServiceTest {
         manager.setEmail("test-user");
 
         AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
-        step.setStatus("CURRENT");
-        step.setApproverType("DEPARTMENT_MANAGER");
+        step.setStatus(ApprovalStepStatus.CURRENT);
+        step.setApproverType(ApproverType.DEPARTMENT_MANAGER);
         step.setApproverUserId("manager-id");
 
         vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentCheckRequest req =
@@ -799,8 +1091,8 @@ class AccountingDossierServiceTest {
         approver.setEmail("test-user");
 
         AccountingDossierApprovalStep step = new AccountingDossierApprovalStep();
-        step.setStatus("CURRENT");
-        step.setApproverType("ACCOUNTANT");
+        step.setStatus(ApprovalStepStatus.CURRENT);
+        step.setApproverType(ApproverType.ACCOUNTANT);
         step.setApproverUserId("accountant-id");
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
@@ -812,7 +1104,7 @@ class AccountingDossierServiceTest {
         ResAccountingDossierDTO result = service.handleReturnResponse(dossierId, "ACCEPT", null);
 
         assertEquals(AccountingDossierStatus.RETURNED, result.getStatus());
-        assertEquals("RETURNED", step.getStatus());
+        assertEquals(ApprovalStepStatus.RETURNED, step.getStatus());
         assertEquals(1, dossier.getReturnCount());
     }
 
@@ -867,7 +1159,7 @@ class AccountingDossierServiceTest {
 
         assertNotNull(res);
         assertEquals(vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStorageStatus.ARCHIVED, dossier.getStorageStatus());
-        verify(repository, times(1)).save(dossier);
+        verify(repository, times(1)).saveAndFlush(dossier);
         verify(auditLogRepository, times(1)).save(any());
     }
 
@@ -895,8 +1187,10 @@ class AccountingDossierServiceTest {
         when(repository.countByActiveTrueAndStorageStatus(vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStorageStatus.IN_RETENTION)).thenReturn(5L);
         when(repository.countByActiveTrueAndStorageStatus(vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStorageStatus.EXPIRED)).thenReturn(3L);
         when(repository.countByActiveTrueAndStorageStatus(vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStorageStatus.ARCHIVED)).thenReturn(2L);
+        when(repository.countActiveGroupByStatus(null)).thenReturn(Collections.emptyList());
+        when(repository.countActiveGroupByStorageStatus(null)).thenReturn(Collections.emptyList());
         
-        vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierStorageSummaryDTO res = service.getStorageSummary();
+        vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierStorageSummaryDTO res = service.getStorageSummary(null);
         
         assertNotNull(res);
         assertEquals(10L, res.getTotal());
@@ -908,9 +1202,9 @@ class AccountingDossierServiceTest {
     @Test
     void reportByStatus_Success() {
         Object[] row1 = new Object[]{AccountingDossierStatus.SUBMITTED, 5L};
-        when(repository.countActiveGroupByStatus()).thenReturn(Collections.singletonList(row1));
+        when(repository.countActiveGroupByStatus(null)).thenReturn(Collections.singletonList(row1));
 
-        List<vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierReportRowDTO> res = service.reportByStatus();
+        List<vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierReportRowDTO> res = service.reportByStatus(null);
         
         assertNotNull(res);
         assertEquals(1, res.size());
@@ -940,9 +1234,18 @@ class AccountingDossierServiceTest {
         manager.setId("manager-id");
         creator.setDirectManager(manager);
 
+        User director = new User();
+        director.setId("director-id");
+        director.setActive(true);
+
+        User chief = new User();
+        chief.setId("chief-id");
+        chief.setActive(true);
+
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(documentItemRepository.countByDossierIdAndActiveTrue(dossierId)).thenReturn(1L);
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
+        stubApproverLookup(null, chief, director);
         when(repository.save(any(AccountingDossier.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ResAccountingDossierDTO result = service.submit(dossierId, null);
@@ -951,7 +1254,7 @@ class AccountingDossierServiceTest {
         assertEquals(AccountingDossierStatus.SUBMITTED, dossier.getStatus());
         verify(approvalStepRepository, times(1)).saveAll(argThat(steps -> {
             List<AccountingDossierApprovalStep> list = (List<AccountingDossierApprovalStep>) steps;
-            return list.stream().anyMatch(s -> "DEPARTMENT_MANAGER".equals(s.getApproverType()) && "manager-id".equals(s.getApproverUserId()) && !"SKIPPED".equals(s.getStatus()));
+            return list.stream().anyMatch(s -> s.getApproverType() == ApproverType.DEPARTMENT_MANAGER && "manager-id".equals(s.getApproverUserId()) && s.getStatus() != ApprovalStepStatus.SKIPPED);
         }));
     }
 
@@ -982,7 +1285,7 @@ class AccountingDossierServiceTest {
     }
 
     @Test
-    void testQuickAddDocumentSubmittedDossierReturnsToCreator() {
+    void testAddDocumentWhileSubmittedRequiresReturnToBeAcceptedFirst() {
         Long dossierId = 1L;
         Company company = new Company();
         company.setId(10L);
@@ -1014,16 +1317,31 @@ class AccountingDossierServiceTest {
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
-        when(accountingCategoryRepository.findById(100L)).thenReturn(Optional.of(category));
-        when(documentItemRepository.save(any())).thenReturn(item);
+        assertThrows(PermissionException.class, () -> service.addDocument(dossierId, req));
+        assertEquals(AccountingDossierStatus.SUBMITTED, dossier.getStatus());
+        assertEquals(1, dossier.getReturnCount());
+        verify(documentItemRepository, never()).save(any());
+    }
 
-        vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDocumentDTO res = service.addDocument(dossierId, req);
+    @Test
+    void testNonCreatorCannotDeleteDocumentFromDraftDossier() {
+        // Clear superAdmin scope so the creator restriction check is enforced
+        vn.system.app.common.util.UserScopeContext.clear();
 
-        assertNotNull(res);
-        assertEquals(AccountingDossierStatus.RETURNED, dossier.getStatus());
-        assertEquals(2, dossier.getReturnCount());
-        verify(repository, times(1)).save(dossier);
-        verify(auditLogRepository, times(1)).save(any());
+        Long dossierId = 1L;
+        Company company = new Company();
+        company.setId(10L);
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(dossierId);
+        dossier.setCompany(company);
+        dossier.setStatus(AccountingDossierStatus.DRAFT);
+        dossier.setActive(true);
+        dossier.setCreatorId("another-user");
+
+        when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
+
+        assertThrows(PermissionException.class, () -> service.deleteDocument(dossierId, 99L));
+        verify(documentItemRepository, never()).findById(anyLong());
     }
 
     @Test
@@ -1058,6 +1376,57 @@ class AccountingDossierServiceTest {
     }
 
     @Test
+    void testRequestReturnByNonCreatorThrowsException() {
+        Long dossierId = 1L;
+        Company company = new Company();
+        company.setId(10L);
+
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(dossierId);
+        dossier.setCompany(company);
+        dossier.setCreatorId("creator-id");
+        dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
+
+        User anotherUser = new User();
+        anotherUser.setId("another-user-id");
+        anotherUser.setEmail("test-user");
+
+        when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
+        when(userRepository.findByEmail("test-user")).thenReturn(anotherUser);
+
+        PermissionException exception = assertThrows(PermissionException.class,
+                () -> service.requestReturn(dossierId, null));
+
+        assertTrue(exception.getMessage().contains("Chỉ người lập hồ sơ"));
+        verify(repository, never()).save(dossier);
+    }
+
+    @Test
+    void testTerminateDossierWithUnknownUserThrowsException() {
+        Long dossierId = 1L;
+        Company company = new Company();
+        company.setId(10L);
+
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(dossierId);
+        dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
+        dossier.setCompany(company);
+
+        vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest req =
+                new vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest();
+        req.setNote("Dừng xử lý");
+
+        when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
+        when(userRepository.findByEmail("test-user")).thenReturn(null);
+
+        PermissionException exception = assertThrows(PermissionException.class,
+                () -> service.terminate(dossierId, req));
+
+        assertTrue(exception.getMessage().contains("Không xác định được quyền chấm dứt"));
+        verify(repository, never()).save(dossier);
+    }
+
+    @Test
     void testApproveDossierByNonCurrentApproverThrowsException() {
         Long dossierId = 1L;
         Company company = new Company();
@@ -1077,9 +1446,9 @@ class AccountingDossierServiceTest {
 
         AccountingDossierApprovalStep step1 = new AccountingDossierApprovalStep();
         step1.setId(101L);
-        step1.setStatus("CURRENT");
+        step1.setStatus(ApprovalStepStatus.CURRENT);
         step1.setApproverUserId("user-manager-id");
-        step1.setApproverType("DEPARTMENT_MANAGER");
+        step1.setApproverType(ApproverType.DEPARTMENT_MANAGER);
         step1.setStepOrder(1);
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
@@ -1157,7 +1526,7 @@ class AccountingDossierServiceTest {
     }
 
     @Test
-    void testAddDocumentDuplicateInvoiceConfirmed() {
+    void testAddDocumentDuplicateInvoiceEvenIfConfirmedIsBlocked() {
         Long dossierId = 1L;
         Company company = new Company();
         company.setId(10L);
@@ -1184,21 +1553,23 @@ class AccountingDossierServiceTest {
         AccountingDocumentCategory category = new AccountingDocumentCategory();
         category.setId(100L);
 
-        AccountingDossierDocument savedDoc = new AccountingDossierDocument();
-        savedDoc.setId(5L);
-        savedDoc.setDossier(dossier);
-        savedDoc.setDocumentName("Hóa đơn");
+        AccountingDossier duplicateDossier = new AccountingDossier();
+        duplicateDossier.setId(2L);
+        duplicateDossier.setDossierCode("BCT-2");
+
+        AccountingDossierDocument duplicateDoc = new AccountingDossierDocument();
+        duplicateDoc.setId(99L);
+        duplicateDoc.setInvoiceNumber("INV-001");
+        duplicateDoc.setPartnerName("Partner A");
+        duplicateDoc.setDossier(duplicateDossier);
 
         when(repository.findById(dossierId)).thenReturn(Optional.of(dossier));
         when(userRepository.findByEmail("test-user")).thenReturn(creator);
         when(accountingCategoryRepository.findById(100L)).thenReturn(Optional.of(category));
-        when(documentItemRepository.save(any())).thenReturn(savedDoc);
+        when(documentItemRepository.findDuplicateInvoices(eq("INV-001"), eq("Partner A"), eq(dossierId), any()))
+                .thenReturn(List.of(duplicateDoc));
 
-        var res = service.addDocument(dossierId, req);
-
-        assertNotNull(res);
-        verify(documentItemRepository, times(1)).save(any());
-        verify(auditLogRepository, times(2)).save(any());
+        assertThrows(DuplicateInvoiceWarningException.class, () -> service.addDocument(dossierId, req));
     }
 
     @Test
@@ -1240,5 +1611,101 @@ class AccountingDossierServiceTest {
         when(repository.findByQrToken(token)).thenReturn(Optional.of(dossier));
 
         assertThrows(IdInvalidException.class, () -> service.getByQrToken(token));
+    }
+
+    @Test
+    void testApproverTypeFromStringMapping() {
+        assertEquals(ApproverType.ACCOUNTANT, ApproverType.fromString("ACOUNTANT"));
+        assertEquals(ApproverType.CHIEF_ACCOUNTANT, ApproverType.fromString("CHIEF_ACOUNTANT"));
+        assertEquals(ApproverType.CUSTOM, ApproverType.fromString("CUSTOM_USER"));
+        assertEquals(ApproverType.CUSTOM, ApproverType.fromString("CUSTOM"));
+        assertEquals(ApproverType.DEPARTMENT_MANAGER, ApproverType.fromString("DEPARTMENT_MANAGER"));
+        assertEquals(ApproverType.DIRECTOR, ApproverType.fromString("DIRECTOR"));
+        assertNull(ApproverType.fromString(null));
+
+        assertThrows(IllegalArgumentException.class, () -> ApproverType.fromString("SOME_UNKNOWN_VALUE"));
+    }
+
+    private void stubApproverLookup(User accountant, User chiefAccountant, User director) {
+        when(userRepository.findUsersByPermissionAndCompany(anyList(), anyList(), anyBoolean()))
+                .thenAnswer(invocation -> {
+                    List<String> permissionNames = invocation.getArgument(0);
+                    if (permissionNames.contains(ACCOUNTANT_APPROVAL_PERMISSION)) {
+                        return accountant == null ? List.of() : List.of(accountant);
+                    }
+                    if (permissionNames.contains(CHIEF_ACCOUNTANT_APPROVAL_PERMISSION)) {
+                        return chiefAccountant == null ? List.of() : List.of(chiefAccountant);
+                    }
+                    if (permissionNames.contains(DIRECTOR_APPROVAL_PERMISSION)) {
+                        return director == null ? List.of() : List.of(director);
+                    }
+                    return List.of();
+                });
+    }
+
+    private AccountingApprovalWorkflowStep templateStep(
+            AccountingApprovalWorkflowTemplate template,
+            String key,
+            int order,
+            String name,
+            ApproverStrategy strategy,
+            String approverRefId) {
+        AccountingApprovalWorkflowStep step = new AccountingApprovalWorkflowStep();
+        step.setTemplate(template);
+        step.setStepKey(key);
+        step.setStepOrder(order);
+        step.setStepName(name);
+        step.setApproverStrategy(strategy);
+        step.setApproverRefId(approverRefId);
+        step.setRequired(true);
+        return step;
+    }
+
+    @Test
+    void reassignDirector_DossierStatusGuard_ThrowsException() {
+        AccountingDossier dossier = new AccountingDossier();
+        dossier.setId(1L);
+        dossier.setStatus(vn.system.app.modules.accountingdossier.domain.enums.AccountingDossierStatus.APPROVED);
+
+        vn.system.app.modules.user.domain.User actor = new vn.system.app.modules.user.domain.User();
+        vn.system.app.modules.role.domain.Role role = new vn.system.app.modules.role.domain.Role();
+        role.setName("SUPER_ADMIN");
+        actor.setRole(role);
+
+        when(userRepository.findByEmail(anyString())).thenReturn(actor);
+        when(repository.findById(1L)).thenReturn(Optional.of(dossier));
+
+        assertThrows(IdInvalidException.class, () -> {
+            service.reassignDirector(1L, "new-user-id", "Testing status guard");
+        });
+    }
+
+    @Test
+    void refreshExpiredRetentionStatusesByUser_NoPermission_ThrowsException() {
+        vn.system.app.modules.user.domain.User actor = new vn.system.app.modules.user.domain.User();
+        vn.system.app.modules.role.domain.Role role = new vn.system.app.modules.role.domain.Role();
+        role.setName("USER");
+        role.setPermissions(Collections.emptyList());
+        actor.setRole(role);
+
+        when(userRepository.findByEmail(anyString())).thenReturn(actor);
+
+        assertThrows(PermissionException.class, () -> {
+            service.refreshExpiredRetentionStatusesByUser();
+        });
+    }
+
+    @Test
+    void refreshExpiredRetentionStatusesByUser_Success() {
+        vn.system.app.modules.user.domain.User actor = new vn.system.app.modules.user.domain.User();
+        vn.system.app.modules.role.domain.Role role = new vn.system.app.modules.role.domain.Role();
+        role.setName("SUPER_ADMIN");
+        actor.setRole(role);
+
+        when(userRepository.findByEmail(anyString())).thenReturn(actor);
+        when(repository.findByActiveTrueAndStorageStatusAndRetentionUntilBefore(any(), any())).thenReturn(List.of());
+
+        int count = service.refreshExpiredRetentionStatusesByUser();
+        assertEquals(0, count);
     }
 }

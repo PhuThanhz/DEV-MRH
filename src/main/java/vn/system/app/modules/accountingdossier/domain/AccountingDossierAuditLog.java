@@ -8,7 +8,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "accounting_dossier_audit_log", indexes = {
-    @Index(name = "idx_audit_dossier", columnList = "dossier_id"),
+    @Index(name = "idx_audit_dossier", columnList = "dossier_id,created_at"),
     @Index(name = "idx_audit_bulk_action", columnList = "bulk_action_id")
 })
 @Getter

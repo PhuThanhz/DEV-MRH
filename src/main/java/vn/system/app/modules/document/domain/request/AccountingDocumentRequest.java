@@ -21,6 +21,7 @@ public class AccountingDocumentRequest {
 
     private Instant issuedDate;
     private List<String> fileUrls;
+    @Size(max = 1000, message = "Ghi chú không được vượt quá 1000 ký tự")
     private String note;
     private Long folderId;
     private Long accountingCategoryId;
