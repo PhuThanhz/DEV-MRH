@@ -36,6 +36,8 @@ import vn.system.app.modules.department.domain.Department;
 import vn.system.app.modules.department.repository.DepartmentRepository;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
+import vn.system.app.modules.userposition.domain.UserPosition;
+import vn.system.app.modules.userposition.repository.UserPositionRepository;
 
 @Service
 public class AccountingApprovalWorkflowService {
@@ -51,6 +53,7 @@ public class AccountingApprovalWorkflowService {
     private final ApproverResolutionService approverResolutionService;
     private final CompanyRepository companyRepository;
     private final DepartmentRepository departmentRepository;
+    private final UserPositionRepository userPositionRepository;
 
     public AccountingApprovalWorkflowService(
             AccountingApprovalWorkflowTemplateRepository templateRepository,
@@ -58,13 +61,15 @@ public class AccountingApprovalWorkflowService {
             UserRepository userRepository,
             ApproverResolutionService approverResolutionService,
             CompanyRepository companyRepository,
-            DepartmentRepository departmentRepository) {
+            DepartmentRepository departmentRepository,
+            UserPositionRepository userPositionRepository) {
         this.templateRepository = templateRepository;
         this.dossierRepository = dossierRepository;
         this.userRepository = userRepository;
         this.approverResolutionService = approverResolutionService;
         this.companyRepository = companyRepository;
         this.departmentRepository = departmentRepository;
+        this.userPositionRepository = userPositionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -218,7 +223,6 @@ public class AccountingApprovalWorkflowService {
     public ResAccountingApprovalPreviewDTO preview(Long dossierId) {
         AccountingDossier dossier = dossierRepository.findById(dossierId)
                 .orElseThrow(() -> new IdInvalidException("Bộ chứng từ kế toán không tồn tại"));
-        authorizeConfiguration(dossier.getCompany().getId());
         Optional<AccountingApprovalWorkflowTemplate> matchedTemplate = workflowV2Enabled
                 ? resolveTemplate(dossier)
                 : Optional.empty();
@@ -526,6 +530,7 @@ public class AccountingApprovalWorkflowService {
             AccountingApprovalWorkflowTemplate template) {
         List<String> warnings = new ArrayList<>();
         List<String> errors = validateTemplate(template);
+        User creator = resolveDossierCreator(dossier);
         List<ResAccountingApprovalPreviewDTO.StepPreviewDTO> previewSteps = new ArrayList<>();
         for (AccountingApprovalWorkflowStep step : sortedSteps(template)) {
             previewSteps.add(resolveStepPreview(dossier, step, warnings, errors));
@@ -540,6 +545,7 @@ public class AccountingApprovalWorkflowService {
                 .valid(errors.isEmpty())
                 .warnings(warnings)
                 .blockingErrors(errors)
+                .sender(toPersonPreview(creator))
                 .steps(previewSteps)
                 .build();
     }
@@ -550,13 +556,14 @@ public class AccountingApprovalWorkflowService {
         List<ResAccountingApprovalPreviewDTO.StepPreviewDTO> steps = new ArrayList<>();
         User creator = userRepository.findByEmail(dossier.getCreatedBy());
         if (creator == null) creator = resolveCurrentUser();
-        String managerId = creator.getDirectManager() == null ? null : creator.getDirectManager().getId();
+        String managerId = resolveRequesterManagerId(creator);
+        String managerLabel = managerId == null ? null : displayUser(creator.getDirectManager());
         if (managerId == null && dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
             errors.add("Hồ sơ hoàn trả từ 3 lần cần Trưởng bộ phận trực tiếp");
         }
         steps.add(stepPreview(1, "DEPARTMENT_MANAGER", "Trưởng bộ phận duyệt",
                 ApproverStrategy.REQUESTER_MANAGER, ApprovalRule.ANY_ONE, managerId,
-                managerId == null ? "Bỏ qua nếu không bắt buộc" : managerId, null, true));
+                managerId == null ? "Bỏ qua nếu không bắt buộc" : managerLabel, null, true));
 
         steps.add(stepPreview(2, "ACCOUNTANT", "Kế toán kiểm tra",
                 ApproverStrategy.COMPANY_ROLE, ApprovalRule.ANY_ONE, null,
@@ -568,7 +575,7 @@ public class AccountingApprovalWorkflowService {
         }
         steps.add(stepPreview(3, "CHIEF_ACCOUNTANT", "Kế toán trưởng duyệt",
                 ApproverStrategy.COMPANY_ROLE, ApprovalRule.ANY_ONE, chiefId,
-                chiefId == null ? "Chưa resolve được" : chiefId, null, true));
+                chiefId == null ? "Chưa resolve được" : userRepository.findById(chiefId).map(this::displayUser).orElse(chiefId), null, true));
 
         List<User> directors = approverResolutionService.resolveAllDirectorUserIds(dossier.getCompany().getId());
         if (directors.isEmpty()) {
@@ -580,7 +587,7 @@ public class AccountingApprovalWorkflowService {
         String directorId = directors.size() == 1 ? directors.get(0).getId() : null;
         steps.add(stepPreview(4, "DIRECTOR", "Giám đốc phê duyệt",
                 ApproverStrategy.COMPANY_DIRECTOR, ApprovalRule.ANY_ONE, directorId,
-                directorId == null ? "Chưa resolve được" : directorId, null, true));
+                directorId == null ? "Chưa resolve được" : displayUser(directors.get(0)), null, true));
 
         if (dossier.getDossierCategory() != null && !isBlank(dossier.getDossierCategory().getApprovalStepsConfig())) {
             warnings.add("Preview legacy đang tóm tắt luồng Phase 1; category JSON chi tiết sẽ được xử lý khi submit.");
@@ -592,6 +599,7 @@ public class AccountingApprovalWorkflowService {
                 .valid(errors.isEmpty())
                 .warnings(warnings)
                 .blockingErrors(errors)
+                .sender(toPersonPreview(creator))
                 .steps(steps)
                 .build();
     }
@@ -606,16 +614,15 @@ public class AccountingApprovalWorkflowService {
         if (step.getApproverStrategy() == ApproverStrategy.REQUESTER_MANAGER) {
             User creator = userRepository.findByEmail(dossier.getCreatedBy());
             if (creator == null) creator = resolveCurrentUser();
-            assigneeUserId = creator.getDirectManager() == null ? null : creator.getDirectManager().getId();
-            label = assigneeUserId == null ? "Chưa có quản lý trực tiếp" : assigneeUserId;
-            if (assigneeUserId == null && step.isRequired()) {
-                errors.add("Bước " + step.getStepName() + " không tìm thấy quản lý trực tiếp");
-            }
+            assigneeUserId = resolveRequesterManagerId(creator);
+            label = assigneeUserId == null
+                    ? "Bỏ qua nếu người lập không có quản lý trực tiếp hợp lệ"
+                    : displayUser(creator.getDirectManager());
         } else if (step.getApproverStrategy() == ApproverStrategy.COMPANY_DIRECTOR) {
             List<User> directors = approverResolutionService.resolveAllDirectorUserIds(dossier.getCompany().getId());
             if (directors.size() == 1) {
                 assigneeUserId = directors.get(0).getId();
-                label = directors.get(0).getEmail();
+                label = displayUser(directors.get(0));
             } else if (directors.isEmpty()) {
                 errors.add("Bước " + step.getStepName() + " không tìm thấy Giám đốc hợp lệ");
                 label = "Chưa resolve được";
@@ -632,14 +639,14 @@ public class AccountingApprovalWorkflowService {
                 label = "Chưa resolve được";
             } else if (users.size() == 1) {
                 assigneeUserId = users.get(0).getId();
-                label = users.get(0).getEmail();
+                label = displayUser(users.get(0));
             } else {
                 label = users.size() + " người có quyền xử lý";
                 warnings.add("Bước " + step.getStepName() + " resolve ra nhiều người; runtime cần queue/claim hoặc primary approver.");
             }
         } else if (step.getApproverStrategy() == ApproverStrategy.SPECIFIC_USER) {
             assigneeUserId = step.getApproverRefId();
-            label = userRepository.findById(step.getApproverRefId()).map(User::getEmail).orElse(step.getApproverRefId());
+            label = userRepository.findById(step.getApproverRefId()).map(this::displayUser).orElse(step.getApproverRefId());
         } else if (step.getApproverStrategy() == ApproverStrategy.USER_SELECTABLE) {
             label = "Người lập sẽ chọn người duyệt khi gửi hồ sơ";
         } else if (step.getApproverStrategy() == ApproverStrategy.POSITION) {
@@ -653,7 +660,7 @@ public class AccountingApprovalWorkflowService {
                 label = "Chưa resolve được";
             } else if (users.size() == 1) {
                 assigneeUserId = users.get(0).getId();
-                label = users.get(0).getEmail();
+                label = displayUser(users.get(0));
             } else {
                 label = users.size() + " người khớp chức danh/cấp bậc";
                 warnings.add("Bước " + step.getStepName()
@@ -666,6 +673,25 @@ public class AccountingApprovalWorkflowService {
 
         return stepPreview(step.getStepOrder(), step.getStepKey(), step.getStepName(), step.getApproverStrategy(),
                 step.getApprovalRule(), assigneeUserId, label, step.getSlaMinutes(), step.isRequired());
+    }
+
+    private User resolveDossierCreator(AccountingDossier dossier) {
+        User creator = userRepository.findByEmail(dossier.getCreatedBy());
+        if (creator != null) {
+            return creator;
+        }
+        if (!isBlank(dossier.getCreatorId())) {
+            return userRepository.findById(dossier.getCreatorId()).orElse(resolveCurrentUser());
+        }
+        return resolveCurrentUser();
+    }
+
+    private String resolveRequesterManagerId(User creator) {
+        if (creator == null || creator.getDirectManager() == null) {
+            return null;
+        }
+        String managerId = creator.getDirectManager().getId();
+        return managerId != null && !managerId.equals(creator.getId()) ? managerId : null;
     }
 
     private ResAccountingApprovalPreviewDTO.StepPreviewDTO stepPreview(
@@ -686,9 +712,92 @@ public class AccountingApprovalWorkflowService {
                 .approvalRule(rule)
                 .approverUserId(approverUserId)
                 .assigneeLabel(assigneeLabel)
+                .assignee(toPersonPreview(approverUserId))
                 .slaMinutes(slaMinutes)
                 .required(required)
                 .build();
+    }
+
+    private ResAccountingApprovalPreviewDTO.PersonPreviewDTO toPersonPreview(String userId) {
+        if (isBlank(userId)) {
+            return null;
+        }
+        return userRepository.findById(userId).map(this::toPersonPreview).orElse(null);
+    }
+
+    private ResAccountingApprovalPreviewDTO.PersonPreviewDTO toPersonPreview(User user) {
+        if (user == null) {
+            return null;
+        }
+        ResAccountingApprovalPreviewDTO.PersonPreviewDTO.PersonPreviewDTOBuilder builder =
+                ResAccountingApprovalPreviewDTO.PersonPreviewDTO.builder()
+                        .userId(user.getId())
+                        .name(user.getName())
+                        .email(user.getEmail())
+                        .roleName(user.getRole() == null ? null : user.getRole().getName());
+
+        List<UserPosition> positions = userPositionRepository == null
+                ? List.of()
+                : userPositionRepository.findActiveFullByUserId(user.getId());
+        if (!positions.isEmpty()) {
+            UserPosition position = positions.stream()
+                    .filter(item -> "DEPARTMENT".equalsIgnoreCase(item.getSource()))
+                    .findFirst()
+                    .orElse(positions.get(0));
+            applyPositionPreview(builder, position);
+        }
+        return builder.build();
+    }
+
+    private void applyPositionPreview(
+            ResAccountingApprovalPreviewDTO.PersonPreviewDTO.PersonPreviewDTOBuilder builder,
+            UserPosition position) {
+        if (position.getDepartmentJobTitle() != null) {
+            var departmentJobTitle = position.getDepartmentJobTitle();
+            var jobTitle = departmentJobTitle.getJobTitle();
+            var department = departmentJobTitle.getDepartment();
+            builder.jobTitleName(jobTitle == null ? null : jobTitle.getNameVi());
+            builder.positionLevelCode(jobTitle == null || jobTitle.getPositionLevel() == null ? null : jobTitle.getPositionLevel().getCode());
+            builder.departmentName(department == null ? null : department.getName());
+            builder.companyName(department == null || department.getCompany() == null ? null : department.getCompany().getName());
+            return;
+        }
+        if (position.getSectionJobTitle() != null) {
+            var sectionJobTitle = position.getSectionJobTitle();
+            var jobTitle = sectionJobTitle.getJobTitle();
+            var section = sectionJobTitle.getSection();
+            var department = section == null ? null : section.getDepartment();
+            builder.jobTitleName(jobTitle == null ? null : jobTitle.getNameVi());
+            builder.positionLevelCode(jobTitle == null || jobTitle.getPositionLevel() == null ? null : jobTitle.getPositionLevel().getCode());
+            builder.sectionName(section == null ? null : section.getName());
+            builder.departmentName(department == null ? null : department.getName());
+            builder.companyName(department == null || department.getCompany() == null ? null : department.getCompany().getName());
+            return;
+        }
+        if (position.getCompanyJobTitle() != null) {
+            var companyJobTitle = position.getCompanyJobTitle();
+            var jobTitle = companyJobTitle.getJobTitle();
+            var company = companyJobTitle.getCompany();
+            builder.jobTitleName(jobTitle == null ? null : jobTitle.getNameVi());
+            builder.positionLevelCode(jobTitle == null || jobTitle.getPositionLevel() == null ? null : jobTitle.getPositionLevel().getCode());
+            builder.companyName(company == null ? null : company.getName());
+        }
+    }
+
+    private String displayUser(User user) {
+        if (user == null) {
+            return "Chưa xác định";
+        }
+        if (!isBlank(user.getName()) && !isBlank(user.getEmail())) {
+            return user.getName() + " (" + user.getEmail() + ")";
+        }
+        if (!isBlank(user.getName())) {
+            return user.getName();
+        }
+        if (!isBlank(user.getEmail())) {
+            return user.getEmail();
+        }
+        return user.getId();
     }
 
     private void authorizeConfiguration(Long companyId) {

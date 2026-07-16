@@ -121,7 +121,7 @@ class ApproverResolutionServicePositionTest {
 
         ApproverResolutionService resolver = service();
         AccountingApprovalWorkflowService workflowService = new AccountingApprovalWorkflowService(
-                templateRepository, dossierRepository, userRepository, resolver, companyRepository, departmentRepository);
+                templateRepository, dossierRepository, userRepository, resolver, companyRepository, departmentRepository, userPositionRepository);
         ResAccountingApprovalPreviewDTO preview = workflowService.preview(99L);
 
         when(approvalStepRepository.findByDossierIdAndActiveTrue(99L)).thenReturn(List.of());
@@ -144,6 +144,10 @@ class ApproverResolutionServicePositionTest {
 
     @Test
     void previewPrefersDepartmentWorkflowOverDefaultRegardlessOfPriority() {
+        User creator = user("creator");
+        creator.setEmail("creator@example.test");
+        when(userRepository.findByEmail("creator@example.test")).thenReturn(creator);
+
         AccountingDossier dossier = dossier();
         AccountingApprovalWorkflowTemplate fallback = directorOnlyTemplate(10L, "DEFAULT", 1, true);
         AccountingApprovalWorkflowTemplate departmentSpecific = directorOnlyTemplate(20L, "DEPARTMENT", 999, false);
@@ -155,7 +159,7 @@ class ApproverResolutionServicePositionTest {
                 .thenReturn(List.of(fallback, departmentSpecific));
 
         ResAccountingApprovalPreviewDTO preview = new AccountingApprovalWorkflowService(
-                templateRepository, dossierRepository, userRepository, service(), companyRepository, departmentRepository).preview(99L);
+                templateRepository, dossierRepository, userRepository, service(), companyRepository, departmentRepository, userPositionRepository).preview(99L);
 
         assertEquals(20L, preview.getTemplateId());
     }

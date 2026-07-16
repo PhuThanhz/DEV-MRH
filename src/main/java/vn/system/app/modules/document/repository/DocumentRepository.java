@@ -21,7 +21,7 @@ public interface DocumentRepository extends
         JpaSpecificationExecutor<Document> {
 
     @Override
-    @EntityGraph(attributePaths = {"category", "accountingCategory", "department", "department.company", "section", "folder", "departments"})
+    @EntityGraph(attributePaths = {"category", "accountingCategory", "department", "department.company", "section", "folder"})
     Page<Document> findAll(Specification<Document> spec, Pageable pageable);
 
     boolean existsByDocumentCode(String documentCode);

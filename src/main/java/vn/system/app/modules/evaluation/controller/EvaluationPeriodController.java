@@ -3,6 +3,7 @@ package vn.system.app.modules.evaluation.controller;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -55,6 +56,12 @@ public class EvaluationPeriodController {
         return ResponseEntity.ok(mapper.toResPeriodDTO(periodService.fetchPeriodById(id)));
     }
 
+    @GetMapping("/periods/{id}/progress")
+    @ApiMessage("Lấy thống kê tiến độ kỳ đánh giá")
+    public ResponseEntity<ResPeriodProgressDTO> getPeriodProgress(@PathVariable Long id) {
+        return ResponseEntity.ok(periodService.getPeriodProgress(id));
+    }
+
     @GetMapping("/periods")
     @ApiMessage("Danh sách kỳ đánh giá")
     public ResponseEntity<ResultPaginationDTO> fetchAllPeriods(
@@ -92,7 +99,7 @@ public class EvaluationPeriodController {
     @ApiMessage("Thêm nhân viên vào kỳ đánh giá")
     public ResponseEntity<ResPeriodEmployeeDTO> addEmployee(
             @PathVariable Long periodId,
-            @RequestBody vn.system.app.modules.evaluation.domain.request.AddPeriodEmployeeRequest req) {
+            @Valid @RequestBody vn.system.app.modules.evaluation.domain.request.AddPeriodEmployeeRequest req) {
         
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(mapper.toResPeriodEmployeeDTO(periodService.addEmployeeToPeriod(periodId, req.getEmployeeId(), req.getDirectManagerId(), req.getTemplateId())));
@@ -122,5 +129,12 @@ public class EvaluationPeriodController {
     @ApiMessage("Đóng kỳ đánh giá")
     public ResponseEntity<ResPeriodDTO> closePeriod(@PathVariable Long id) {
         return ResponseEntity.ok(mapper.toResPeriodDTO(periodService.closePeriod(id)));
+    }
+
+    @GetMapping("/periods/{id}/unfinished-records")
+    @ApiMessage("Danh sách bản đánh giá chưa hoàn thành trong kỳ")
+    public ResponseEntity<List<ResEvaluationRecordDTO>> getUnfinishedRecords(@PathVariable Long id) {
+        return ResponseEntity.ok(periodService.getUnfinishedRecords(id).stream()
+                .map(mapper::toResEvaluationRecordDTO).toList());
     }
 }

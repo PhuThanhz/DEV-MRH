@@ -16,6 +16,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PostLoad;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -134,7 +135,7 @@ public class AccountingDossier {
     private String deletedBy;
 
     @Version
-    private Long version;
+    private Long version = 0L;
 
     private Instant createdAt;
     private Instant updatedAt;
@@ -158,11 +159,20 @@ public class AccountingDossier {
         if (this.retentionYears == null) {
             this.retentionYears = 10;
         }
+        normalizeVersion();
     }
 
     @PreUpdate
     public void beforeUpdate() {
         this.updatedAt = Instant.now();
         this.updatedBy = SecurityUtil.getCurrentUserLogin().orElse("");
+        normalizeVersion();
+    }
+
+    @PostLoad
+    public void normalizeVersion() {
+        if (this.version == null) {
+            this.version = 0L;
+        }
     }
 }

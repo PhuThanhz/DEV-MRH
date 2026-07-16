@@ -100,6 +100,11 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
             "WHERE p.name IN :permissionNames")
     List<User> findUsersByPermissionNames(@Param("permissionNames") List<String> permissionNames);
 
+    @Query("SELECT DISTINCT u FROM User u " +
+            "JOIN u.role r " +
+            "WHERE r.name IN :roleNames AND u.active = true")
+    List<User> findActiveUsersByRoleNames(@Param("roleNames") List<String> roleNames);
+
     @Query("SELECT DISTINCT u.id FROM User u " +
             "JOIN UserPosition up ON up.user.id = u.id " +
             "LEFT JOIN up.companyJobTitle cjt " +

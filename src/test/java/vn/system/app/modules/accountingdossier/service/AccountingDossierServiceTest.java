@@ -115,6 +115,8 @@ class AccountingDossierServiceTest {
     @Mock
     private AccountingApprovalDelegationService delegationService;
     @Mock
+    private AccountingDossierNotificationService notificationService;
+    @Mock
     private AccountingApprovalWorkflowTemplateRepository workflowTemplateRepository;
     @Mock
     private AccountingApprovalInstanceRepository approvalInstanceRepository;
@@ -139,7 +141,7 @@ class AccountingDossierServiceTest {
                 dossierCategoryRepository, accountingCategoryRepository, documentRepository,
                 documentVersionRepository, userRepository, approvalStepRepository, appProperties,
                 approverResolutionService, approvalStepGenerationService, dossierAuditService,
-                outboxRepository, delegationService
+                outboxRepository, delegationService, notificationService
         );
 
         // Unit tests: bypass security by setting superAdmin scope
@@ -873,35 +875,16 @@ class AccountingDossierServiceTest {
 
         when(userRepository.findByEmail("test-user")).thenReturn(currentUser);
 
-        AccountingDossierListProjection projection = mock(AccountingDossierListProjection.class);
-        when(projection.getId()).thenReturn(99L);
-        when(projection.getStatus()).thenReturn(AccountingDossierStatus.IN_REVIEW);
-        when(projection.isActive()).thenReturn(true);
-
-        AccountingDossierListProjection.CompanyRef compRef = mock(AccountingDossierListProjection.CompanyRef.class);
-        when(compRef.getId()).thenReturn(10L);
-        when(projection.getCompany()).thenReturn(compRef);
-
-        AccountingDossierListProjection.DepartmentRef deptRef = mock(AccountingDossierListProjection.DepartmentRef.class);
-        when(deptRef.getId()).thenReturn(20L);
-        when(projection.getDepartment()).thenReturn(deptRef);
-
-        FluentQuery.FetchableFluentQuery fluentQuery = mock(FluentQuery.FetchableFluentQuery.class);
-        when(fluentQuery.as(AccountingDossierListProjection.class)).thenReturn(fluentQuery);
-        when(fluentQuery.page(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(projection), PageRequest.of(0, 10), 1));
-
-        when(repository.findBy(any(Specification.class), any(Function.class)))
-                .thenAnswer(invocation -> {
-                    Function fn = invocation.getArgument(1);
-                    return fn.apply(fluentQuery);
-                });
+        org.springframework.data.domain.Page<AccountingDossier> page = new PageImpl<>(List.of(dossier), PageRequest.of(0, 10), 1);
+        when(approvalStepRepository.findCurrentDossiersForApprover(anyString(), anyList(), any(Pageable.class)))
+                .thenReturn(page);
 
         var result = service.fetchPendingMyApproval(PageRequest.of(0, 10));
 
         assertNotNull(result);
         assertEquals(1, result.getMeta().getTotal());
         assertEquals(1, ((List<?>) result.getResult()).size());
-        verify(repository, times(1)).findBy(any(Specification.class), any(Function.class));
+        verify(approvalStepRepository, times(1)).findCurrentDossiersForApprover(anyString(), anyList(), any(Pageable.class));
     }
 
     @Test

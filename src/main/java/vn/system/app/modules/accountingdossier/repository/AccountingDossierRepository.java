@@ -31,6 +31,8 @@ public interface AccountingDossierRepository extends
 
     boolean existsByDossierCode(String dossierCode);
 
+    boolean existsByDossierCategory_Id(Long dossierCategoryId);
+
     List<AccountingDossier> findByActiveTrueAndStorageStatusAndRetentionUntilBefore(
             AccountingDossierStorageStatus storageStatus,
             Instant retentionUntil);

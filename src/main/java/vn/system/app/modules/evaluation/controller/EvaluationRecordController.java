@@ -11,7 +11,9 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.request.BatchApproveRequest;
 import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineRequest;
+import vn.system.app.modules.evaluation.domain.request.ReassignEvaluatorRequest;
 import vn.system.app.modules.evaluation.domain.request.ScoreRequest;
+import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationHistoryDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationRecordDTO;
 import vn.system.app.modules.evaluation.service.EvaluationMapper;
@@ -119,15 +121,27 @@ public class EvaluationRecordController {
 
     @GetMapping("/summary/completed")
     @ApiMessage("Danh sách tổng hợp đánh giá hoàn tất")
-    public ResponseEntity<List<ResEvaluationRecordDTO>> fetchCompletedSummary(
+    public ResponseEntity<vn.system.app.common.response.ResultPaginationDTO> fetchCompletedSummary(
             @RequestParam(required = false) Long periodId,
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Long companyId,
-            @RequestParam(required = false) Long sectionId) {
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false) String searchText,
+            @RequestParam(required = false) String filterGrade,
+            org.springframework.data.domain.Pageable pageable) {
         User currentUser = getCurrentUser();
-        List<EvaluationRecord> records = recordService.fetchCompletedSummary(
-                periodId, departmentId, companyId, sectionId, currentUser);
-        return ResponseEntity.ok(records.stream().map(mapper::toResEvaluationRecordDTO).toList());
+        org.springframework.data.domain.Page<EvaluationRecord> page = recordService.fetchCompletedSummary(
+                periodId, departmentId, companyId, sectionId, searchText, filterGrade, currentUser, pageable);
+        
+        vn.system.app.common.response.ResultPaginationDTO res = new vn.system.app.common.response.ResultPaginationDTO();
+        vn.system.app.common.response.ResultPaginationDTO.Meta meta = new vn.system.app.common.response.ResultPaginationDTO.Meta();
+        meta.setPage(page.getNumber() + 1);
+        meta.setPageSize(page.getSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        res.setMeta(meta);
+        res.setResult(page.getContent().stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(res);
     }
 
     @PatchMapping("/records/deadline-extension")
@@ -141,6 +155,19 @@ public class EvaluationRecordController {
                 body.getDeadline(),
                 body.getReason(),
                 body.isCascade(),
+                currentUser).stream().map(mapper::toResEvaluationRecordDTO).toList());
+    }
+
+    @PatchMapping("/records/reassign-evaluator")
+    @ApiMessage("Điều chuyển người chấm/duyệt bản đánh giá")
+    public ResponseEntity<List<ResEvaluationRecordDTO>> reassignEvaluators(
+            @Valid @RequestBody ReassignEvaluatorRequest body) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(recordService.reassignEvaluators(
+                body.getRecordIds(),
+                body.getEvaluatorRole(),
+                body.getNewEvaluatorUserId(),
+                body.getReason(),
                 currentUser).stream().map(mapper::toResEvaluationRecordDTO).toList());
     }
 
@@ -206,7 +233,7 @@ public class EvaluationRecordController {
     @ApiMessage("Quản lý lưu kế hoạch đào tạo")
     public ResponseEntity<ResEvaluationRecordDTO.ResTrainingPlanDTO> saveTrainingPlan(
             @PathVariable Long recordId,
-            @RequestBody EvaluationTrainingPlan plan) {
+            @Valid @RequestBody TrainingPlanRequest plan) {
         User manager = getCurrentUser();
         return ResponseEntity.ok(mapper.toResTrainingPlanDTO(recordService.saveTrainingPlan(recordId, plan, manager)));
     }
@@ -225,18 +252,20 @@ public class EvaluationRecordController {
 
     @PostMapping("/records/{recordId}/approve")
     @ApiMessage("Phê duyệt bản đánh giá")
-    public ResponseEntity<ResEvaluationRecordDTO> approveRecord(@PathVariable Long recordId) {
+    public ResponseEntity<ResEvaluationRecordDTO> approveRecord(
+            @PathVariable Long recordId,
+            @RequestBody(required = false) java.util.Map<String, String> body) {
         User approver = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.approveRecord(recordId, approver)));
+        String overrideReason = body != null ? body.get("overrideReason") : null;
+        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.approveRecord(recordId, overrideReason, approver)));
     }
 
     @PostMapping("/records/batch-approve")
     @ApiMessage("Phê duyệt hàng loạt")
-    public ResponseEntity<List<ResEvaluationRecordDTO>> batchApproveRecords(
+    public ResponseEntity<vn.system.app.modules.evaluation.domain.response.BatchApproveResponse> batchApproveRecords(
             @Valid @RequestBody BatchApproveRequest req) {
         User approver = getCurrentUser();
-        List<EvaluationRecord> approved = recordService.batchApproveRecords(req.getRecordIds(), approver);
-        return ResponseEntity.ok(approved.stream().map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(recordService.batchApproveRecords(req.getRecordIds(), approver));
     }
 
     @PostMapping("/records/{recordId}/reject")
@@ -266,6 +295,13 @@ public class EvaluationRecordController {
         return ResponseEntity
                 .ok(recordService.fetchHistory(recordId, currentUser).stream()
                         .map(mapper::toResEvaluationHistoryDTO).toList());
+    }
+
+    @GetMapping("/records/{recordId}/score-audits")
+    @ApiMessage("Lịch sử thay đổi điểm số")
+    public ResponseEntity<List<EvaluationScoreAudit>> fetchScoreAudits(@PathVariable Long recordId) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(recordService.fetchScoreAudits(recordId, currentUser));
     }
 
     @GetMapping("/records/{recordId}/rejection-count")

@@ -22,7 +22,9 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,6 +70,7 @@ import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDoss
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierApprovalStepDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierReportRowDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierStorageSummaryDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDashboardMetricsDTO;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierAuditLogRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierCategoryRepository;
 import vn.system.app.modules.accountingdossier.repository.AccountingDossierDocumentRepository;
@@ -119,6 +122,7 @@ public class AccountingDossierService {
     private final DossierAuditService dossierAuditService;
     private final AccountingDossierOutboxRepository outboxRepository;
     private final AccountingApprovalDelegationService delegationService;
+    private final AccountingDossierNotificationService notificationService;
 
     public AccountingDossierService(
             AccountingDossierRepository repository,
@@ -139,7 +143,8 @@ public class AccountingDossierService {
             ApprovalStepGenerationService approvalStepGenerationService,
             DossierAuditService dossierAuditService,
             AccountingDossierOutboxRepository outboxRepository,
-            AccountingApprovalDelegationService delegationService) {
+            AccountingApprovalDelegationService delegationService,
+            AccountingDossierNotificationService notificationService) {
         this.repository = repository;
         this.companyRepository = companyRepository;
         this.departmentRepository = departmentRepository;
@@ -159,6 +164,7 @@ public class AccountingDossierService {
         this.dossierAuditService = dossierAuditService;
         this.outboxRepository = outboxRepository;
         this.delegationService = delegationService;
+        this.notificationService = notificationService;
     }
 
     private void writeOutbox(Long dossierId, String eventType, String payloadJson, String idempotencyKey) {
@@ -279,6 +285,10 @@ public class AccountingDossierService {
         AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
         dossierAuditService.writeLog(saved, "SUBMIT_DOSSIER", "Chuyển bộ chứng từ và cấp mã hệ thống", "DOSSIER", saved.getId(),
                 oldStatus.name(), saved.getStatus().name(), null, saved.getDossierCode());
+        approvalStepRepository.findByDossierIdAndStatusAndActiveTrue(saved.getId(), ApprovalStepStatus.CURRENT)
+                .ifPresent(currentStep -> notificationService.notifyApprovalStep(saved, currentStep, "ACCOUNTING_DOSSIER_SUBMITTED",
+                        String.format("Bộ chứng từ %s đã được gửi phê duyệt. Vui lòng xử lý bước %s.",
+                                notificationService.dossierLabel(saved), currentStep.getStepName())));
         writeOutbox(saved.getId(), "SUBMIT", "Dossier submitted: " + saved.getDossierCode(), "DOSSIER_" + saved.getId() + "_SUBMIT_RETURN_" + saved.getReturnCount());
         return convertToDTO(saved);
     }
@@ -304,10 +314,8 @@ public class AccountingDossierService {
     @Transactional
     public ResAccountingDossierDTO requestReturn(Long id, AccountingDossierActionRequest req) {
         AccountingDossier dossier = fetchById(id);
-        if (dossier.getStatus() == AccountingDossierStatus.DRAFT
-                || dossier.getStatus() == AccountingDossierStatus.RETURNED
-                || dossier.getStatus() == AccountingDossierStatus.APPROVED
-                || dossier.getStatus() == AccountingDossierStatus.TERMINATED) {
+        if (dossier.getStatus() != AccountingDossierStatus.SUBMITTED
+                && dossier.getStatus() != AccountingDossierStatus.IN_REVIEW) {
             throw new PermissionException("Chỉ bộ chứng từ đã chuyển xử lý mới được yêu cầu hoàn chứng từ");
         }
 
@@ -326,6 +334,10 @@ public class AccountingDossierService {
         AccountingDossier saved = saveDossierWithOptimisticLockCheck(dossier);
         dossierAuditService.writeLog(saved, "REQUEST_RETURN_DOSSIER",
                 normalizeNote(req == null ? null : req.getNote(), "Người lập yêu cầu hoàn chứng từ"));
+        approvalStepRepository.findByDossierIdAndStatusAndActiveTrue(saved.getId(), ApprovalStepStatus.CURRENT)
+                .ifPresent(currentStep -> notificationService.notifyApprovalStep(saved, currentStep, "ACCOUNTING_RETURN_REQUESTED",
+                        String.format("Người lập hồ sơ yêu cầu hoàn trả bộ chứng từ %s. Vui lòng xem xét yêu cầu.",
+                                notificationService.dossierLabel(saved))));
         return convertToDTO(saved);
     }
 
@@ -384,7 +396,9 @@ public class AccountingDossierService {
 
         AccountingDossierStatus oldStatus = dossier.getStatus();
         if (nextStep != null) {
+            applyNextApproverSelection(nextStep, req);
             nextStep.setStatus(ApprovalStepStatus.CURRENT);
+            nextStep.setCreatedAt(Instant.now());
             nextStep.setDueAt(calculateApprovalDueAt(nextStep));
             approvalStepRepository.save(nextStep);
             dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
@@ -392,6 +406,9 @@ public class AccountingDossierService {
             dossierAuditService.writeLog(dossier, "APPROVE_DOSSIER_STEP", "Phê duyệt bước: " + currentStep.getStepName(),
                     "APPROVAL_STEP", currentStep.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, currentStep.getStepName());
+            notificationService.notifyApprovalStep(dossier, nextStep, "ACCOUNTING_APPROVAL_NEEDED",
+                    String.format("Bộ chứng từ %s đang chờ bạn xử lý bước %s.",
+                            notificationService.dossierLabel(dossier), nextStep.getStepName()));
             writeOutbox(dossier.getId(), "APPROVE", "Dossier approved by step: " + currentStep.getStepName(), "DOSSIER_" + dossier.getId() + "_APPROVE_STEP_" + currentStep.getId());
         } else {
             // Final approval!
@@ -432,6 +449,9 @@ public class AccountingDossierService {
             dossierAuditService.writeLog(dossier, "APPROVE_DOSSIER_FINAL", "Phê duyệt cuối cùng bộ chứng từ",
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, dossier.getDossierCode());
+            notificationService.notifyCreator(dossier, "ACCOUNTING_APPROVED",
+                    String.format("Bộ chứng từ %s đã được phê duyệt hoàn tất.",
+                            notificationService.dossierLabel(dossier)));
             writeOutbox(dossier.getId(), "APPROVE_FINAL", "Dossier fully approved: " + dossier.getDossierCode(), "DOSSIER_" + dossier.getId() + "_APPROVE_FINAL_STEP_" + currentStep.getId());
             // Phase 3: Auto sync unstructured dossier to category template if requested
             if (dossier.isSyncCategoryRequested()
@@ -442,6 +462,62 @@ public class AccountingDossierService {
         }
 
         return convertToDTO(dossier);
+    }
+
+    private void applyNextApproverSelection(AccountingDossierApprovalStep nextStep, AccountingDossierActionRequest req) {
+        if (req == null || req.getNextApproverUserId() == null || req.getNextApproverUserId().isBlank()) {
+            return;
+        }
+        if (nextStep.getApproverUserId() != null && !nextStep.getApproverUserId().isBlank()) {
+            return;
+        }
+
+        String selectedUserId = req.getNextApproverUserId().trim();
+        vn.system.app.modules.user.domain.User selectedUser = userRepository.findById(selectedUserId)
+                .orElseThrow(() -> new IdInvalidException("Người nhận kế tiếp không tồn tại"));
+
+        if (nextStep.getEligibleApproverIds() != null && !nextStep.getEligibleApproverIds().isBlank()) {
+            boolean eligible = java.util.Arrays.stream(nextStep.getEligibleApproverIds().split(","))
+                    .map(String::trim)
+                    .anyMatch(selectedUserId::equals);
+            if (!eligible) {
+                throw new PermissionException("Người được chọn không thuộc danh sách có quyền xử lý bước kế tiếp");
+            }
+        } else if (!matchesApproverType(selectedUser, nextStep.getApproverType())) {
+            throw new PermissionException("Người được chọn không phù hợp vai trò xử lý bước kế tiếp");
+        }
+
+        nextStep.setApproverUserId(selectedUserId);
+        nextStep.setEligibleApproverIds(null);
+    }
+
+    private boolean matchesApproverType(vn.system.app.modules.user.domain.User user, ApproverType approverType) {
+        if (user == null || approverType == null) {
+            return false;
+        }
+        String roleName = user.getRole() == null || user.getRole().getName() == null
+                ? ""
+                : user.getRole().getName().toUpperCase();
+        if (approverType == ApproverType.ACCOUNTANT) {
+            return (roleName.contains("ACCOUNTANT") || roleName.contains("KETOAN") || roleName.contains("KẾ TOÁN"))
+                    && !roleName.contains("CHIEF")
+                    && !roleName.contains("TRUONG")
+                    && !roleName.contains("TRƯỞNG");
+        }
+        if (approverType == ApproverType.CHIEF_ACCOUNTANT) {
+            return roleName.contains("CHIEF")
+                    || roleName.contains("KETOANTRUONG")
+                    || roleName.contains("KẾ TOÁN TRƯỞNG");
+        }
+        if (approverType == ApproverType.DIRECTOR) {
+            return user.getRole() != null && user.getRole().getPermissions() != null
+                    && user.getRole().getPermissions().stream()
+                            .anyMatch(p -> "Phê duyệt bộ chứng từ kế toán - Giám đốc".equals(p.getName()));
+        }
+        if (approverType == ApproverType.CUSTOM) {
+            return true;
+        }
+        return false;
     }
 
     @Transactional
@@ -480,6 +556,14 @@ public class AccountingDossierService {
         dossierAuditService.writeLog(dossier, "CLAIM_APPROVAL_STEP",
                 "Nhận xử lý bước: " + currentStep.getStepName(),
                 "APPROVAL_STEP", currentStep.getId(), null, currentUser.getId(), null, null);
+        java.util.Set<String> claimRecipients = new java.util.LinkedHashSet<>();
+        claimRecipients.add(dossier.getCreatorId());
+        claimRecipients.addAll(notificationService.resolveStepRecipientIds(currentStep));
+        claimRecipients.remove(currentUser.getId());
+        notificationService.notifyUsers(claimRecipients, "ACCOUNTING_DOSSIER_CLAIMED",
+                String.format("%s đã nhận xử lý bước %s của bộ chứng từ %s.",
+                        currentUser.getName(), currentStep.getStepName(), notificationService.dossierLabel(dossier)),
+                dossier.getId());
         writeOutbox(dossier.getId(), "CLAIM", "Approval step claimed: " + currentStep.getStepName(),
                 "DOSSIER_" + dossier.getId() + "_CLAIM_STEP_" + currentStep.getId());
         return convertToDTO(dossier);
@@ -530,6 +614,9 @@ public class AccountingDossierService {
         dossierAuditService.writeLog(dossier, "REJECT_DOSSIER", "Từ chối phê duyệt bộ chứng từ: " + req.getNote(),
                 "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                 null, req.getNote());
+        notificationService.notifyCreator(dossier, "ACCOUNTING_REJECTED",
+                String.format("Bộ chứng từ %s đã bị từ chối. Lý do: %s",
+                        notificationService.dossierLabel(dossier), req.getNote()));
         writeOutbox(dossier.getId(), "REJECT", "Dossier rejected with reason: " + req.getNote(), "DOSSIER_" + dossier.getId() + "_REJECT_STEP_" + currentStep.getId());
 
         return convertToDTO(dossier);
@@ -583,6 +670,9 @@ public class AccountingDossierService {
         dossierAuditService.writeLog(dossier, "TERMINATE_DOSSIER", "Chấm dứt bộ chứng từ: " + req.getNote(),
                 "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                 null, req.getNote());
+        notificationService.notifyCreator(dossier, "ACCOUNTING_TERMINATED",
+                String.format("Bộ chứng từ %s đã bị chấm dứt. Lý do: %s",
+                        notificationService.dossierLabel(dossier), req.getNote()));
         writeOutbox(dossier.getId(), "TERMINATE", "Dossier terminated with reason: " + req.getNote(), "DOSSIER_" + dossier.getId() + "_TERMINATE");
 
         return convertToDTO(dossier);
@@ -636,6 +726,9 @@ public class AccountingDossierService {
             dossierAuditService.writeLog(dossier, "ACCEPT_RETURN_DOSSIER", "Chấp nhận hoàn trả bộ chứng từ: " + currentStep.getActionNote(),
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     String.valueOf(dossier.getReturnCount() - 1), String.valueOf(dossier.getReturnCount()));
+            notificationService.notifyCreator(dossier, "ACCOUNTING_RETURN_ACCEPTED",
+                    String.format("Yêu cầu hoàn trả bộ chứng từ %s đã được chấp nhận. Vui lòng cập nhật và gửi phê duyệt lại.",
+                            notificationService.dossierLabel(dossier)));
             writeOutbox(dossier.getId(), "RETURN", "Dossier returned with reason: " + currentStep.getActionNote(), "DOSSIER_" + dossier.getId() + "_RETURN_STEP_" + currentStep.getId());
         } else if ("REJECT".equalsIgnoreCase(action)) {
             dossier.setStatus(AccountingDossierStatus.IN_REVIEW);
@@ -645,6 +738,9 @@ public class AccountingDossierService {
                     "Từ chối hoàn trả bộ chứng từ: " + (req == null ? "" : req.getNote()),
                     "DOSSIER", dossier.getId(), oldStatus.name(), dossier.getStatus().name(),
                     null, req == null ? null : req.getNote());
+            notificationService.notifyCreator(dossier, "ACCOUNTING_RETURN_REJECTED",
+                    String.format("Yêu cầu hoàn trả bộ chứng từ %s đã bị từ chối. Hồ sơ tiếp tục luồng phê duyệt.",
+                            notificationService.dossierLabel(dossier)));
             writeOutbox(dossier.getId(), "REJECT_RETURN", "Rejected return with reason: " + (req == null ? "" : req.getNote()), "DOSSIER_" + dossier.getId() + "_REJECT_RETURN_" + currentStep.getId());
         } else {
             throw new IdInvalidException("Hành động không hợp lệ: ACCEPT hoặc REJECT");
@@ -673,6 +769,7 @@ public class AccountingDossierService {
         dto.setStepName(entity.getStepName());
         dto.setApproverType(entity.getApproverType() == null ? null : entity.getApproverType().name());
         dto.setApproverUserId(entity.getApproverUserId());
+        dto.setEligibleApproverIds(entity.getEligibleApproverIds());
         dto.setStatus(entity.getStatus() == null ? null : entity.getStatus().name());
         dto.setActionNote(entity.getActionNote());
         dto.setActedAt(entity.getActedAt());
@@ -758,7 +855,12 @@ public class AccountingDossierService {
                 .findFirst()
                 .orElseThrow(() -> new IdInvalidException("Không có bước phê duyệt hiện tại nào đang chờ"));
 
-        if (currentStep.getApproverType() != ApproverType.ACCOUNTANT) {
+        boolean eligibleReviewer = currentStep.getEligibleApproverIds() != null
+                && java.util.Arrays.stream(currentStep.getEligibleApproverIds().split(","))
+                        .anyMatch(currentUser.getId()::equals)
+                && currentStep.getStepName() != null
+                && currentStep.getStepName().toLowerCase(java.util.Locale.ROOT).contains("kế toán");
+        if (currentStep.getApproverType() != ApproverType.ACCOUNTANT && !eligibleReviewer) {
             throw new PermissionException("Chỉ bước kế toán kiểm tra mới được kiểm tra chứng từ con");
         }
         validateApprover(currentStep, currentUser);
@@ -935,6 +1037,37 @@ public class AccountingDossierService {
             Long companyId,
             Long departmentId,
             Long dossierCategoryId) {
+        if (approverUserId != null && !approverUserId.trim().isEmpty()) {
+            AccountingDossierStorageStatus parsedStorageStatus = null;
+            if (storageStatus != null && !storageStatus.trim().isEmpty()) {
+                try {
+                    parsedStorageStatus = AccountingDossierStorageStatus.valueOf(storageStatus.trim());
+                } catch (IllegalArgumentException e) {
+                    throw new IdInvalidException("Trạng thái lưu trữ không hợp lệ");
+                }
+            }
+            Pageable effectivePageable = PageRequest.of(
+                    pageable == null ? 0 : pageable.getPageNumber(),
+                    pageable == null ? 10 : pageable.getPageSize());
+            Page<AccountingDossier> processedPage = approvalStepRepository.findProcessedDossiersByApprover(
+                    approverUserId.trim(),
+                    parsedStorageStatus,
+                    companyId,
+                    departmentId,
+                    dossierCategoryId,
+                    effectivePageable);
+
+            ResultPaginationDTO rs = new ResultPaginationDTO();
+            ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+            meta.setPage(effectivePageable.getPageNumber() + 1);
+            meta.setPageSize(effectivePageable.getPageSize());
+            meta.setPages(processedPage.getTotalPages());
+            meta.setTotal(processedPage.getTotalElements());
+            rs.setMeta(meta);
+            rs.setResult(processedPage.getContent().stream().map(this::convertToDTO).collect(Collectors.toList()));
+            return rs;
+        }
+
         Specification<AccountingDossier> scopeSpec;
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope != null && !scope.isSuperAdmin() && !scope.isAdminLevel()) {
@@ -980,17 +1113,31 @@ public class AccountingDossierService {
         if (storageSpec != null) {
             finalSpec = finalSpec.and(storageSpec);
         }
-        Page<AccountingDossierListProjection> page = repository.findBy(finalSpec, q -> q.as(AccountingDossierListProjection.class).page(pageable));
+        Pageable effectivePageable = withDefaultDossierSort(pageable);
+        Page<AccountingDossierListProjection> page = repository.findBy(finalSpec, q -> q.as(AccountingDossierListProjection.class).page(effectivePageable));
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
-        meta.setPage(pageable.getPageNumber() + 1);
-        meta.setPageSize(pageable.getPageSize());
+        meta.setPage(effectivePageable.getPageNumber() + 1);
+        meta.setPageSize(effectivePageable.getPageSize());
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
         rs.setResult(page.getContent().stream().map(this::convertToListDTO).collect(Collectors.toList()));
         return rs;
+    }
+
+    private Pageable withDefaultDossierSort(Pageable pageable) {
+        if (pageable == null) {
+            return PageRequest.of(0, 10, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        }
+        if (pageable.getSort().isSorted()) {
+            return pageable;
+        }
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
     }
 
     private Specification<AccountingDossier> buildStorageLookupSpec(
@@ -1082,29 +1229,52 @@ public class AccountingDossierService {
                 || roleName.contains("KẾ TOÁN TRƯỞNG")) {
             approverTypes.add(ApproverType.CHIEF_ACCOUNTANT);
         }
-        Specification<AccountingDossier> pendingSpec = buildPendingMyApprovalSpec(currentUser.getId(), approverTypes);
-        return fetchAll(pendingSpec, pageable);
+        Pageable effectivePageable = PageRequest.of(
+                pageable == null ? 0 : pageable.getPageNumber(),
+                pageable == null ? 10 : pageable.getPageSize());
+        Page<AccountingDossier> page = approverTypes.isEmpty()
+                ? approvalStepRepository.findCurrentDossiersForDirectApprover(currentUser.getId(), effectivePageable)
+                : approvalStepRepository.findCurrentDossiersForApprover(currentUser.getId(), approverTypes, effectivePageable);
+
+        ResultPaginationDTO rs = new ResultPaginationDTO();
+        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+        meta.setPage(effectivePageable.getPageNumber() + 1);
+        meta.setPageSize(effectivePageable.getPageSize());
+        meta.setPages(page.getTotalPages());
+        meta.setTotal(page.getTotalElements());
+        rs.setMeta(meta);
+        rs.setResult(page.getContent().stream().map(this::convertToDTO).collect(Collectors.toList()));
+        return rs;
     }
 
     public ResultPaginationDTO fetchAllDossierDocuments(
             Specification<AccountingDossierDocument> spec,
             String keyword,
+            String dossierCode,
             String fileStatus,
             Pageable pageable) {
         Specification<AccountingDossierDocument> scopeSpec = ScopeSpec.byCompanyScope("dossier.company.id");
         Specification<AccountingDossierDocument> activeSpec = (root, query, cb) -> cb.isTrue(root.get("active"));
-        Specification<AccountingDossierDocument> lookupSpec = buildDossierDocumentLookupSpec(keyword, fileStatus);
+        Specification<AccountingDossierDocument> lookupSpec = buildDossierDocumentLookupSpec(keyword, dossierCode, fileStatus);
         Specification<AccountingDossierDocument> finalSpec = spec == null ? scopeSpec.and(activeSpec)
                 : spec.and(scopeSpec).and(activeSpec);
         if (lookupSpec != null) {
             finalSpec = finalSpec.and(lookupSpec);
         }
 
-        Page<AccountingDossierDocument> page = documentItemRepository.findAll(finalSpec, pageable);
+        Pageable effectivePageable = pageable == null
+                ? PageRequest.of(0, 10, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
+                : pageable.getSort().isSorted()
+                ? pageable
+                : PageRequest.of(
+                        pageable.getPageNumber(),
+                        pageable.getPageSize(),
+                        Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        Page<AccountingDossierDocument> page = documentItemRepository.findAll(finalSpec, effectivePageable);
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
-        meta.setPage(pageable.getPageNumber() + 1);
-        meta.setPageSize(pageable.getPageSize());
+        meta.setPage(effectivePageable.getPageNumber() + 1);
+        meta.setPageSize(effectivePageable.getPageSize());
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
         rs.setMeta(meta);
@@ -1112,7 +1282,7 @@ public class AccountingDossierService {
         return rs;
     }
 
-    private Specification<AccountingDossierDocument> buildDossierDocumentLookupSpec(String keyword, String fileStatus) {
+    private Specification<AccountingDossierDocument> buildDossierDocumentLookupSpec(String keyword, String dossierCode, String fileStatus) {
         Specification<AccountingDossierDocument> result = null;
 
         if (keyword != null && !keyword.isBlank()) {
@@ -1120,19 +1290,35 @@ public class AccountingDossierService {
             Specification<AccountingDossierDocument> keywordSpec = (root, query, cb) -> {
                 var dossier = root.join("dossier", jakarta.persistence.criteria.JoinType.LEFT);
                 var department = dossier.join("department", jakarta.persistence.criteria.JoinType.LEFT);
+                var company = dossier.join("company", jakarta.persistence.criteria.JoinType.LEFT);
                 var accountingCategory = root.join("accountingCategory", jakarta.persistence.criteria.JoinType.LEFT);
+                var document = root.join("document", jakarta.persistence.criteria.JoinType.LEFT);
                 return cb.or(
                         cb.like(cb.lower(root.get("documentName")), normalizedKeyword),
                         cb.like(cb.lower(root.get("documentType")), normalizedKeyword),
                         cb.like(cb.lower(root.get("createdBy")), normalizedKeyword),
                         cb.like(cb.lower(dossier.get("dossierCode")), normalizedKeyword),
                         cb.like(cb.lower(dossier.get("content")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("invoiceNumber")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("invoiceContent")), normalizedKeyword),
+                        cb.like(cb.lower(root.get("partnerName")), normalizedKeyword),
                         cb.like(cb.lower(department.get("name")), normalizedKeyword),
+                        cb.like(cb.lower(company.get("name")), normalizedKeyword),
+                        cb.like(cb.lower(document.get("documentCode")), normalizedKeyword),
                         cb.like(cb.lower(accountingCategory.get("categoryName")), normalizedKeyword),
                         cb.like(cb.lower(accountingCategory.get("categoryCode")), normalizedKeyword),
                         cb.like(cb.lower(accountingCategory.get("symbol")), normalizedKeyword));
             };
             result = keywordSpec;
+        }
+
+        if (dossierCode != null && !dossierCode.isBlank()) {
+            String normalizedDossierCode = "%" + dossierCode.trim().toLowerCase() + "%";
+            Specification<AccountingDossierDocument> dossierCodeSpec = (root, query, cb) -> {
+                var dossier = root.join("dossier", jakarta.persistence.criteria.JoinType.LEFT);
+                return cb.like(cb.lower(dossier.get("dossierCode")), normalizedDossierCode);
+            };
+            result = result == null ? dossierCodeSpec : result.and(dossierCodeSpec);
         }
 
         if (fileStatus != null && !fileStatus.isBlank()) {
@@ -1212,6 +1398,9 @@ public class AccountingDossierService {
                 AccountingDossierStorageStatus.ARCHIVED.name(),
                 oldStatus.name(),
                 saved.getStatus().name());
+        notificationService.notifyCreator(saved, "ACCOUNTING_ARCHIVED",
+                String.format("Bộ chứng từ %s đã được đưa vào lưu trữ.",
+                        notificationService.dossierLabel(saved)));
         return convertToDTO(saved);
     }
 
@@ -1246,6 +1435,17 @@ public class AccountingDossierService {
         dto.setPendingApproval(dto.getByStatus().getOrDefault(AccountingDossierStatus.SUBMITTED.name(), 0L)
                 + dto.getByStatus().getOrDefault(AccountingDossierStatus.IN_REVIEW.name(), 0L)
                 + dto.getByStatus().getOrDefault(AccountingDossierStatus.RETURN_REQUESTED.name(), 0L));
+        return dto;
+    }
+
+    @Transactional(readOnly = true)
+    public ResAccountingDossierDashboardMetricsDTO getDashboardMetrics(Long companyId) {
+        ResAccountingDossierDashboardMetricsDTO dto = new ResAccountingDossierDashboardMetricsDTO();
+        dto.setSummary(this.getStorageSummary(companyId));
+        dto.setPendingByRole(this.pendingByRole(companyId));
+        dto.setByStatus(this.reportByStatus(companyId));
+        dto.setByDepartment(this.reportByDepartment(companyId));
+        dto.setCategories(this.fetchActiveCategories());
         return dto;
     }
 
@@ -1319,7 +1519,11 @@ public class AccountingDossierService {
             subquery.where(
                     cb.equal(stepRoot.get("dossier").get("id"), root.get("id")),
                     cb.isTrue(stepRoot.get("active")),
-                    cb.equal(stepRoot.get("status"), ApprovalStepStatus.CURRENT),
+                    stepRoot.get("status").in(
+                            ApprovalStepStatus.APPROVED,
+                            ApprovalStepStatus.REJECTED,
+                            ApprovalStepStatus.RETURNED,
+                            ApprovalStepStatus.CANCELLED),
                     cb.equal(stepRoot.get("approverUserId"), approverUserId.trim()));
             return cb.exists(subquery);
         };
@@ -1549,7 +1753,11 @@ public class AccountingDossierService {
     // ==================== DOSSIER TEMPLATE MASTER DATA ====================
 
     public ResultPaginationDTO fetchCategories(Specification<AccountingDossierCategory> spec, Pageable pageable) {
-        Page<AccountingDossierCategory> page = dossierCategoryRepository.findAll(spec, pageable);
+        Specification<AccountingDossierCategory> effectiveSpec = templateManagementScopeSpec();
+        if (spec != null) {
+            effectiveSpec = effectiveSpec.and(spec);
+        }
+        Page<AccountingDossierCategory> page = dossierCategoryRepository.findAll(effectiveSpec, pageable);
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
         meta.setPage(pageable.getPageNumber() + 1);
@@ -1562,13 +1770,17 @@ public class AccountingDossierService {
     }
 
     public List<ResAccountingDossierCategoryDTO> fetchActiveCategories() {
-        return dossierCategoryRepository.findByActiveTrueOrderByCategoryNameAsc().stream()
+        Specification<AccountingDossierCategory> activeSpec = (root, query, builder) -> builder.isTrue(root.get("active"));
+        return dossierCategoryRepository.findAll(activeSpec.and(templateSelectionScopeSpec())).stream()
+                .sorted(Comparator.comparing(AccountingDossierCategory::getCategoryName,
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .map(this::convertToCategoryDTO)
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public ResAccountingDossierCategoryDTO createCategory(AccountingDossierCategoryRequest req) {
+        validateCategoryWriteScope(req);
         AccountingDossierCategory entity = new AccountingDossierCategory();
         applyCategoryRequest(entity, req, false);
         return convertToCategoryDTO(dossierCategoryRepository.save(entity));
@@ -1578,6 +1790,8 @@ public class AccountingDossierService {
     public ResAccountingDossierCategoryDTO updateCategory(Long id, AccountingDossierCategoryRequest req) {
         AccountingDossierCategory entity = dossierCategoryRepository.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Mẫu bộ chứng từ không tồn tại"));
+        validateCategoryManagementAccess(entity);
+        validateCategoryWriteScope(req);
         applyCategoryRequest(entity, req, true);
         return convertToCategoryDTO(dossierCategoryRepository.save(entity));
     }
@@ -1586,17 +1800,29 @@ public class AccountingDossierService {
     public ResAccountingDossierCategoryDTO toggleCategoryActive(Long id, boolean active) {
         AccountingDossierCategory entity = dossierCategoryRepository.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Mẫu bộ chứng từ không tồn tại"));
+        validateCategoryManagementAccess(entity);
         entity.setActive(active);
         return convertToCategoryDTO(dossierCategoryRepository.save(entity));
     }
 
+    @Transactional
+    public void deleteCategory(Long id) {
+        AccountingDossierCategory entity = dossierCategoryRepository.findById(id)
+                .orElseThrow(() -> new IdInvalidException("Mẫu bộ chứng từ không tồn tại"));
+        validateCategoryManagementAccess(entity);
+        if (repository.existsByDossierCategory_Id(id)) {
+            throw new IdInvalidException("Không thể xóa mẫu đã được sử dụng để tạo bộ chứng từ. Hãy ngưng dùng mẫu này thay vì xóa.");
+        }
+        dossierCategoryRepository.delete(entity);
+    }
+
     private void applyCategoryRequest(AccountingDossierCategory entity, AccountingDossierCategoryRequest req,
             boolean updating) {
+        String scope = normalizeCategoryScope(req.getScope());
         entity.setCategoryName(req.getCategoryName().trim());
         entity.setDescription(req.getDescription() == null ? null : req.getDescription().trim());
-        entity.setCompanyId(req.getCompanyId());
-        entity.setScope(req.getScope() == null || req.getScope().trim().isEmpty() ? "GLOBAL"
-                : req.getScope().trim().toUpperCase());
+        entity.setCompanyId("COMPANY".equals(scope) ? req.getCompanyId() : null);
+        entity.setScope(scope);
         entity.setSource(entity.getSource() == null ? "MANUAL" : entity.getSource());
         entity.setActive(req.isActive());
         entity.setVersion(entity.getVersion() == null ? 1 : updating ? entity.getVersion() + 1 : entity.getVersion());
@@ -1612,6 +1838,82 @@ public class AccountingDossierService {
 
         entity.getCategoryDocuments().clear();
         entity.getCategoryDocuments().addAll(resolveCategoryDocumentItems(entity, req));
+    }
+
+    /**
+     * Configuration is intentionally stricter than the generic company scope: only a
+     * Super Admin can manage shared (GLOBAL) templates. Other roles can manage a
+     * COMPANY template only when the company is in their assigned scope.
+     */
+    private Specification<AccountingDossierCategory> templateManagementScopeSpec() {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || scope.isSuperAdmin()) {
+            return Specification.where(null);
+        }
+        Set<Long> companyIds = scope.companyIds();
+        if (companyIds == null || companyIds.isEmpty()) {
+            return (root, query, builder) -> builder.disjunction();
+        }
+        return (root, query, builder) -> builder.and(
+                builder.equal(root.get("scope"), "COMPANY"),
+                root.get("companyId").in(companyIds));
+    }
+
+    /** Shared templates remain selectable while creating a dossier; company templates
+     * are additionally limited to the caller's assigned companies. */
+    private Specification<AccountingDossierCategory> templateSelectionScopeSpec() {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || scope.isSuperAdmin()) {
+            return Specification.where(null);
+        }
+        Set<Long> companyIds = scope.companyIds();
+        if (companyIds == null || companyIds.isEmpty()) {
+            return (root, query, builder) -> builder.equal(root.get("scope"), "GLOBAL");
+        }
+        return (root, query, builder) -> builder.or(
+                builder.equal(root.get("scope"), "GLOBAL"),
+                builder.and(
+                        builder.equal(root.get("scope"), "COMPANY"),
+                        root.get("companyId").in(companyIds)));
+    }
+
+    private void validateCategoryManagementAccess(AccountingDossierCategory entity) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || scope.isSuperAdmin()) {
+            return;
+        }
+        if (!"COMPANY".equals(normalizeCategoryScope(entity.getScope()))
+                || entity.getCompanyId() == null
+                || scope.companyIds() == null
+                || !scope.companyIds().contains(entity.getCompanyId())) {
+            throw new PermissionException("Bạn chỉ có thể thao tác mẫu theo công ty trong phạm vi được phân quyền");
+        }
+    }
+
+    private void validateCategoryWriteScope(AccountingDossierCategoryRequest req) {
+        String scope = normalizeCategoryScope(req.getScope());
+        UserScopeContext.UserScope userScope = UserScopeContext.get();
+        if ("GLOBAL".equals(scope)) {
+            if (userScope != null && !userScope.isSuperAdmin()) {
+                throw new PermissionException("Chỉ Super Admin được phép thiết lập mẫu áp dụng toàn hệ thống");
+            }
+            return;
+        }
+        if (req.getCompanyId() == null) {
+            throw new IdInvalidException("Vui lòng chọn công ty áp dụng cho mẫu");
+        }
+        if (userScope != null && !userScope.isSuperAdmin()
+                && (userScope.companyIds() == null || !userScope.companyIds().contains(req.getCompanyId()))) {
+            throw new PermissionException("Bạn không có quyền thiết lập mẫu cho công ty này");
+        }
+    }
+
+    private String normalizeCategoryScope(String scope) {
+        String normalized = scope == null || scope.trim().isEmpty() ? "GLOBAL" : scope.trim().toUpperCase();
+        if (!"GLOBAL".equals(normalized) && !"COMPANY".equals(normalized)) {
+            throw new IdInvalidException("Phạm vi mẫu bộ chứng từ không hợp lệ");
+        }
+        return normalized;
     }
 
     private List<AccountingDossierCategoryDocument> resolveCategoryDocumentItems(
@@ -1695,7 +1997,7 @@ public class AccountingDossierService {
 
     public List<ResAccountingDossierDocumentDTO> fetchAllDocuments(Long dossierId) {
         fetchById(dossierId);
-        return documentItemRepository.findByDossierIdAndActiveTrue(dossierId).stream()
+        return documentItemRepository.findByDossierIdAndActiveTrueOrderByCreatedAtDescIdDesc(dossierId).stream()
                 .map(this::convertToDocumentDTO)
                 .collect(Collectors.toList());
     }
@@ -2118,6 +2420,9 @@ public class AccountingDossierService {
         dossierAuditService.writeLog(saved, "REJECT_SYNC_TO_TEMPLATE",
                 normalizeNote(req == null ? null : req.getNote(), "Từ chối đồng bộ bộ chứng từ phi cấu trúc thành mẫu"),
                 "DOSSIER", saved.getId(), null, null, "syncCategoryRequested=true", "syncCategoryRequested=false");
+        notificationService.notifyCreator(saved, "ACCOUNTING_TEMPLATE_SYNC_REJECTED",
+                String.format("Đề xuất đồng bộ mẫu từ bộ chứng từ %s đã bị từ chối.",
+                        notificationService.dossierLabel(saved)));
         return convertToDTO(saved);
     }
 
@@ -2309,6 +2614,14 @@ public class AccountingDossierService {
 
         writeBulkSummaryLogIfPossible(dossier, "BULK_CHECK_DOCUMENTS",
                 "Tổng kết kiểm tra hàng loạt chứng từ con", response);
+        if (response.getSuccessCount() > 0
+                && ("NEED_SUPPLEMENT".equals(normalizedCheckStatus) || "INVALID".equals(normalizedCheckStatus))) {
+            notificationService.notifyCreator(dossier, "ACCOUNTING_DOCUMENTS_NEED_ATTENTION",
+                    String.format("Bộ chứng từ %s có %d chứng từ %s. Vui lòng kiểm tra và bổ sung nếu cần.",
+                            notificationService.dossierLabel(dossier),
+                            response.getSuccessCount(),
+                            notificationService.documentCheckStatusLabel(normalizedCheckStatus)));
+        }
         return response;
     }
 
@@ -2423,6 +2736,20 @@ public class AccountingDossierService {
                 oldAssigneeName, newDirector.getName(), actor.getName(), reason);
         dossierAuditService.writeLog(dossier, "REASSIGN_DIRECTOR", logMsg, "APPROVAL_STEP", currentStep.getId(), 
                 oldAssigneeId, newApproverUserId, null, reason);
+
+        notificationService.notifyUsers(List.of(newApproverUserId), "ACCOUNTING_APPROVER_REASSIGNED",
+                String.format("Bạn được phân công phê duyệt bước Giám đốc cho bộ chứng từ %s. Lý do: %s",
+                        notificationService.dossierLabel(dossier), reason),
+                dossier.getId());
+        if (oldAssigneeId != null && !oldAssigneeId.equals(newApproverUserId)) {
+            notificationService.notifyUsers(List.of(oldAssigneeId), "ACCOUNTING_APPROVER_REASSIGNED",
+                    String.format("Bạn không còn là người duyệt bước Giám đốc của bộ chứng từ %s.",
+                            notificationService.dossierLabel(dossier)),
+                    dossier.getId());
+        }
+        notificationService.notifyCreator(dossier, "ACCOUNTING_APPROVER_REASSIGNED",
+                String.format("Bước Giám đốc của bộ chứng từ %s đã được điều chuyển sang %s.",
+                        notificationService.dossierLabel(dossier), newDirector.getName()));
 
         writeOutbox(dossier.getId(), "REASSIGN", "Director reassigned to: " + newDirector.getName() + " reason: " + reason, "DOSSIER_" + dossier.getId() + "_REASSIGN_DIRECTOR_STEP_" + currentStep.getId());
 

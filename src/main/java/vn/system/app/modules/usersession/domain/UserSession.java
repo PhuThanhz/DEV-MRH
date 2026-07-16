@@ -7,7 +7,12 @@ import lombok.Setter;
 import vn.system.app.modules.user.domain.User;
 
 @Entity
-@Table(name = "user_sessions")
+@Table(
+        name = "user_sessions",
+        indexes = {
+                @Index(name = "ux_user_sessions_refresh_token_hash", columnList = "refresh_token_hash", unique = true),
+                @Index(name = "ix_user_sessions_expires_at", columnList = "expires_at")
+        })
 @Getter
 @Setter
 public class UserSession {
@@ -23,6 +28,9 @@ public class UserSession {
     @Column(name = "refresh_token", columnDefinition = "MEDIUMTEXT", nullable = false)
     private String refreshToken;
 
+    @Column(name = "refresh_token_hash", length = 64)
+    private String refreshTokenHash;
+
     @Column(name = "user_agent", length = 512)
     private String userAgent;
 
@@ -31,6 +39,9 @@ public class UserSession {
 
     @Column(name = "created_at")
     private Instant createdAt;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
 
     @PrePersist
     public void prePersist() {

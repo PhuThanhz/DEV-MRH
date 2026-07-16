@@ -1,6 +1,7 @@
 package vn.system.app.modules.evaluation.service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -14,6 +15,9 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.enums.*;
 import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineRequest;
+import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
+import vn.system.app.modules.evaluation.domain.request.ReassignEvaluatorRequest;
+import java.util.Map;
 import vn.system.app.modules.evaluation.repository.*;
 import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
@@ -30,6 +34,7 @@ import vn.system.app.modules.userposition.repository.UserPositionRepository;
  * - Tính điểm, xếp loại
  */
 @Service
+@lombok.extern.slf4j.Slf4j
 public class EvaluationRecordService {
 
     private final EvaluationRecordRepository recordRepo;
@@ -37,10 +42,16 @@ public class EvaluationRecordService {
     private final EvaluationCommentRepository commentRepo;
     private final EvaluationTrainingPlanRepository trainingPlanRepo;
     private final EvaluationHistoryRepository historyRepo;
-    private final NotificationService notificationService;
+    private final EvaluationScoreAuditRepository scoreAuditRepo;
     private final TemplateCriteriaRepository criteriaRepo;
     private final UserRepository userRepo;
     private final UserPositionRepository userPositionRepo;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private EvaluationRecordService self;
 
     public EvaluationRecordService(
             EvaluationRecordRepository recordRepo,
@@ -48,19 +59,21 @@ public class EvaluationRecordService {
             EvaluationCommentRepository commentRepo,
             EvaluationTrainingPlanRepository trainingPlanRepo,
             EvaluationHistoryRepository historyRepo,
-            NotificationService notificationService,
+            EvaluationScoreAuditRepository scoreAuditRepo,
             TemplateCriteriaRepository criteriaRepo,
             UserRepository userRepo,
-            UserPositionRepository userPositionRepo) {
+            UserPositionRepository userPositionRepo,
+            org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.recordRepo = recordRepo;
         this.scoreRepo = scoreRepo;
         this.commentRepo = commentRepo;
         this.trainingPlanRepo = trainingPlanRepo;
         this.historyRepo = historyRepo;
-        this.notificationService = notificationService;
+        this.scoreAuditRepo = scoreAuditRepo;
         this.criteriaRepo = criteriaRepo;
         this.userRepo = userRepo;
         this.userPositionRepo = userPositionRepo;
+        this.eventPublisher = eventPublisher;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -112,7 +125,7 @@ public class EvaluationRecordService {
         return recordRepo.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
     }
 
-    /** Danh sách form cho quản lý trực tiếp trong kỳ */
+    /** Danh sách form cho quản lý trực tiếp trong kỳ (bao gồm cả record được uỷ quyền) */
     public List<EvaluationRecord> fetchRecordsForDirectManager(Long periodId, String managerId) {
         return recordRepo.findByPeriodIdAndDirectManagerId(periodId, managerId);
     }
@@ -134,13 +147,15 @@ public class EvaluationRecordService {
         return trainingPlanRepo.findByEvaluationRecordId(recordId);
     }
 
-    /** Danh sách form chờ quản lý trực tiếp chấm */
+    /** Danh sách form chờ quản lý trực tiếp chấm (bao gồm cả record được uỷ quyền) */
     public List<EvaluationRecord> fetchPendingForDirectManager(String managerId) {
-        return recordRepo.findByDirectManagerIdAndStatusIn(managerId,
-                List.of(RecordStatus.PENDING_MANAGER_REVIEW, RecordStatus.MANAGER_REVIEWING, RecordStatus.REVISION_NEEDED));
+        List<RecordStatus> pendingStatuses = List.of(
+            RecordStatus.PENDING_MANAGER_REVIEW,
+            RecordStatus.MANAGER_REVIEWING,
+            RecordStatus.REVISION_NEEDED);
+        return recordRepo.findByDirectManagerIdAndStatusIn(managerId, pendingStatuses);
     }
 
-    // Lịch sử (tất cả các bản đánh giá) của quản lý trực tiếp
     public List<EvaluationRecord> fetchHistoryForDirectManager(String managerId) {
         return recordRepo.findByDirectManagerIdOrderByCreatedAtDesc(managerId);
     }
@@ -157,36 +172,73 @@ public class EvaluationRecordService {
     }
 
     @Transactional(readOnly = true)
-    public List<EvaluationRecord> fetchCompletedSummary(
+    public org.springframework.data.domain.Page<EvaluationRecord> fetchCompletedSummary(
             Long periodId,
             Long departmentId,
             Long companyId,
             Long sectionId,
-            User requester) {
-        List<EvaluationRecord> records;
-        if (periodId != null) {
-            records = recordRepo.findByPeriodId(periodId);
-        } else {
-            records = recordRepo.findAll();
+            String searchText,
+            String filterGrade,
+            User requester,
+            org.springframework.data.domain.Pageable pageable) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            return org.springframework.data.domain.Page.empty(pageable);
         }
 
-        records = records.stream()
-                .filter(r -> r.getStatus() == RecordStatus.COMPLETED)
-                .filter(r -> canViewRecord(r, requester))
-                .toList();
-
+        boolean isAllVisible = scope.isSuperAdmin() || scope.isAdminLevel();
+        
+        List<String> targetEmployeeIds = null;
         if (sectionId != null) {
-            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsBySectionId(sectionId));
-            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+            targetEmployeeIds = userPositionRepo.findUserIdsBySectionId(sectionId);
         } else if (departmentId != null) {
-            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsByDepartmentId(departmentId));
-            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+            targetEmployeeIds = userPositionRepo.findUserIdsByDepartmentId(departmentId);
         } else if (companyId != null) {
-            Set<String> userIds = new HashSet<>(userPositionRepo.findUserIdsByCompanyId(companyId));
-            records = records.stream().filter(r -> userIds.contains(r.getEmployee().getId())).toList();
+            targetEmployeeIds = userPositionRepo.findUserIdsByCompanyId(companyId);
         }
 
-        return records;
+        // Lọc chéo bảo mật dựa trên UserScope
+        if (!isAllVisible) {
+            List<String> allowedEmployeeIds = new java.util.ArrayList<>();
+            if (scope.isCompanyLevel() && scope.companyIds() != null && !scope.companyIds().isEmpty()) {
+                for (Long compId : scope.companyIds()) {
+                    allowedEmployeeIds.addAll(userPositionRepo.findUserIdsByCompanyId(compId));
+                }
+            } else if (scope.isDepartmentLevel() && scope.departmentIds() != null && !scope.departmentIds().isEmpty()) {
+                for (Long deptId : scope.departmentIds()) {
+                    allowedEmployeeIds.addAll(userPositionRepo.findUserIdsByDepartmentId(deptId));
+                }
+            } else {
+                allowedEmployeeIds.add(scope.userId());
+            }
+
+            if (targetEmployeeIds == null) {
+                targetEmployeeIds = allowedEmployeeIds;
+            } else {
+                targetEmployeeIds = targetEmployeeIds.stream()
+                        .filter(allowedEmployeeIds::contains)
+                        .collect(java.util.stream.Collectors.toList());
+            }
+        }
+
+        if (targetEmployeeIds != null && targetEmployeeIds.isEmpty()) {
+            return org.springframework.data.domain.Page.empty(pageable);
+        }
+
+        boolean hasEmployeeIds = (targetEmployeeIds != null);
+        java.util.Collection<String> queryEmployeeIds = hasEmployeeIds ? targetEmployeeIds : java.util.Collections.emptyList();
+        
+        String cleanSearchText = (searchText == null || searchText.trim().isEmpty()) ? null : searchText.trim();
+        String cleanGrade = (filterGrade == null || filterGrade.trim().isEmpty()) ? null : filterGrade.trim();
+
+        return recordRepo.findCompletedSummary(
+                periodId,
+                hasEmployeeIds,
+                queryEmployeeIds,
+                cleanGrade,
+                cleanSearchText,
+                pageable
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -223,7 +275,7 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Tiêu chí cha có sub-tiêu chí, điểm được tính tự động");
         }
 
-        return saveOrUpdateScore(record, criteria, ScoredBy.EMPLOYEE, score);
+        return saveOrUpdateScore(record, criteria, ScoredBy.EMPLOYEE, score, true);
     }
 
     /**
@@ -360,7 +412,7 @@ public class EvaluationRecordService {
             saveHistory(record, oldStatus, RecordStatus.MANAGER_REVIEWING, record.getDirectManager(), null);
         }
 
-        return saveOrUpdateScore(record, criteria, ScoredBy.MANAGER, score);
+        return saveOrUpdateScore(record, criteria, ScoredBy.MANAGER, score, true);
     }
 
     /**
@@ -453,7 +505,7 @@ public class EvaluationRecordService {
 
     /** Quản lý trực tiếp lưu kế hoạch đào tạo */
     @Transactional
-    public EvaluationTrainingPlan saveTrainingPlan(Long recordId, EvaluationTrainingPlan plan, User manager) {
+    public EvaluationTrainingPlan saveTrainingPlan(Long recordId, TrainingPlanRequest request, User manager) {
         EvaluationRecord record = fetchRecordById(recordId);
         assertManagerPhaseOpen(record);
 
@@ -477,6 +529,12 @@ public class EvaluationRecordService {
             saveHistory(record, oldStatus, RecordStatus.MANAGER_REVIEWING, record.getDirectManager(), null);
         }
 
+        EvaluationTrainingPlan plan = new EvaluationTrainingPlan();
+        plan.setTrainingGroup(request.getTrainingGroup());
+        plan.setContent(request.getContent());
+        plan.setRequirements(request.getRequirements());
+        plan.setSolution(request.getSolution());
+        plan.setCompletionTimeline(request.getCompletionTimeline());
         plan.setEvaluationRecord(record);
         return trainingPlanRepo.save(plan);
     }
@@ -519,12 +577,12 @@ public class EvaluationRecordService {
             }
         }
 
-        return saveOrUpdateScore(record, criteria, ScoredBy.APPROVER, score);
+        return saveOrUpdateScore(record, criteria, ScoredBy.APPROVER, score, true);
     }
 
     /** Phê duyệt: PENDING_APPROVAL → COMPLETED */
     @Transactional
-    public EvaluationRecord approveRecord(Long recordId, User approver) {
+    public EvaluationRecord approveRecord(Long recordId, String overrideReason, User approver) {
         EvaluationRecord record = fetchRecordById(recordId);
         assertApprover(record, approver);
         assertApprovalPhaseOpen(record);
@@ -533,13 +591,43 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Bản đánh giá không ở trạng thái chờ phê duyệt");
         }
 
+        // T4: Bắt buộc lý do khi người phê duyệt đè điểm quản lý
+        List<EvaluationScore> approverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.APPROVER);
+        List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.MANAGER);
+
+        boolean hasOverride = false;
+        for (EvaluationScore appScore : approverScores) {
+            EvaluationScore mgrScore = managerScores.stream()
+                    .filter(s -> s.getCriteria().getId().equals(appScore.getCriteria().getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (mgrScore != null && appScore.getScore() != null && !appScore.getScore().equals(mgrScore.getScore())) {
+                hasOverride = true;
+                break;
+            }
+        }
+
+        if (hasOverride) {
+            if (overrideReason == null || overrideReason.trim().isEmpty()) {
+                throw new IdInvalidException("Vui lòng nhập lý do điều chỉnh điểm số so với quản lý");
+            }
+
+            // Lưu lý do đè điểm vào comments
+            EvaluationComment comment = new EvaluationComment();
+            comment.setEvaluationRecord(record);
+            comment.setCommentType(CommentType.APPROVER_OVERRIDE_NOTE);
+            comment.setContent(overrideReason.trim());
+            comment.setWrittenBy(approver);
+            commentRepo.save(comment);
+        }
+
         RecordStatus oldStatus = record.getStatus();
         record.setStatus(RecordStatus.COMPLETED);
         record.setApprovedAt(Instant.now());
         // completedAt sẽ được set khi nhân viên xác nhận đã xem
 
         // Tính toán điểm của người phê duyệt (nếu có)
-        List<EvaluationScore> approverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.APPROVER);
         if (!approverScores.isEmpty()) {
             recalculateParentScores(record, ScoredBy.APPROVER);
             double approverTotal = calculateTotalScore(record, ScoredBy.APPROVER);
@@ -551,7 +639,8 @@ public class EvaluationRecordService {
 
         recordRepo.save(record);
 
-        saveHistory(record, oldStatus, RecordStatus.COMPLETED, approver, null);
+        String historyNote = hasOverride ? "Phê duyệt hoàn tất (Có điều chỉnh điểm)" : null;
+        saveHistory(record, oldStatus, RecordStatus.COMPLETED, approver, historyNote);
 
         // Thông báo nhân viên
         sendNotification(record.getEmployee(), "RESULT_AVAILABLE",
@@ -567,14 +656,25 @@ public class EvaluationRecordService {
         return record;
     }
 
-    /** Phê duyệt hàng loạt */
     @Transactional
-    public List<EvaluationRecord> batchApproveRecords(List<Long> recordIds, User approver) {
-        List<EvaluationRecord> approved = new java.util.ArrayList<>();
+    public EvaluationRecord approveRecord(Long recordId, User approver) {
+        return approveRecord(recordId, null, approver);
+    }
+
+    /** Phê duyệt hàng loạt */
+    public vn.system.app.modules.evaluation.domain.response.BatchApproveResponse batchApproveRecords(List<Long> recordIds, User approver) {
+        List<Long> successIds = new java.util.ArrayList<>();
+        List<vn.system.app.modules.evaluation.domain.response.BatchApproveResponse.FailedApproval> failedRecords = new java.util.ArrayList<>();
         for (Long id : recordIds) {
-            approved.add(approveRecord(id, approver));
+            try {
+                EvaluationRecord record = self.approveRecord(id, approver);
+                successIds.add(record.getId());
+            } catch (Exception e) {
+                log.error("Lỗi khi phê duyệt hàng loạt bản đánh giá ID {}: {}", id, e.getMessage());
+                failedRecords.add(new vn.system.app.modules.evaluation.domain.response.BatchApproveResponse.FailedApproval(id, e.getMessage()));
+            }
         }
-        return approved;
+        return new vn.system.app.modules.evaluation.domain.response.BatchApproveResponse(successIds, failedRecords);
     }
 
     /**
@@ -585,6 +685,10 @@ public class EvaluationRecordService {
     @Transactional
     public EvaluationRecord confirmEmployeeAcknowledge(Long recordId, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
+
+        if (record.getCompletedAt() != null) {
+            return record;
+        }
 
         if (record.getStatus() != RecordStatus.COMPLETED) {
             throw new IdInvalidException("Bản đánh giá chưa được phê duyệt hoàn tất");
@@ -609,6 +713,38 @@ public class EvaluationRecordService {
     }
 
     /**
+     * T12 — Hệ thống tự xác nhận đã xem (auto-acknowledge).
+     * Gọi từ scheduler sau N ngày mà nhân viên không bấm xác nhận.
+     * Không cần kiểm tra ownership; ghi lịch sử với note "Hệ thống tự xác nhận".
+     */
+    @Transactional
+    public EvaluationRecord systemAutoAcknowledge(Long recordId) {
+        EvaluationRecord record = recordRepo.findById(recordId)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy bản đánh giá ID: " + recordId));
+
+        if (record.getStatus() != RecordStatus.COMPLETED) {
+            return record; // Bỏ qua nếu không ở COMPLETED
+        }
+        if (record.getCompletedAt() != null) {
+            return record; // Đã được xác nhận rồi
+        }
+
+        record.setCompletedAt(Instant.now());
+        recordRepo.save(record);
+
+        // Ghi lịch sử để audit
+        EvaluationHistory history = new EvaluationHistory();
+        history.setEvaluationRecord(record);
+        history.setFromStatus(RecordStatus.COMPLETED);
+        history.setToStatus(RecordStatus.COMPLETED);
+        history.setPerformedBy(null); // Hệ thống tự động
+        history.setNote("Hệ thống tự động xác nhận đã xem sau 7 ngày không có phản hồi");
+        historyRepo.save(history);
+
+        return record;
+    }
+
+    /**
      * Trả lại: PENDING_APPROVAL → REVISION_NEEDED.
      * Bắt buộc phải có lý do.
      */
@@ -628,9 +764,32 @@ public class EvaluationRecordService {
 
         RecordStatus oldStatus = record.getStatus();
         record.setStatus(RecordStatus.REVISION_NEEDED);
+
+        // 3.4: Tự động nới managerDeadline = max(now + 2 ngày, deadline hiện tại)
+        Instant now = Instant.now();
+        Instant currentMgrDeadline = record.getManagerDeadlineOverride() != null
+                ? record.getManagerDeadlineOverride()
+                : record.getPeriod().getManagerDeadline();
+        Instant targetDeadline = now.plus(2, ChronoUnit.DAYS);
+        if (currentMgrDeadline == null || targetDeadline.isAfter(currentMgrDeadline)) {
+            record.setManagerDeadlineOverride(targetDeadline);
+        }
+
+        // Tự động nới employeeDeadline
+        Instant currentEmpDeadline = record.getEmployeeDeadlineOverride() != null
+                ? record.getEmployeeDeadlineOverride()
+                : record.getPeriod().getEmployeeDeadline();
+        if (currentEmpDeadline == null || targetDeadline.isAfter(currentEmpDeadline)) {
+            record.setEmployeeDeadlineOverride(targetDeadline);
+        }
+        
         recordRepo.save(record);
 
-        saveHistory(record, oldStatus, RecordStatus.REVISION_NEEDED, rejector, reason);
+        // Xóa điểm của APPROVER để tránh rác khi chấm lại
+        scoreRepo.deleteByEvaluationRecordIdAndScoredBy(recordId, ScoredBy.APPROVER);
+
+        String auditReason = reason + " (Tự động nới hạn chót thêm 2 ngày cho Quản lý và Nhân viên)";
+        saveHistory(record, oldStatus, RecordStatus.REVISION_NEEDED, rejector, auditReason);
 
         // Lưu lý do trả lại vào comments
         EvaluationComment comment = new EvaluationComment();
@@ -665,6 +824,12 @@ public class EvaluationRecordService {
             String reason,
             boolean cascade,
             User performer) {
+        
+        // Assert admin scope
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || (!scope.isSuperAdmin() && !scope.isAdminLevel())) {
+            throw new IdInvalidException("Bạn không có quyền thực hiện hành động này");
+        }
         if (recordIds == null || recordIds.isEmpty()) {
             throw new IdInvalidException("Danh sách bản đánh giá không được để trống");
         }
@@ -688,17 +853,110 @@ public class EvaluationRecordService {
                 throw new IdInvalidException("Không thể gia hạn bản đánh giá đã hoàn tất");
             }
 
+            Instant oldEmployeeDeadline = getEffectiveEmployeeDeadline(record);
+            Instant oldManagerDeadline = getEffectiveManagerDeadline(record);
+            Instant oldApprovalDeadline = getEffectiveApprovalDeadline(record);
+
             switch (phase) {
                 case EMPLOYEE -> extendEmployeeDeadline(record, deadline, cascade);
                 case MANAGER -> extendManagerDeadline(record, deadline, cascade);
                 case APPROVAL -> extendApprovalDeadline(record, deadline);
             }
 
+            Instant newEmployeeDeadline = getEffectiveEmployeeDeadline(record);
+            Instant newManagerDeadline = getEffectiveManagerDeadline(record);
+            Instant newApprovalDeadline = getEffectiveApprovalDeadline(record);
+
             String note = String.format("Gia hạn giai đoạn %s tới %s%s",
-                    phase,
-                    deadline,
+                    getDeadlinePhaseLabel(phase),
+                    formatInstant(deadline),
                     reason != null && !reason.isBlank() ? ". Lý do: " + reason.trim() : "");
             saveHistory(record, record.getStatus(), record.getStatus(), performer, note);
+
+            if (!Objects.equals(oldEmployeeDeadline, newEmployeeDeadline)) {
+                notifyDeadlineExtended(record, record.getEmployee(), "tự đánh giá", newEmployeeDeadline,
+                        "/admin/evaluation/my-records/" + record.getId(), reason);
+            }
+            if (!Objects.equals(oldManagerDeadline, newManagerDeadline)) {
+                notifyDeadlineExtended(record, record.getDirectManager(), "quản lý chấm điểm", newManagerDeadline,
+                        "/admin/evaluation/manager/records/" + record.getId(), reason);
+            }
+            if (!Objects.equals(oldApprovalDeadline, newApprovalDeadline)) {
+                notifyDeadlineExtended(record, record.getIndirectManager(), "lãnh đạo phê duyệt", newApprovalDeadline,
+                        "/admin/evaluation/approval/records/" + record.getId(), reason);
+            }
+        }
+
+        return recordRepo.saveAll(records);
+    }
+
+    /** Admin điều chuyển người chấm/duyệt bản đánh giá. */
+    @Transactional
+    public List<EvaluationRecord> reassignEvaluators(
+            List<Long> recordIds,
+            ReassignEvaluatorRequest.EvaluatorRole role,
+            String newEvaluatorUserId,
+            String reason,
+            User performer) {
+
+        // Assert admin scope
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null || (!scope.isSuperAdmin() && !scope.isAdminLevel())) {
+            throw new IdInvalidException("Bạn không có quyền thực hiện hành động này");
+        }
+        if (recordIds == null || recordIds.isEmpty()) {
+            throw new IdInvalidException("Danh sách bản đánh giá không được để trống");
+        }
+        if (role == null) {
+            throw new IdInvalidException("Vai trò người chấm không hợp lệ");
+        }
+        if (newEvaluatorUserId == null || newEvaluatorUserId.isBlank()) {
+            throw new IdInvalidException("Người chấm mới không hợp lệ");
+        }
+
+        User newEvaluator = userRepo.findById(newEvaluatorUserId)
+                .orElseThrow(() -> new IdInvalidException("Không tìm thấy người chấm mới trong hệ thống"));
+
+        List<EvaluationRecord> records = recordRepo.findAllById(recordIds);
+        if (records.size() != new HashSet<>(recordIds).size()) {
+            throw new IdInvalidException("Một hoặc nhiều bản đánh giá không tồn tại");
+        }
+
+        for (EvaluationRecord record : records) {
+            if (record.getPeriod() == null || record.getPeriod().getStatus() != PeriodStatus.ACTIVE) {
+                throw new IdInvalidException("Chỉ có thể điều chuyển người chấm cho bản đánh giá thuộc kỳ đang hoạt động");
+            }
+            if (record.getStatus() == RecordStatus.COMPLETED || record.getStatus() == RecordStatus.CANCELLED) {
+                throw new IdInvalidException("Không thể điều chuyển người chấm cho bản đánh giá đã hoàn tất hoặc đã hủy");
+            }
+
+            String oldEvaluatorName = "";
+            if (role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER) {
+                oldEvaluatorName = record.getDirectManager() != null ? record.getDirectManager().getName() : "Chưa phân công";
+                record.setDirectManager(newEvaluator);
+            } else {
+                oldEvaluatorName = record.getIndirectManager() != null ? record.getIndirectManager().getName() : "Chưa phân công";
+                record.setIndirectManager(newEvaluator);
+            }
+
+            String note = String.format("Điều chuyển %s từ [%s] sang [%s]%s",
+                    role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER ? "Quản lý trực tiếp" : "Người phê duyệt",
+                    oldEvaluatorName,
+                    newEvaluator.getName(),
+                    reason != null && !reason.isBlank() ? ". Lý do: " + reason.trim() : "");
+            
+            saveHistory(record, record.getStatus(), record.getStatus(), performer, note);
+
+            // Gửi thông báo đến người chấm mới
+            if (role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER) {
+                sendNotification(newEvaluator, "MANAGER_ASSIGNED",
+                        String.format("Bạn được phân công chấm điểm đánh giá cho nhân viên %s", record.getEmployee().getName()),
+                        "/admin/evaluation/manager/records/" + record.getId());
+            } else {
+                sendNotification(newEvaluator, "APPROVER_ASSIGNED",
+                        String.format("Bạn được phân công phê duyệt đánh giá cho nhân viên %s", record.getEmployee().getName()),
+                        "/admin/evaluation/approval/records/" + record.getId());
+            }
         }
 
         return recordRepo.saveAll(records);
@@ -709,6 +967,13 @@ public class EvaluationRecordService {
         EvaluationRecord record = fetchRecordById(recordId);
         assertCanViewRecord(record, requester);
         return historyRepo.findByEvaluationRecordIdOrderByPerformedAtDesc(recordId);
+    }
+
+    /** Lịch sử thay đổi điểm số */
+    public List<EvaluationScoreAudit> fetchScoreAudits(Long recordId, User requester) {
+        EvaluationRecord record = fetchRecordById(recordId);
+        assertCanViewRecord(record, requester);
+        return scoreAuditRepo.findByEvaluationRecordIdOrderByChangedAtDesc(recordId);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -729,21 +994,65 @@ public class EvaluationRecordService {
     // TÍNH ĐIỂM — CORE LOGIC
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /**
-     * Lưu hoặc cập nhật điểm cho tiêu chí.
-     * weightedScore = score × criteria.weight × section.weight
-     */
     private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
             ScoredBy scoredBy, Double score) {
+        return saveOrUpdateScore(record, criteria, scoredBy, score, null, null, false);
+    }
 
-        EvaluationScore evalScore = scoreRepo
-                .findByEvaluationRecordIdAndCriteriaIdAndScoredBy(record.getId(), criteria.getId(), scoredBy)
-                .orElse(new EvaluationScore());
+    private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
+            ScoredBy scoredBy, Double score, boolean isManual) {
+        return saveOrUpdateScore(record, criteria, scoredBy, score, null, null, isManual);
+    }
+
+    private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
+            ScoredBy scoredBy, Double score, List<TemplateCriteria> allCriteria) {
+        return saveOrUpdateScore(record, criteria, scoredBy, score, allCriteria, null, false);
+    }
+
+    private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
+            ScoredBy scoredBy, Double score, List<TemplateCriteria> allCriteria, List<EvaluationScore> existingScores) {
+        return saveOrUpdateScore(record, criteria, scoredBy, score, allCriteria, existingScores, false);
+    }
+
+    private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
+            ScoredBy scoredBy, Double score, List<TemplateCriteria> allCriteria, List<EvaluationScore> existingScores, boolean isManual) {
+
+        EvaluationScore evalScore = null;
+        if (existingScores != null) {
+            evalScore = existingScores.stream()
+                    .filter(s -> s.getCriteria().getId().equals(criteria.getId()))
+                    .findFirst()
+                    .orElse(null);
+            if (evalScore == null) {
+                evalScore = new EvaluationScore();
+            }
+        } else {
+            evalScore = scoreRepo
+                    .findByEvaluationRecordIdAndCriteriaIdAndScoredBy(record.getId(), criteria.getId(), scoredBy)
+                    .orElse(new EvaluationScore());
+        }
+
+        Double oldScore = evalScore.getScore();
 
         evalScore.setEvaluationRecord(record);
         evalScore.setCriteria(criteria);
         evalScore.setScoredBy(scoredBy);
         evalScore.setScore(score);
+
+        // 3.5: Ghi nhận audit log nếu đổi điểm cũ (khác null và khác điểm mới) và là thao tác thủ công (isManual)
+        if (isManual && oldScore != null && !oldScore.equals(score)) {
+            String email = vn.system.app.common.util.SecurityUtil.getCurrentUserLogin().orElse(null);
+            User performer = email != null ? userRepo.findByEmail(email) : null;
+
+            EvaluationScoreAudit audit = new EvaluationScoreAudit();
+            audit.setEvaluationRecord(record);
+            audit.setCriteriaId(criteria.getId());
+            audit.setScoredBy(scoredBy);
+            audit.setOldScore(oldScore);
+            audit.setNewScore(score);
+            audit.setChangedBy(performer);
+            scoreAuditRepo.save(audit);
+        }
 
         // Tính weighted score
         // KHÔNG nhân với sectionWeight vì criteriaWeight đã là trọng số tuyệt đối (theo frontend)
@@ -753,8 +1062,16 @@ public class EvaluationRecordService {
         if (criteria.getParentCriteria() != null) {
             criteriaWeight = criteria.getParentCriteria().getWeight();
             // Sub-tiêu chí chia đều weight cha (trung bình)
-            List<TemplateCriteria> siblings = criteriaRepo.findByParentCriteriaId(
-                    criteria.getParentCriteria().getId());
+            List<TemplateCriteria> siblings;
+            if (allCriteria != null) {
+                Long parentId = criteria.getParentCriteria().getId();
+                siblings = allCriteria.stream()
+                        .filter(c -> c.getParentCriteria() != null && c.getParentCriteria().getId().equals(parentId))
+                        .collect(java.util.stream.Collectors.toList());
+            } else {
+                siblings = criteriaRepo.findByParentCriteriaId(
+                        criteria.getParentCriteria().getId());
+            }
             // weighted score cho sub = score × parentWeight / numSubs
             evalScore.setWeightedScore(score * criteriaWeight / siblings.size());
         } else {
@@ -764,44 +1081,61 @@ public class EvaluationRecordService {
         return scoreRepo.save(evalScore);
     }
 
-    /**
-     * Tính lại điểm tiêu chí cha = trung bình cộng điểm các sub.
-     */
     private void recalculateParentScores(EvaluationRecord record, ScoredBy scoredBy) {
+        List<Long> sectionIds = record.getTemplate().getSections().stream()
+                .map(TemplateSection::getId)
+                .collect(java.util.stream.Collectors.toList());
+        List<TemplateCriteria> allCriteria = criteriaRepo.findBySectionIdIn(sectionIds);
+
+        // Map parent ID -> list of sub-criteria
+        Map<Long, List<TemplateCriteria>> parentToSubs = allCriteria.stream()
+                .filter(c -> c.getParentCriteria() != null)
+                .collect(java.util.stream.Collectors.groupingBy(c -> c.getParentCriteria().getId()));
+
         List<EvaluationScore> scores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), scoredBy);
+        Map<Long, Double> criteriaIdToScore = scores.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        s -> s.getCriteria().getId(),
+                        EvaluationScore::getScore,
+                        (s1, s2) -> s1
+                ));
 
-        // Tìm tất cả tiêu chí cha (có sub)
-        scores.stream()
-                .map(s -> s.getCriteria().getParentCriteria())
-                .filter(parent -> parent != null)
-                .distinct()
-                .forEach(parent -> {
-                    List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(parent.getId());
-                    double avgScore = subs.stream()
-                            .map(sub -> scoreRepo.findByEvaluationRecordIdAndCriteriaIdAndScoredBy(
-                                    record.getId(), sub.getId(), scoredBy))
-                            .filter(opt -> opt.isPresent())
-                            .mapToDouble(opt -> opt.get().getScore())
-                            .average()
-                            .orElse(0.0);
-
-                    saveOrUpdateScore(record, parent, scoredBy, avgScore);
-                });
+        parentToSubs.forEach((parentId, subs) -> {
+            TemplateCriteria parent = allCriteria.stream()
+                    .filter(c -> c.getId().equals(parentId))
+                    .findFirst()
+                    .orElse(null);
+            if (parent != null) {
+                double avgScore = subs.stream()
+                        .map(sub -> criteriaIdToScore.get(sub.getId()))
+                        .filter(Objects::nonNull)
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(0.0);
+                saveOrUpdateScore(record, parent, scoredBy, avgScore, allCriteria, scores);
+            }
+        });
     }
 
-    /**
-     * Tính tổng điểm cuối = sum(weightedScore) của tất cả tiêu chí lá.
-     * Tiêu chí lá = tiêu chí không có sub.
-     */
     private double calculateTotalScore(EvaluationRecord record, ScoredBy scoredBy) {
         List<EvaluationScore> scores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), scoredBy);
+        if (scores.isEmpty()) {
+            return 0.0;
+        }
+
+        List<Long> sectionIds = record.getTemplate().getSections().stream()
+                .map(TemplateSection::getId)
+                .collect(java.util.stream.Collectors.toList());
+        List<TemplateCriteria> allCriteria = criteriaRepo.findBySectionIdIn(sectionIds);
+
+        Set<Long> parentIds = allCriteria.stream()
+                .map(TemplateCriteria::getParentCriteria)
+                .filter(Objects::nonNull)
+                .map(TemplateCriteria::getId)
+                .collect(java.util.stream.Collectors.toSet());
 
         return scores.stream()
-                .filter(s -> {
-                    // Chỉ lấy tiêu chí lá (không có sub-tiêu chí)
-                    List<TemplateCriteria> subs = criteriaRepo.findByParentCriteriaId(s.getCriteria().getId());
-                    return subs.isEmpty();
-                })
+                .filter(s -> !parentIds.contains(s.getCriteria().getId()))
                 .mapToDouble(EvaluationScore::getWeightedScore)
                 .sum();
     }
@@ -817,9 +1151,9 @@ public class EvaluationRecordService {
     private String calculateGrade(double totalScore) {
         if (totalScore > 4.5)
             return "A";
-        if (totalScore > 4.0)
+        if (totalScore >= 4.0)
             return "B";
-        if (totalScore > 3.5)
+        if (totalScore >= 3.5)
             return "C";
         if (totalScore >= 3.0)
             return "D";
@@ -910,6 +1244,9 @@ public class EvaluationRecordService {
     }
 
     private void assertEmployeePhaseOpen(EvaluationRecord record) {
+        if (record.getStatus() == RecordStatus.CANCELLED) {
+            throw new IdInvalidException("Bản đánh giá đã bị hủy bỏ");
+        }
         EvaluationPeriod period = record.getPeriod();
         Instant now = Instant.now();
 
@@ -928,6 +1265,9 @@ public class EvaluationRecordService {
     }
 
     private void assertManagerPhaseOpen(EvaluationRecord record) {
+        if (record.getStatus() == RecordStatus.CANCELLED) {
+            throw new IdInvalidException("Bản đánh giá đã bị hủy bỏ");
+        }
         EvaluationPeriod period = record.getPeriod();
         Instant now = Instant.now();
 
@@ -943,6 +1283,9 @@ public class EvaluationRecordService {
     }
 
     private void assertApprovalPhaseOpen(EvaluationRecord record) {
+        if (record.getStatus() == RecordStatus.CANCELLED) {
+            throw new IdInvalidException("Bản đánh giá đã bị hủy bỏ");
+        }
         EvaluationPeriod period = record.getPeriod();
         Instant now = Instant.now();
 
@@ -980,6 +1323,28 @@ public class EvaluationRecordService {
         java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
                 .withZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
         return formatter.format(instant);
+    }
+
+    private String getDeadlinePhaseLabel(ExtendRecordDeadlineRequest.Phase phase) {
+        if (phase == null) return "không xác định";
+        return switch (phase) {
+            case EMPLOYEE -> "Nhân viên tự đánh giá";
+            case MANAGER -> "Quản lý chấm điểm";
+            case APPROVAL -> "Lãnh đạo phê duyệt";
+        };
+    }
+
+    private void notifyDeadlineExtended(EvaluationRecord record, User recipient, String phaseLabel,
+            Instant newDeadline, String actionLink, String reason) {
+        if (recipient == null || newDeadline == null) return;
+        String employeeName = record.getEmployee() != null ? record.getEmployee().getName() : "nhân viên";
+        String reasonText = reason != null && !reason.isBlank()
+                ? String.format(" Lý do: %s", reason.trim())
+                : "";
+        sendNotification(recipient, "DEADLINE_EXTENDED",
+                String.format("Hạn xử lý bước %s cho bản đánh giá của %s đã được gia hạn đến %s.%s",
+                        phaseLabel, employeeName, formatInstant(newDeadline), reasonText),
+                actionLink);
     }
 
     private void extendEmployeeDeadline(EvaluationRecord record, Instant deadline, boolean cascade) {
@@ -1083,27 +1448,29 @@ public class EvaluationRecordService {
      * Validate tất cả tiêu chí lá (không có sub) đã được chấm điểm.
      */
     private void validateAllLeafCriteriaScored(EvaluationRecord record, ScoredBy scoredBy) {
-        // Lấy tất cả tiêu chí trong template
         EvaluationTemplate template = record.getTemplate();
-        List<TemplateCriteria> allCriteria = template.getSections().stream()
-                .flatMap(section -> {
-                    List<TemplateCriteria> sectionCriteria = criteriaRepo
-                            .findBySectionIdOrderByDisplayOrderAsc(section.getId());
-                    return sectionCriteria.stream();
-                })
+        List<Long> sectionIds = template.getSections().stream()
+                .map(TemplateSection::getId)
+                .collect(java.util.stream.Collectors.toList());
+        List<TemplateCriteria> allCriteria = criteriaRepo.findBySectionIdIn(sectionIds);
+
+        Set<Long> parentIds = allCriteria.stream()
+                .map(TemplateCriteria::getParentCriteria)
+                .filter(Objects::nonNull)
+                .map(TemplateCriteria::getId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<TemplateCriteria> leafCriteria = allCriteria.stream()
+                .filter(c -> !parentIds.contains(c.getId()))
                 .collect(java.util.stream.Collectors.toList());
 
-        // Lọc tiêu chí lá
-        List<TemplateCriteria> leafCriteria = allCriteria.stream()
-                .filter(c -> criteriaRepo.findByParentCriteriaId(c.getId()).isEmpty())
-                .collect(java.util.stream.Collectors.toList());
+        List<EvaluationScore> scores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), scoredBy);
+        Set<Long> scoredCriteriaIds = scores.stream()
+                .map(s -> s.getCriteria().getId())
+                .collect(java.util.stream.Collectors.toSet());
 
         for (TemplateCriteria criteria : leafCriteria) {
-            boolean hasScore = scoreRepo
-                    .findByEvaluationRecordIdAndCriteriaIdAndScoredBy(record.getId(), criteria.getId(), scoredBy)
-                    .isPresent();
-
-            if (!hasScore) {
+            if (!scoredCriteriaIds.contains(criteria.getId())) {
                 throw new IdInvalidException(
                         String.format("Chưa chấm điểm tiêu chí: %s", criteria.getName()));
             }
@@ -1127,6 +1494,7 @@ public class EvaluationRecordService {
 
     private void sendNotification(User recipient, String type, String content, String actionLink) {
         if (recipient == null) return;
-        notificationService.sendNotification(recipient.getId(), "EVALUATION", type, content, actionLink);
+        eventPublisher.publishEvent(new vn.system.app.modules.notification.event.AppNotificationEvent(
+                List.of(recipient.getId()), "EVALUATION", type, content, actionLink));
     }
 }

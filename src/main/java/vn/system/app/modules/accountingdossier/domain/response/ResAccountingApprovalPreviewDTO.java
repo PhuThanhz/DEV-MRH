@@ -21,7 +21,23 @@ public class ResAccountingApprovalPreviewDTO {
     private boolean valid;
     private List<String> warnings;
     private List<String> blockingErrors;
+    private PersonPreviewDTO sender;
     private List<StepPreviewDTO> steps;
+
+    @Getter
+    @Setter
+    @Builder
+    public static class PersonPreviewDTO {
+        private String userId;
+        private String name;
+        private String email;
+        private String roleName;
+        private String jobTitleName;
+        private String positionLevelCode;
+        private String companyName;
+        private String departmentName;
+        private String sectionName;
+    }
 
     @Getter
     @Setter
@@ -34,6 +50,7 @@ public class ResAccountingApprovalPreviewDTO {
         private ApprovalRule approvalRule;
         private String approverUserId;
         private String assigneeLabel;
+        private PersonPreviewDTO assignee;
         private Integer slaMinutes;
         private boolean required;
     }

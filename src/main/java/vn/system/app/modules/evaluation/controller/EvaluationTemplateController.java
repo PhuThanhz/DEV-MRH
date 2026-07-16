@@ -60,6 +60,13 @@ public class EvaluationTemplateController {
         return ResponseEntity.ok(mapper.toResTemplateDTO(templateService.archiveTemplate(id)));
     }
 
+    @DeleteMapping("/templates/{id}")
+    @ApiMessage("Xóa template đánh giá")
+    public ResponseEntity<Void> deleteTemplate(@PathVariable Long id) {
+        templateService.deleteTemplate(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/templates/{id}")
     @ApiMessage("Chi tiết template")
     public ResponseEntity<ResTemplateDTO> fetchTemplate(@PathVariable Long id) {

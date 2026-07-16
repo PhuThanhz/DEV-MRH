@@ -187,12 +187,7 @@ public class PositionLevelService {
         if (scope != null && !scope.isAdminLevel()) {
             spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));
         }
-        // ⭐ THÊM LOG
-        System.out.println(">>> [PositionLevelService] scope = " + scope);
-        if (scope != null) {
-            System.out.println(">>> isSuperAdmin = " + scope.isSuperAdmin());
-            System.out.println(">>> companyIds = " + scope.companyIds());
-        }
+
 
         if (scope != null && !scope.isAdminLevel()) {
             spec = Specification.where(spec).and(ScopeSpec.byCompanyScope("company.id"));

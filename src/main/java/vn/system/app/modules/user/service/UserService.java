@@ -39,10 +39,14 @@ import vn.system.app.modules.jobtitle.domain.JobTitle;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @Transactional
 public class UserService {
+
+    private static final long LAST_LOGIN_UPDATE_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
 
     private final UserRepository userRepository;
     private final UserInfoRepository userInfoRepository;
@@ -52,6 +56,7 @@ public class UserService {
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
     private final UserSessionService userSessionService;
+    private final ConcurrentHashMap<String, Long> lastLoginUpdateTimes = new ConcurrentHashMap<>();
 
     public UserService(
             UserRepository userRepository,
@@ -384,6 +389,10 @@ public class UserService {
     // ======================================================
     // LOGIN SUPPORT
     // ======================================================
+    public User handleGetUserCredentialsByUsername(String username) {
+        return this.userRepository.findByEmail(username);
+    }
+
     public User handleGetUserByUsername(String username) {
         return this.userRepository.findWithAuthByEmail(username);
     }
@@ -393,9 +402,29 @@ public class UserService {
     }
     
     public void updateLastLoginIfNecessary(String userId, String ip) {
-        Instant now = Instant.now();
+        long nowMillis = System.currentTimeMillis();
+        AtomicBoolean shouldUpdate = new AtomicBoolean(false);
+
+        lastLoginUpdateTimes.compute(userId, (key, previousUpdate) -> {
+            if (previousUpdate == null || nowMillis - previousUpdate >= LAST_LOGIN_UPDATE_INTERVAL_MS) {
+                shouldUpdate.set(true);
+                return nowMillis;
+            }
+            return previousUpdate;
+        });
+
+        if (!shouldUpdate.get()) {
+            return;
+        }
+
+        Instant now = Instant.ofEpochMilli(nowMillis);
         Instant threshold = now.minus(10, ChronoUnit.MINUTES);
-        this.userRepository.updateLastLogin(userId, ip, now, threshold);
+        try {
+            this.userRepository.updateLastLogin(userId, ip, now, threshold);
+        } catch (RuntimeException ex) {
+            lastLoginUpdateTimes.remove(userId, nowMillis);
+            throw ex;
+        }
     }
 
     // ======================================================
@@ -746,6 +775,7 @@ public class UserService {
             dto.setName(user.getName());
             dto.setEmail(user.getEmail());
             dto.setAvatar(user.getAvatar());
+            dto.setActive(user.isActive());
             
             if (user.getUserInfo() != null) {
                 dto.setEmployeeCode(user.getUserInfo().getEmployeeCode());

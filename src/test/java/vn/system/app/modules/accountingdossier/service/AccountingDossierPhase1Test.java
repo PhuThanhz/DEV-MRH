@@ -78,6 +78,7 @@ class AccountingDossierPhase1Test {
     @Mock private AppProperties appProperties;
     @Mock private AccountingDossierOutboxRepository outboxRepository;
     @Mock private AccountingApprovalDelegationService delegationService;
+    @Mock private AccountingDossierNotificationService notificationService;
 
     private AccountingDossierService service;
     private ApprovalStepGenerationService stepGenerationService;
@@ -100,7 +101,7 @@ class AccountingDossierPhase1Test {
                 dossierCategoryRepository, accountingCategoryRepository, documentRepository,
                 documentVersionRepository, userRepository, approvalStepRepository, appProperties,
                 approverResolutionService, stepGenerationService, dossierAuditService,
-                outboxRepository, delegationService
+                outboxRepository, delegationService, notificationService
         );
 
         // Security context mock

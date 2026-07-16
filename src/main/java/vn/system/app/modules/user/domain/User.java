@@ -16,7 +16,9 @@ import vn.system.app.modules.role.domain.Role;
 import vn.system.app.modules.userinfo.domain.UserInfo;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "ix_users_email", columnList = "email")
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })

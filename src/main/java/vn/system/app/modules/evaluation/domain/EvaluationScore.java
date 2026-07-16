@@ -23,7 +23,10 @@ import vn.system.app.modules.evaluation.domain.enums.ScoredBy;
  */
 @Entity
 @Table(name = "evaluation_scores",
-        uniqueConstraints = @UniqueConstraint(columnNames = { "evaluation_record_id", "criteria_id", "scored_by" }))
+        uniqueConstraints = @UniqueConstraint(columnNames = { "evaluation_record_id", "criteria_id", "scored_by" }),
+        indexes = {
+            @Index(name = "idx_eval_score_record_scored_by", columnList = "evaluation_record_id, scored_by")
+        })
 @Getter
 @Setter
 public class EvaluationScore {

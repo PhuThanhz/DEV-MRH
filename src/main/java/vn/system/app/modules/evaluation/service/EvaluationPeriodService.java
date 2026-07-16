@@ -3,6 +3,7 @@ package vn.system.app.modules.evaluation.service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.error.IdInvalidException;
+import vn.system.app.common.util.error.PermissionException;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.enums.*;
 import vn.system.app.modules.evaluation.repository.*;
@@ -22,6 +24,11 @@ import vn.system.app.modules.company.domain.Company;
 import vn.system.app.modules.company.repository.CompanyRepository;
 import vn.system.app.modules.userposition.domain.UserPosition;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
+import vn.system.app.common.util.UserScopeContext;
+import vn.system.app.modules.evaluation.domain.response.ResPeriodProgressDTO;
+import java.util.Set;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Service quản lý Kỳ đánh giá (Period) và nhân viên tham gia kỳ.
@@ -35,10 +42,12 @@ public class EvaluationPeriodService {
     private final PeriodEmployeeRepository periodEmployeeRepo;
     private final EvaluationTemplateRepository templateRepo;
     private final EvaluationRecordRepository recordRepo;
+    private final EvaluationHistoryRepository historyRepo;
     private final NotificationService notificationService;
     private final UserRepository userRepo;
     private final CompanyRepository companyRepo;
     private final UserPositionRepository userPositionRepo;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public EvaluationPeriodService(
             EvaluationPeriodRepository periodRepo,
@@ -46,19 +55,23 @@ public class EvaluationPeriodService {
             PeriodEmployeeRepository periodEmployeeRepo,
             EvaluationTemplateRepository templateRepo,
             EvaluationRecordRepository recordRepo,
+            EvaluationHistoryRepository historyRepo,
             NotificationService notificationService,
             UserRepository userRepo,
             CompanyRepository companyRepo,
-            UserPositionRepository userPositionRepo) {
+            UserPositionRepository userPositionRepo,
+            org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.periodRepo = periodRepo;
         this.periodTemplateRepo = periodTemplateRepo;
         this.periodEmployeeRepo = periodEmployeeRepo;
         this.templateRepo = templateRepo;
         this.recordRepo = recordRepo;
+        this.historyRepo = historyRepo;
         this.notificationService = notificationService;
         this.userRepo = userRepo;
         this.companyRepo = companyRepo;
         this.userPositionRepo = userPositionRepo;
+        this.eventPublisher = eventPublisher;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -77,6 +90,7 @@ public class EvaluationPeriodService {
         Company comp = companyRepo.findById(period.getCompany().getId())
                 .orElseThrow(() -> new IdInvalidException("Công ty không tồn tại"));
         period.setCompany(comp);
+        assertPeriodInCurrentScope(period);
         
         return periodRepo.save(period);
     }
@@ -101,13 +115,17 @@ public class EvaluationPeriodService {
             existing.setCompany(comp);
         }
 
+        assertPeriodInCurrentScope(existing);
+
         validatePeriodDates(existing, employeeStartDateChanged);
         return periodRepo.save(existing);
     }
 
     public EvaluationPeriod fetchPeriodById(Long id) {
-        return periodRepo.findById(id)
+        EvaluationPeriod period = periodRepo.findById(id)
                 .orElseThrow(() -> new IdInvalidException("Kỳ đánh giá không tồn tại"));
+        assertPeriodInCurrentScope(period);
+        return period;
     }
 
     public ResultPaginationDTO fetchAllPeriods(Specification<EvaluationPeriod> spec, Pageable pageable) {
@@ -158,6 +176,7 @@ public class EvaluationPeriodService {
     }
 
     public List<PeriodTemplate> fetchTemplatesByPeriod(Long periodId) {
+        fetchPeriodById(periodId);
         return periodTemplateRepo.findByPeriodId(periodId);
     }
 
@@ -172,49 +191,24 @@ public class EvaluationPeriodService {
         EvaluationPeriod period = fetchPeriodById(periodId);
         checkPeriodEditable(period);
 
-        if (periodEmployeeRepo.existsByPeriodIdAndEmployeeId(periodId, employeeId)) {
-            throw new IdInvalidException("Nhân viên đã tồn tại trong kỳ đánh giá này");
-        }
-
         User employee = userRepo.findById(employeeId)
                 .orElseThrow(() -> new IdInvalidException("Nhân viên không tồn tại"));
-                
-        boolean belongsToCompany = userPositionRepo.findActiveFullByUserId(employeeId).stream()
-                .anyMatch(up -> {
-                    if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
-                        return Objects.equals(up.getCompanyJobTitle().getCompany().getId(), period.getCompany().getId());
-                    }
-                    if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
-                        return Objects.equals(up.getDepartmentJobTitle().getDepartment().getCompany().getId(), period.getCompany().getId());
-                    }
-                    if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
-                        return Objects.equals(up.getSectionJobTitle().getSection().getDepartment().getCompany().getId(), period.getCompany().getId());
-                    }
-                    return false;
-                });
-                
-        if (!belongsToCompany) {
+        if (!employee.isActive()) {
+            throw new IdInvalidException("Không thể thêm nhân viên đã bị vô hiệu hóa");
+        }
+        if (!userBelongsToCompany(employeeId, period.getCompany().getId())) {
             throw new IdInvalidException("Nhân viên không thuộc công ty của kỳ đánh giá này");
         }
         
         User directManager = userRepo.findById(directManagerId)
                 .orElseThrow(() -> new IdInvalidException("Quản lý trực tiếp không tồn tại"));
-
-        boolean managerBelongsToCompany = userPositionRepo.findActiveFullByUserId(directManagerId).stream()
-                .anyMatch(up -> {
-                    if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
-                        return Objects.equals(up.getCompanyJobTitle().getCompany().getId(), period.getCompany().getId());
-                    }
-                    if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
-                        return Objects.equals(up.getDepartmentJobTitle().getDepartment().getCompany().getId(), period.getCompany().getId());
-                    }
-                    if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
-                        return Objects.equals(up.getSectionJobTitle().getSection().getDepartment().getCompany().getId(), period.getCompany().getId());
-                    }
-                    return false;
-                });
-
-        if (!managerBelongsToCompany) {
+        if (!directManager.isActive()) {
+            throw new IdInvalidException("Không thể chọn quản lý trực tiếp đã bị vô hiệu hóa");
+        }
+        if (Objects.equals(employeeId, directManagerId)) {
+            throw new IdInvalidException("Nhân viên không thể đồng thời là quản lý trực tiếp của chính mình");
+        }
+        if (!userBelongsToCompany(directManagerId, period.getCompany().getId())) {
             throw new IdInvalidException("Quản lý trực tiếp không thuộc công ty của kỳ đánh giá này");
         }
                 
@@ -222,6 +216,15 @@ public class EvaluationPeriodService {
         User indirectManager = directManager.getDirectManager();
         if (indirectManager == null) {
             throw new IdInvalidException("Quản lý trực tiếp chưa được thiết lập cấp trên, không thể xác định quản lý gián tiếp.");
+        }
+        if (!indirectManager.isActive()) {
+            throw new IdInvalidException("Quản lý gián tiếp đã bị vô hiệu hóa, vui lòng cập nhật lại tuyến quản lý");
+        }
+        if (Objects.equals(indirectManager.getId(), employeeId) || Objects.equals(indirectManager.getId(), directManagerId)) {
+            throw new IdInvalidException("Tuyến quản lý không hợp lệ: người đánh giá và người phê duyệt phải là các tài khoản khác nhau");
+        }
+        if (!userBelongsToCompany(indirectManager.getId(), period.getCompany().getId())) {
+            throw new IdInvalidException("Quản lý gián tiếp không thuộc công ty của kỳ đánh giá này");
         }
         EvaluationTemplate template = templateRepo.findById(templateId)
                 .orElseThrow(() -> new IdInvalidException("Template không tồn tại"));
@@ -266,7 +269,12 @@ public class EvaluationPeriodService {
             }
         }
 
-        PeriodEmployee pe = new PeriodEmployee();
+        Optional<PeriodEmployee> existingPeriodEmployee = periodEmployeeRepo.findByPeriodIdAndEmployeeId(periodId, employeeId);
+        if (existingPeriodEmployee.isPresent() && existingPeriodEmployee.get().getStatus() == PeriodEmployeeStatus.ACTIVE) {
+            throw new IdInvalidException("Nhân viên đã tồn tại trong kỳ đánh giá này");
+        }
+
+        PeriodEmployee pe = existingPeriodEmployee.orElseGet(PeriodEmployee::new);
         pe.setPeriod(period);
         pe.setEmployee(employee);
         pe.setDirectManager(directManager);
@@ -282,11 +290,54 @@ public class EvaluationPeriodService {
         PeriodEmployee pe = periodEmployeeRepo.findById(periodEmployeeId)
                 .orElseThrow(() -> new IdInvalidException("Không tìm thấy nhân viên trong kỳ"));
 
+        if (pe.getPeriod() == null) {
+            throw new IdInvalidException("Bản ghi nhân sự không có kỳ đánh giá hợp lệ");
+        }
+        assertPeriodInCurrentScope(pe.getPeriod());
+        if (pe.getPeriod().getStatus() == PeriodStatus.CLOSED) {
+            throw new IdInvalidException("Kỳ đánh giá đã đóng, không thể hủy gán nhân sự");
+        }
+        if (pe.getStatus() == PeriodEmployeeStatus.CANCELLED) {
+            throw new IdInvalidException("Nhân sự đã được hủy gán khỏi kỳ đánh giá");
+        }
+        recordRepo.findByPeriodIdAndEmployeeId(pe.getPeriod().getId(), pe.getEmployee().getId())
+                .ifPresent(record -> {
+                    if (record.getStatus() == RecordStatus.COMPLETED) {
+                        throw new IdInvalidException("Bản đánh giá đã hoàn tất, không thể hủy gán nhân sự");
+                    }
+                });
+
         pe.setStatus(PeriodEmployeeStatus.CANCELLED);
-        return periodEmployeeRepo.save(pe);
+        PeriodEmployee saved = periodEmployeeRepo.save(pe);
+
+        // 3.1: Hủy bản đánh giá EvaluationRecord tương ứng nếu chưa hoàn thành (COMPLETED)
+        if (pe.getPeriod() != null && pe.getEmployee() != null) {
+            recordRepo.findByPeriodIdAndEmployeeId(pe.getPeriod().getId(), pe.getEmployee().getId())
+                    .ifPresent(record -> {
+                        if (record.getStatus() != RecordStatus.COMPLETED && record.getStatus() != RecordStatus.CANCELLED) {
+                            RecordStatus oldStatus = record.getStatus();
+                            record.setStatus(RecordStatus.CANCELLED);
+                            recordRepo.save(record);
+
+                            // Ghi nhận lịch sử thay đổi trạng thái
+                            String email = vn.system.app.common.util.SecurityUtil.getCurrentUserLogin().orElse(null);
+                            User actor = email != null ? userRepo.findByEmail(email) : null;
+
+                            EvaluationHistory history = new EvaluationHistory();
+                            history.setEvaluationRecord(record);
+                            history.setFromStatus(oldStatus);
+                            history.setToStatus(RecordStatus.CANCELLED);
+                            history.setPerformedBy(actor);
+                            history.setNote("Nhân viên nghỉ việc / bị loại khỏi kỳ đánh giá");
+                            historyRepo.save(history);
+                        }
+                    });
+        }
+        return saved;
     }
 
     public List<PeriodEmployee> fetchEmployeesByPeriod(Long periodId) {
+        fetchPeriodById(periodId);
         return periodEmployeeRepo.findByPeriodId(periodId);
     }
 
@@ -358,18 +409,274 @@ public class EvaluationPeriodService {
             throw new IdInvalidException("Chỉ có thể đóng kỳ ở trạng thái ACTIVE");
         }
 
+        // 3.3: Chặn đóng kỳ nếu vẫn còn bản đánh giá chưa kết thúc (COMPLETED / CANCELLED)
+        long countUnfinished = recordRepo.countByPeriodIdAndStatusNotIn(periodId, List.of(RecordStatus.COMPLETED, RecordStatus.CANCELLED));
+        if (countUnfinished > 0) {
+            throw new IdInvalidException(String.format("Còn %d bản đánh giá chưa hoàn tất, vui lòng xử lý trước khi đóng kỳ", countUnfinished));
+        }
+
         period.setStatus(PeriodStatus.CLOSED);
         return periodRepo.save(period);
+    }
+
+    /** Danh sách bản đánh giá chưa xong trong kỳ */
+    public List<EvaluationRecord> getUnfinishedRecords(Long periodId) {
+        return recordRepo.findByPeriodIdAndStatusNotIn(periodId, List.of(RecordStatus.COMPLETED, RecordStatus.CANCELLED));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION
     // ═══════════════════════════════════════════════════════════════════════════
 
+    public ResPeriodProgressDTO getPeriodProgress(Long periodId) {
+        EvaluationPeriod period = fetchPeriodById(periodId);
+
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            throw new IdInvalidException("Không tìm thấy thông tin phiên làm việc");
+        }
+
+        List<EvaluationRecord> allRecords = recordRepo.findByPeriodId(periodId);
+        List<String> empIds = allRecords.stream().map(r -> r.getEmployee().getId()).distinct().toList();
+        List<UserPosition> positions = userPositionRepo.findActiveFullByUserIds(empIds);
+
+        Map<String, Set<Long>> empCompanies = new java.util.HashMap<>();
+        Map<String, Set<Long>> empDepartments = new java.util.HashMap<>();
+        Map<String, UserPosition> empPrimaryPosition = new java.util.HashMap<>();
+
+        for (UserPosition up : positions) {
+            String uId = up.getUser().getId();
+            empCompanies.computeIfAbsent(uId, k -> new java.util.HashSet<>());
+            empDepartments.computeIfAbsent(uId, k -> new java.util.HashSet<>());
+
+            Long cId = null;
+            if (up.getCompanyJobTitle() != null && up.getCompanyJobTitle().getCompany() != null) {
+                cId = up.getCompanyJobTitle().getCompany().getId();
+            } else if (up.getDepartmentJobTitle() != null && up.getDepartmentJobTitle().getDepartment() != null
+                    && up.getDepartmentJobTitle().getDepartment().getCompany() != null) {
+                cId = up.getDepartmentJobTitle().getDepartment().getCompany().getId();
+            } else if (up.getSectionJobTitle() != null && up.getSectionJobTitle().getSection() != null
+                    && up.getSectionJobTitle().getSection().getDepartment() != null
+                    && up.getSectionJobTitle().getSection().getDepartment().getCompany() != null) {
+                cId = up.getSectionJobTitle().getSection().getDepartment().getCompany().getId();
+            }
+            if (cId != null) {
+                empCompanies.get(uId).add(cId);
+            }
+
+            Long dId = null;
+            if (up.getDepartmentJobTitle() != null && up.getDepartmentJobTitle().getDepartment() != null) {
+                dId = up.getDepartmentJobTitle().getDepartment().getId();
+                empPrimaryPosition.putIfAbsent(uId, up);
+            } else if (up.getSectionJobTitle() != null && up.getSectionJobTitle().getSection() != null
+                    && up.getSectionJobTitle().getSection().getDepartment() != null) {
+                dId = up.getSectionJobTitle().getSection().getDepartment().getId();
+                empPrimaryPosition.putIfAbsent(uId, up);
+            }
+            if (dId != null) {
+                empDepartments.get(uId).add(dId);
+            }
+        }
+
+        List<EvaluationRecord> filteredRecords = allRecords.stream()
+                .filter(r -> {
+                    if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+                        return true;
+                    }
+                    String empId = r.getEmployee().getId();
+                    if (scope.isCompanyLevel()) {
+                        Set<Long> cIds = empCompanies.getOrDefault(empId, Set.of());
+                        return cIds.stream().anyMatch(cid -> scope.companyIds().contains(cid));
+                    }
+                    if (scope.isDepartmentLevel()) {
+                        Set<Long> dIds = empDepartments.getOrDefault(empId, Set.of());
+                        return dIds.stream().anyMatch(did -> scope.departmentIds().contains(did));
+                    }
+                    return false;
+                })
+                .toList();
+
+        Instant now = Instant.now();
+        int overdueCount = 0;
+
+        for (EvaluationRecord r : filteredRecords) {
+            RecordStatus st = r.getStatus();
+            if (st == RecordStatus.COMPLETED || st == RecordStatus.CANCELLED || st == RecordStatus.NOT_STARTED) {
+                continue;
+            }
+            Instant deadline = null;
+            if (st == RecordStatus.EMPLOYEE_DRAFTING) {
+                deadline = r.getEmployeeDeadlineOverride() != null ? r.getEmployeeDeadlineOverride() : period.getEmployeeDeadline();
+            } else if (st == RecordStatus.PENDING_MANAGER_REVIEW || st == RecordStatus.MANAGER_REVIEWING || st == RecordStatus.REVISION_NEEDED) {
+                deadline = r.getManagerDeadlineOverride() != null ? r.getManagerDeadlineOverride() : period.getManagerDeadline();
+            } else if (st == RecordStatus.PENDING_APPROVAL) {
+                deadline = r.getApprovalDeadlineOverride() != null ? r.getApprovalDeadlineOverride() : period.getApprovalDeadline();
+            }
+            if (deadline != null && now.isAfter(deadline)) {
+                overdueCount++;
+            }
+        }
+
+        Map<Long, ResPeriodProgressDTO.DepartmentProgress> deptProgressMap = new java.util.HashMap<>();
+
+        for (EvaluationRecord r : filteredRecords) {
+            String empId = r.getEmployee().getId();
+            UserPosition up = empPrimaryPosition.get(empId);
+
+            Long deptId = 0L;
+            String deptName = "Chưa phân phòng ban";
+
+            if (up != null && up.getDepartmentJobTitle() != null && up.getDepartmentJobTitle().getDepartment() != null) {
+                deptId = up.getDepartmentJobTitle().getDepartment().getId();
+                deptName = up.getDepartmentJobTitle().getDepartment().getName();
+            } else if (up != null && up.getSectionJobTitle() != null && up.getSectionJobTitle().getSection() != null
+                    && up.getSectionJobTitle().getSection().getDepartment() != null) {
+                deptId = up.getSectionJobTitle().getSection().getDepartment().getId();
+                deptName = up.getSectionJobTitle().getSection().getDepartment().getName();
+            }
+
+            final String finalDeptName = deptName;
+            ResPeriodProgressDTO.DepartmentProgress dp = deptProgressMap.computeIfAbsent(deptId, id -> {
+                ResPeriodProgressDTO.DepartmentProgress newDp = new ResPeriodProgressDTO.DepartmentProgress();
+                newDp.setDepartmentId(id);
+                newDp.setDepartmentName(finalDeptName);
+                return newDp;
+            });
+
+            dp.setTotalRecords(dp.getTotalRecords() + 1);
+
+            RecordStatus st = r.getStatus();
+            if (st == RecordStatus.EMPLOYEE_DRAFTING) {
+                dp.setDraftingCount(dp.getDraftingCount() + 1);
+            } else if (st == RecordStatus.PENDING_MANAGER_REVIEW || st == RecordStatus.MANAGER_REVIEWING || st == RecordStatus.REVISION_NEEDED) {
+                dp.setPendingManagerCount(dp.getPendingManagerCount() + 1);
+            } else if (st == RecordStatus.PENDING_APPROVAL) {
+                dp.setPendingApprovalCount(dp.getPendingApprovalCount() + 1);
+            } else if (st == RecordStatus.COMPLETED) {
+                dp.setCompletedCount(dp.getCompletedCount() + 1);
+            } else if (st == RecordStatus.CANCELLED) {
+                dp.setCancelledCount(dp.getCancelledCount() + 1);
+            }
+
+            if (st != RecordStatus.COMPLETED && st != RecordStatus.CANCELLED && st != RecordStatus.NOT_STARTED) {
+                Instant deadline = null;
+                if (st == RecordStatus.EMPLOYEE_DRAFTING) {
+                    deadline = r.getEmployeeDeadlineOverride() != null ? r.getEmployeeDeadlineOverride() : period.getEmployeeDeadline();
+                } else if (st == RecordStatus.PENDING_MANAGER_REVIEW || st == RecordStatus.MANAGER_REVIEWING || st == RecordStatus.REVISION_NEEDED) {
+                    deadline = r.getManagerDeadlineOverride() != null ? r.getManagerDeadlineOverride() : period.getManagerDeadline();
+                } else if (st == RecordStatus.PENDING_APPROVAL) {
+                    deadline = r.getApprovalDeadlineOverride() != null ? r.getApprovalDeadlineOverride() : period.getApprovalDeadline();
+                }
+                if (deadline != null && now.isAfter(deadline)) {
+                    dp.setOverdueCount(dp.getOverdueCount() + 1);
+                }
+            }
+        }
+
+        List<ResPeriodProgressDTO.OverdueRecord> overdueList = new java.util.ArrayList<>();
+        for (EvaluationRecord r : filteredRecords) {
+            RecordStatus st = r.getStatus();
+            if (st == RecordStatus.COMPLETED || st == RecordStatus.CANCELLED || st == RecordStatus.NOT_STARTED) {
+                continue;
+            }
+            Instant deadline = null;
+            if (st == RecordStatus.EMPLOYEE_DRAFTING) {
+                deadline = r.getEmployeeDeadlineOverride() != null ? r.getEmployeeDeadlineOverride() : period.getEmployeeDeadline();
+            } else if (st == RecordStatus.PENDING_MANAGER_REVIEW || st == RecordStatus.MANAGER_REVIEWING || st == RecordStatus.REVISION_NEEDED) {
+                deadline = r.getManagerDeadlineOverride() != null ? r.getManagerDeadlineOverride() : period.getManagerDeadline();
+            } else if (st == RecordStatus.PENDING_APPROVAL) {
+                deadline = r.getApprovalDeadlineOverride() != null ? r.getApprovalDeadlineOverride() : period.getApprovalDeadline();
+            }
+            if (deadline != null && now.isAfter(deadline)) {
+                ResPeriodProgressDTO.OverdueRecord or = new ResPeriodProgressDTO.OverdueRecord();
+                or.setRecordId(r.getId());
+                or.setEmployeeName(r.getEmployee() != null ? r.getEmployee().getName() : "Không tên");
+                or.setEmployeeEmail(r.getEmployee() != null ? r.getEmployee().getEmail() : "");
+                or.setStatus(st.name());
+
+                String label = switch (st) {
+                    case EMPLOYEE_DRAFTING -> "Nhân viên tự đánh giá";
+                    case PENDING_MANAGER_REVIEW, MANAGER_REVIEWING -> "Quản lý trực tiếp đánh giá";
+                    case REVISION_NEEDED -> "Nhân viên chỉnh sửa";
+                    case PENDING_APPROVAL -> "Người phê duyệt đánh giá";
+                    default -> st.toString();
+                };
+                or.setStatusLabel(label);
+
+                long days = java.time.Duration.between(deadline, now).toDays();
+                or.setOverdueDays(Math.max(1, days));
+                or.setDeadline(deadline);
+
+                overdueList.add(or);
+            }
+        }
+
+        ResPeriodProgressDTO dto = new ResPeriodProgressDTO();
+        ResPeriodProgressDTO.KpiProgress kpi = new ResPeriodProgressDTO.KpiProgress();
+        int total = filteredRecords.size();
+        kpi.setTotalRecords(total);
+
+        int drafting = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.EMPLOYEE_DRAFTING).count();
+        int pendingManager = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW || r.getStatus() == RecordStatus.MANAGER_REVIEWING || r.getStatus() == RecordStatus.REVISION_NEEDED).count();
+        int pendingApproval = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.PENDING_APPROVAL).count();
+        int completed = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.COMPLETED).count();
+        int cancelled = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.CANCELLED).count();
+
+        kpi.setDraftingCount(drafting);
+        kpi.setPendingManagerCount(pendingManager);
+        kpi.setPendingApprovalCount(pendingApproval);
+        kpi.setCompletedCount(completed);
+        kpi.setCancelledCount(cancelled);
+        kpi.setOverdueCount(overdueCount);
+
+        double denom = Math.max(1, total);
+        kpi.setDraftingPercentage(Math.round((drafting * 100.0 / denom) * 100.0) / 100.0);
+        kpi.setPendingManagerPercentage(Math.round((pendingManager * 100.0 / denom) * 100.0) / 100.0);
+        kpi.setPendingApprovalPercentage(Math.round((pendingApproval * 100.0 / denom) * 100.0) / 100.0);
+        kpi.setCompletedPercentage(Math.round((completed * 100.0 / denom) * 100.0) / 100.0);
+        kpi.setCancelledPercentage(Math.round((cancelled * 100.0 / denom) * 100.0) / 100.0);
+        kpi.setOverduePercentage(Math.round((overdueCount * 100.0 / denom) * 100.0) / 100.0);
+
+        dto.setKpiProgress(kpi);
+        dto.setDepartmentProgress(new java.util.ArrayList<>(deptProgressMap.values()));
+        dto.setOverdueRecords(overdueList);
+
+        return dto;
+    }
+
     private void checkPeriodEditable(EvaluationPeriod period) {
         if (period.getStatus() != PeriodStatus.DRAFT) {
             throw new IdInvalidException("Kỳ đánh giá đã kích hoạt hoặc đã đóng, không thể chỉnh sửa");
         }
+    }
+
+    private void assertPeriodInCurrentScope(EvaluationPeriod period) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            throw new PermissionException("Không tìm thấy phạm vi truy cập hiện tại");
+        }
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return;
+        }
+        Long companyId = period.getCompany() != null ? period.getCompany().getId() : null;
+        if (companyId == null || scope.companyIds() == null || !scope.companyIds().contains(companyId)) {
+            throw new PermissionException("Bạn không có quyền thao tác kỳ đánh giá của công ty này");
+        }
+    }
+
+    private boolean userBelongsToCompany(String userId, Long companyId) {
+        return userPositionRepo.findActiveFullByUserId(userId).stream().anyMatch(up -> {
+            if ("COMPANY".equals(up.getSource()) && up.getCompanyJobTitle() != null) {
+                return Objects.equals(up.getCompanyJobTitle().getCompany().getId(), companyId);
+            }
+            if ("DEPARTMENT".equals(up.getSource()) && up.getDepartmentJobTitle() != null) {
+                return Objects.equals(up.getDepartmentJobTitle().getDepartment().getCompany().getId(), companyId);
+            }
+            if ("SECTION".equals(up.getSource()) && up.getSectionJobTitle() != null) {
+                return Objects.equals(up.getSectionJobTitle().getSection().getDepartment().getCompany().getId(), companyId);
+            }
+            return false;
+        });
     }
 
     private void validatePeriodDates(EvaluationPeriod period, boolean validateStartDateNotPast) {
@@ -394,6 +701,7 @@ public class EvaluationPeriodService {
     }
     private void sendNotification(User recipient, String type, String content, String actionLink) {
         if (recipient == null) return;
-        notificationService.sendNotification(recipient.getId(), "EVALUATION", type, content, actionLink);
+        eventPublisher.publishEvent(new vn.system.app.modules.notification.event.AppNotificationEvent(
+                List.of(recipient.getId()), "EVALUATION", type, content, actionLink));
     }
 }

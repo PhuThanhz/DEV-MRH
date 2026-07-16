@@ -78,11 +78,20 @@ public class AccountingDossierApprovalStep {
     private boolean allowDelegation = false;
 
     @Version
-    private Long version;
+    private Long version = 0L;
 
     @PrePersist
     public void beforeCreate() {
         this.createdAt = Instant.now();
         this.active = true;
+        normalizeVersion();
+    }
+
+    @PostLoad
+    @PreUpdate
+    public void normalizeVersion() {
+        if (this.version == null) {
+            this.version = 0L;
+        }
     }
 }

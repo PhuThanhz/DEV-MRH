@@ -59,6 +59,15 @@ public class GlobalException {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(res);
     }
 
+    @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<RestResponse<Object>> handleOptimisticLockException(Exception ex) {
+        RestResponse<Object> res = new RestResponse<>();
+        res.setStatusCode(HttpStatus.CONFLICT.value());
+        res.setMessage("Bản đánh giá đã được chỉnh sửa hoặc phê duyệt bởi người khác. Vui lòng tải lại trang để cập nhật.");
+        res.setError("Optimistic Lock Conflict");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(res);
+    }
+
     @ExceptionHandler(DuplicateInvoiceWarningException.class)
     public ResponseEntity<RestResponse<Object>> handleDuplicateInvoiceWarningException(DuplicateInvoiceWarningException ex) {
         RestResponse<Object> res = new RestResponse<>();
@@ -66,6 +75,15 @@ public class GlobalException {
         res.setMessage(ex.getMessage());
         res.setError("DUPLICATE_INVOICE_WARNING");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(res);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<RestResponse<Object>> handleTooManyRequestsException(TooManyRequestsException ex) {
+        RestResponse<Object> res = new RestResponse<>();
+        res.setStatusCode(HttpStatus.TOO_MANY_REQUESTS.value());
+        res.setMessage(ex.getMessage());
+        res.setError("Too Many Requests");
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(res);
     }
 
     // ============================================================

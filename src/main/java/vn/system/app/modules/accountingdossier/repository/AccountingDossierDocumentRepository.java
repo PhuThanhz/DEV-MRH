@@ -27,6 +27,8 @@ public interface AccountingDossierDocumentRepository extends JpaRepository<Accou
     List<AccountingDossierDocument> findByDossierId(Long dossierId);
 
     List<AccountingDossierDocument> findByDossierIdAndActiveTrue(Long dossierId);
+
+    List<AccountingDossierDocument> findByDossierIdAndActiveTrueOrderByCreatedAtDescIdDesc(Long dossierId);
     
     long countByDossierId(Long dossierId);
 

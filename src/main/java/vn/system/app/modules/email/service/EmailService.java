@@ -55,6 +55,11 @@ public class EmailService {
     }
 
     @Async
+    public void sendEmailAsync(String to, String subject, String content, boolean isHtml) {
+        this.sendEmailSync(to, subject, content, false, isHtml);
+    }
+
+    @Async
     public void sendEmailFromTemplateSync(
             String to,
             String subject,
@@ -92,8 +97,7 @@ public class EmailService {
             String qrCid = "qr-code-image";
             variables.put("qrCid", qrCid);
 
-            System.out.println("DEBUG PIN: " + variables.get("pin"));
-            System.out.println("DEBUG QR null? " + (variables.get("qrBase64") == null));
+
 
             Context context = new Context();
             variables.forEach(context::setVariable);

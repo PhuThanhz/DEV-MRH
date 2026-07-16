@@ -21,7 +21,7 @@ public class UserDetailsCustom implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        vn.system.app.modules.user.domain.User user = this.userService.handleGetUserByUsername(username);
+        vn.system.app.modules.user.domain.User user = this.userService.handleGetUserCredentialsByUsername(username);
         if (user == null) {
             throw new UsernameNotFoundException("Username/password không hợp lệ");
         }

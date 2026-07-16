@@ -13,4 +13,6 @@ public interface PeriodTemplateRepository extends JpaRepository<PeriodTemplate, 
     List<PeriodTemplate> findByPeriodId(Long periodId);
 
     boolean existsByPeriodIdAndTemplateId(Long periodId, Long templateId);
+
+    boolean existsByTemplateId(Long templateId);
 }

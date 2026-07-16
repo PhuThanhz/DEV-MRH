@@ -18,6 +18,8 @@ CALL add_accounting_column_if_missing('accounting_dossier_approval_steps', 'allo
 
 -- Backfill dữ liệu cũ
 UPDATE `accounting_dossier` SET `version` = 0 WHERE `version` IS NULL;
+-- Cột đã tồn tại từ schema cũ có thể vẫn cho phép NULL; khóa lại để Hibernate luôn có version khi cập nhật.
+ALTER TABLE `accounting_dossier` MODIFY COLUMN `version` BIGINT NOT NULL DEFAULT 0;
 UPDATE `accounting_dossier_approval_steps` SET `allow_delegation` = b'0' WHERE `allow_delegation` IS NULL;
 
 DROP PROCEDURE add_accounting_column_if_missing;

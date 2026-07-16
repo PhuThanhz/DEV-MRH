@@ -42,6 +42,9 @@ class AccountingApprovalDelegationServiceTest {
     @Mock
     private UserPositionRepository userPositionRepository;
 
+    @Mock
+    private AccountingDossierNotificationService notificationService;
+
     @InjectMocks
     private AccountingApprovalDelegationService service;
 
@@ -51,6 +54,9 @@ class AccountingApprovalDelegationServiceTest {
         UserScopeContext.set(new UserScopeContext.UserScope(
                 "user-1", Collections.emptySet(), Collections.emptySet(), false, false, false, false));
         lenient().when(userPositionRepository.findActiveCompanyIdsByUserId(anyString())).thenReturn(List.of(77L));
+        lenient().when(notificationService.formatInstant(any(Instant.class))).thenReturn("01/01/2026 00:00");
+        lenient().doNothing().when(notificationService).notifyUsers(anyCollection(), anyString(), anyString(), any());
+        lenient().when(userRepository.findAllById(anyCollection())).thenReturn(List.of());
     }
 
     @AfterEach
@@ -228,9 +234,13 @@ class AccountingApprovalDelegationServiceTest {
     void testExpireOverdueDelegations() {
         AccountingApprovalDelegation d1 = new AccountingApprovalDelegation();
         d1.setId(1L);
+        d1.setDelegatorUserId("user-1");
+        d1.setDelegateUserId("user-2");
         d1.setStatus(DelegationStatus.ACTIVE);
         AccountingApprovalDelegation d2 = new AccountingApprovalDelegation();
         d2.setId(2L);
+        d2.setDelegatorUserId("user-3");
+        d2.setDelegateUserId("user-4");
         d2.setStatus(DelegationStatus.ACTIVE);
 
         List<AccountingApprovalDelegation> overdue = new ArrayList<>();

@@ -20,6 +20,39 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
 
     List<EvaluationRecord> findByPeriodIdAndStatus(Long periodId, RecordStatus status);
 
+    List<EvaluationRecord> findByStatus(RecordStatus status);
+
+    List<EvaluationRecord> findByPeriodIdAndStatusAndEmployeeIdIn(Long periodId, RecordStatus status, java.util.Collection<String> employeeIds);
+
+    List<EvaluationRecord> findByStatusAndEmployeeIdIn(RecordStatus status, java.util.Collection<String> employeeIds);
+
+    org.springframework.data.domain.Page<EvaluationRecord> findByPeriodIdAndStatusAndEmployeeIdIn(Long periodId, RecordStatus status, java.util.Collection<String> employeeIds, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<EvaluationRecord> findByPeriodIdAndStatus(Long periodId, RecordStatus status, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<EvaluationRecord> findByStatusAndEmployeeIdIn(RecordStatus status, java.util.Collection<String> employeeIds, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<EvaluationRecord> findByStatus(RecordStatus status, org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = """
+        SELECT r FROM EvaluationRecord r
+        WHERE r.status = 'COMPLETED'
+          AND (:periodId IS NULL OR r.period.id = :periodId)
+          AND (:hasEmployeeIds = false OR r.employee.id IN :employeeIds)
+          AND (:finalGrade IS NULL OR r.finalGrade = :finalGrade)
+          AND (:searchText IS NULL OR LOWER(r.employee.name) LIKE LOWER(CONCAT('%', :searchText, '%')) OR LOWER(r.employee.email) LIKE LOWER(CONCAT('%', :searchText, '%')))
+    """)
+    org.springframework.data.domain.Page<EvaluationRecord> findCompletedSummary(
+        @Param("periodId") Long periodId,
+        @Param("hasEmployeeIds") boolean hasEmployeeIds,
+        @Param("employeeIds") java.util.Collection<String> employeeIds,
+        @Param("finalGrade") String finalGrade,
+        @Param("searchText") String searchText,
+        org.springframework.data.domain.Pageable pageable
+    );
+
+    boolean existsByTemplateId(Long templateId);
+
     /** Danh sách form nhân viên mà quản lý trực tiếp cần chấm */
     List<EvaluationRecord> findByDirectManagerIdAndStatusIn(String directManagerId, List<RecordStatus> statuses);
 
@@ -55,11 +88,30 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
             """)
     Optional<EvaluationRecord> findByIdWithFullTemplate(@Param("id") Long id);
 
+    long countByPeriodIdAndStatusNotIn(Long periodId, java.util.Collection<RecordStatus> statuses);
+
+    List<EvaluationRecord> findByPeriodIdAndStatusNotIn(Long periodId, java.util.Collection<RecordStatus> statuses);
+
     /** Đếm theo trạng thái trong kỳ — dùng cho dashboard báo cáo */
-    @Query("SELECT r.status, COUNT(r) FROM EvaluationRecord r WHERE r.period.id = :periodId GROUP BY r.status")
+    @Query("SELECT r.status, COUNT(r) FROM EvaluationRecord r WHERE r.period.id = :periodId AND r.status <> 'CANCELLED' GROUP BY r.status")
     List<Object[]> countByPeriodGroupByStatus(@Param("periodId") Long periodId);
 
     /** Đếm theo xếp loại trong kỳ — dùng cho biểu đồ phân bổ A/B/C/D/E */
     @Query("SELECT r.finalGrade, COUNT(r) FROM EvaluationRecord r WHERE r.period.id = :periodId AND r.status = 'COMPLETED' GROUP BY r.finalGrade")
     List<Object[]> countByPeriodGroupByFinalGrade(@Param("periodId") Long periodId);
+
+    /**
+     * T12 — Tìm record đã COMPLETED nhưng chưa được nhân viên xác nhận (completedAt = null),
+     * và approvedAt trước một mốc thời gian nhất định.
+     * Dùng để: (1) gửi nhắc nhở định kỳ, (2) auto-acknowledge sau N ngày.
+     */
+    @Query("""
+        SELECT r FROM EvaluationRecord r
+        WHERE r.status = 'COMPLETED'
+          AND r.completedAt IS NULL
+          AND r.approvedAt IS NOT NULL
+          AND r.approvedAt < :threshold
+    """)
+    List<EvaluationRecord> findCompletedNotAcknowledgedApprovedBefore(
+        @Param("threshold") java.time.Instant threshold);
 }

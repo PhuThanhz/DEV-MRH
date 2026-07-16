@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.hibernate.annotations.BatchSize;
 
 import vn.system.app.common.util.SecurityUtil;
 import vn.system.app.modules.documentcategory.domain.DocumentCategory;
@@ -103,15 +104,18 @@ public class Document {
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "document_departments_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))
     @JsonIgnoreProperties({ "documents" })
+    @BatchSize(size = 50)
     private List<Department> departments = new ArrayList<>();
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "document_excluded_departments_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "department_id"))
     @JsonIgnoreProperties({ "documents" })
+    @BatchSize(size = 50)
     private List<Department> excludedDepartments = new ArrayList<>();
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "document_excluded_users_mapping", joinColumns = @JoinColumn(name = "document_id"), inverseJoinColumns = @JoinColumn(name = "user_id"))
+    @BatchSize(size = 50)
     private List<User> excludedUsers = new ArrayList<>();
 
     private Instant createdAt;

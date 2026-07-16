@@ -94,7 +94,7 @@ public class SalaryGradeService {
             Long contextId,
             Pageable pageable) {
 
-        System.out.println("[DEBUG] fetchByContext called: type=" + contextType + ", id=" + contextId);
+
 
         validateContext(contextType, contextId);
 
@@ -124,9 +124,7 @@ public class SalaryGradeService {
         countQuery.setParameter("id", contextId);
         Long total = countQuery.getSingleResult();
 
-        System.out.println("[DEBUG] fetchByContext result: total=" + total + ", returned records=" + content.size());
-        content.forEach(sg -> System.out.println("[DEBUG] Returned record: id=" + sg.getId() + ", contextId="
-                + sg.getContextId() + ", grade=" + sg.getGradeLevel()));
+
 
         ResultPaginationDTO rs = new ResultPaginationDTO();
         ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
@@ -198,7 +196,7 @@ public class SalaryGradeService {
                 break;
         }
 
-        System.out.println("[DEBUG] Validate: table=" + table + ", id=" + contextId + ", exists=" + exists);
+
 
         if (!exists) {
             throw new IdInvalidException("ContextId " + contextId + " không tồn tại trong " + table);

@@ -107,12 +107,7 @@ public class SecurityUtil {
     public Jwt checkValidRefreshToken(String token) {
         NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withSecretKey(
                 getSecretKey()).macAlgorithm(SecurityUtil.JWT_ALGORITHM).build();
-        try {
-            return jwtDecoder.decode(token);
-        } catch (Exception e) {
-            System.out.println(">>> Refresh Token error: " + e.getMessage());
-            throw e;
-        }
+        return jwtDecoder.decode(token);
     }
 
     /**

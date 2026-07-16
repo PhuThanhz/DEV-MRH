@@ -33,6 +33,7 @@ public class EvaluationTemplateService {
     private final TemplateCriteriaRepository criteriaRepo;
     private final TemplateCriteriaLevelRepository levelRepo;
     private final PeriodTemplateRepository periodTemplateRepo;
+    private final EvaluationRecordRepository recordRepo;
     private final CompanyRepository companyRepo;
     private final JobTitleRepository jobTitleRepo;
 
@@ -42,6 +43,7 @@ public class EvaluationTemplateService {
             TemplateCriteriaRepository criteriaRepo,
             TemplateCriteriaLevelRepository levelRepo,
             PeriodTemplateRepository periodTemplateRepo,
+            EvaluationRecordRepository recordRepo,
             CompanyRepository companyRepo,
             JobTitleRepository jobTitleRepo) {
         this.templateRepo = templateRepo;
@@ -49,6 +51,7 @@ public class EvaluationTemplateService {
         this.criteriaRepo = criteriaRepo;
         this.levelRepo = levelRepo;
         this.periodTemplateRepo = periodTemplateRepo;
+        this.recordRepo = recordRepo;
         this.companyRepo = companyRepo;
         this.jobTitleRepo = jobTitleRepo;
     }
@@ -146,6 +149,24 @@ public class EvaluationTemplateService {
 
         template.setStatus(TemplateStatus.ARCHIVED);
         return templateRepo.save(template);
+    }
+
+    /**
+     * Chỉ xóa vĩnh viễn mẫu nháp chưa từng được dùng trong bất kỳ kỳ đánh giá nào.
+     * Mẫu đã kích hoạt cần được lưu trữ để giữ nguyên lịch sử đánh giá.
+     */
+    @Transactional
+    public void deleteTemplate(Long id) {
+        EvaluationTemplate template = fetchTemplateById(id);
+
+        if (template.getStatus() != TemplateStatus.DRAFT) {
+            throw new IdInvalidException("Chỉ có thể xóa mẫu ở trạng thái Bản nháp. Hãy lưu trữ mẫu đã kích hoạt để bảo toàn lịch sử.");
+        }
+        if (periodTemplateRepo.existsByTemplateId(id) || recordRepo.existsByTemplateId(id)) {
+            throw new IdInvalidException("Không thể xóa mẫu đã được sử dụng trong kỳ đánh giá.");
+        }
+
+        templateRepo.delete(template);
     }
 
     public EvaluationTemplate fetchTemplateById(Long id) {

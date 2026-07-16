@@ -14,7 +14,10 @@ import vn.system.app.modules.user.domain.User;
  * Thông báo dùng chung cho toàn hệ thống (Generic Notification).
  */
 @Entity
-@Table(name = "notifications")
+@Table(name = "notifications",
+        indexes = {
+            @Index(name = "idx_notif_recipient_type_link_created", columnList = "user_id, notification_type, action_link, created_at")
+        })
 @Getter
 @Setter
 public class AppNotification {

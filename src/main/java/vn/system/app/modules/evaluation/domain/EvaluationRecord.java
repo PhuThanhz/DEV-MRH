@@ -36,7 +36,13 @@ import vn.system.app.modules.user.domain.User;
  */
 @Entity
 @Table(name = "evaluation_records",
-        uniqueConstraints = @UniqueConstraint(columnNames = { "period_id", "employee_id" }))
+        uniqueConstraints = @UniqueConstraint(columnNames = { "period_id", "employee_id" }),
+        indexes = {
+            @Index(name = "idx_eval_rec_period_status", columnList = "period_id, status"),
+            @Index(name = "idx_eval_rec_employee_status", columnList = "employee_id, status"),
+            @Index(name = "idx_eval_rec_manager_status", columnList = "direct_manager_id, status"),
+            @Index(name = "idx_eval_rec_approver_status", columnList = "indirect_manager_id, status")
+        })
 @Getter
 @Setter
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
@@ -131,6 +137,9 @@ public class EvaluationRecord {
      */
     @Column(name = "final_grade", length = 1)
     private String finalGrade;
+
+    @Version
+    private Long version;
 
     private Instant createdAt;
     private Instant updatedAt;

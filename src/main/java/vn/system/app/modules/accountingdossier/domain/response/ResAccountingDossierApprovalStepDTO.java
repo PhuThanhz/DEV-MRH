@@ -13,6 +13,7 @@ public class ResAccountingDossierApprovalStepDTO {
     private String stepName;
     private String approverType;
     private String approverUserId;
+    private String eligibleApproverIds;
     private String approverName;
     private String status;
     private String actionNote;

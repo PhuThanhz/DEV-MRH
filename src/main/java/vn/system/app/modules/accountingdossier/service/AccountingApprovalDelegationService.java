@@ -30,14 +30,17 @@ public class AccountingApprovalDelegationService {
     private final AccountingApprovalDelegationRepository delegationRepository;
     private final UserRepository userRepository;
     private final UserPositionRepository userPositionRepository;
+    private final AccountingDossierNotificationService notificationService;
 
     public AccountingApprovalDelegationService(
             AccountingApprovalDelegationRepository delegationRepository,
             UserRepository userRepository,
-            UserPositionRepository userPositionRepository) {
+            UserPositionRepository userPositionRepository,
+            AccountingDossierNotificationService notificationService) {
         this.delegationRepository = delegationRepository;
         this.userRepository = userRepository;
         this.userPositionRepository = userPositionRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -92,7 +95,17 @@ public class AccountingApprovalDelegationService {
         delegation.setScopeRefId(companyId);
         delegation.setReason(req.getReason());
         delegation.setStatus(req.isActivateImmediately() ? DelegationStatus.ACTIVE : DelegationStatus.DRAFT);
-        return toDTO(delegationRepository.save(delegation));
+        AccountingApprovalDelegation saved = delegationRepository.save(delegation);
+        String type = saved.getStatus() == DelegationStatus.ACTIVE
+                ? "ACCOUNTING_DELEGATION_ACTIVATED"
+                : "ACCOUNTING_DELEGATION_CREATED";
+        notificationService.notifyUsers(List.of(saved.getDelegateUserId()), type,
+                String.format("Bạn được ủy quyền xử lý phê duyệt chứng từ kế toán từ %s đến %s.%s",
+                        notificationService.formatInstant(saved.getValidFrom()),
+                        notificationService.formatInstant(saved.getValidTo()),
+                        saved.getReason() == null || saved.getReason().isBlank() ? "" : " Lý do: " + saved.getReason()),
+                null);
+        return toDTO(saved);
     }
 
     @Transactional
@@ -106,7 +119,12 @@ public class AccountingApprovalDelegationService {
             throw new IdInvalidException("Ủy quyền đã quá hạn, không thể kích hoạt");
         }
         delegation.setStatus(DelegationStatus.ACTIVE);
-        return toDTO(delegationRepository.save(delegation));
+        AccountingApprovalDelegation saved = delegationRepository.save(delegation);
+        notificationService.notifyUsers(List.of(saved.getDelegateUserId()), "ACCOUNTING_DELEGATION_ACTIVATED",
+                String.format("Ủy quyền xử lý phê duyệt chứng từ kế toán đã được kích hoạt đến %s.",
+                        notificationService.formatInstant(saved.getValidTo())),
+                null);
+        return toDTO(saved);
     }
 
     @Transactional
@@ -119,7 +137,11 @@ public class AccountingApprovalDelegationService {
         delegation.setStatus(DelegationStatus.REVOKED);
         delegation.setRevokedAt(Instant.now());
         delegation.setRevokedBy(SecurityUtil.getCurrentUserLogin().orElse(""));
-        return toDTO(delegationRepository.save(delegation));
+        AccountingApprovalDelegation saved = delegationRepository.save(delegation);
+        notificationService.notifyUsers(List.of(saved.getDelegateUserId()), "ACCOUNTING_DELEGATION_REVOKED",
+                "Ủy quyền xử lý phê duyệt chứng từ kế toán của bạn đã được thu hồi.",
+                null);
+        return toDTO(saved);
     }
 
     @Transactional
@@ -128,6 +150,11 @@ public class AccountingApprovalDelegationService {
                 .findByStatusAndValidToBefore(DelegationStatus.ACTIVE, Instant.now());
         overdue.forEach(item -> item.setStatus(DelegationStatus.EXPIRED));
         delegationRepository.saveAll(overdue);
+        overdue.forEach(item -> notificationService.notifyUsers(
+                List.of(item.getDelegatorUserId(), item.getDelegateUserId()),
+                "ACCOUNTING_DELEGATION_EXPIRED",
+                "Ủy quyền xử lý phê duyệt chứng từ kế toán đã hết hạn.",
+                null));
         return overdue.size();
     }
 

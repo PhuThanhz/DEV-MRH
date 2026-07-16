@@ -20,12 +20,15 @@ public class AccountingApprovalSlaService {
 
     private final AccountingDossierApprovalStepRepository stepRepository;
     private final AccountingDossierOutboxRepository outboxRepository;
+    private final AccountingDossierNotificationService notificationService;
 
     public AccountingApprovalSlaService(
             AccountingDossierApprovalStepRepository stepRepository,
-            AccountingDossierOutboxRepository outboxRepository) {
+            AccountingDossierOutboxRepository outboxRepository,
+            AccountingDossierNotificationService notificationService) {
         this.stepRepository = stepRepository;
         this.outboxRepository = outboxRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -54,6 +57,11 @@ public class AccountingApprovalSlaService {
                     + ", dueAt=" + step.getDueAt());
             outbox.setStatus("PENDING");
             outboxes.add(outbox);
+            notificationService.notifyCreatorAndStep(step.getDossier(), step, "ACCOUNTING_APPROVAL_OVERDUE",
+                    String.format("Bộ chứng từ %s đã quá hạn xử lý ở bước %s. Hạn xử lý: %s.",
+                            notificationService.dossierLabel(step.getDossier()),
+                            step.getStepName(),
+                            notificationService.formatInstant(step.getDueAt())));
             created++;
         }
         if (!outboxes.isEmpty()) outboxRepository.saveAll(outboxes);

@@ -26,6 +26,7 @@ import vn.system.app.modules.accountingdossier.domain.AccountingDossierCategory;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierActionRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentCheckRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierCategoryRequest;
+import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierCategoryActiveRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierSubmitRequest;
 import vn.system.app.modules.accountingdossier.domain.request.AccountingDossierDocumentRequest;
@@ -37,6 +38,7 @@ import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDoss
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierApprovalStepDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierReportRowDTO;
 import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierStorageSummaryDTO;
+import vn.system.app.modules.accountingdossier.domain.response.ResAccountingDossierDashboardMetricsDTO;
 import vn.system.app.modules.accountingdossier.service.AccountingDossierService;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -139,9 +141,10 @@ public class AccountingDossierController {
     public ResponseEntity<ResultPaginationDTO> getAllDossierDocuments(
             @Filter Specification<vn.system.app.modules.accountingdossier.domain.AccountingDossierDocument> spec,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String dossierCode,
             @RequestParam(required = false) String fileStatus,
             Pageable pageable) {
-        return ResponseEntity.ok(service.fetchAllDossierDocuments(spec, keyword, fileStatus, pageable));
+        return ResponseEntity.ok(service.fetchAllDossierDocuments(spec, keyword, dossierCode, fileStatus, pageable));
     }
 
     @PostMapping("/storage/refresh-expired")
@@ -155,6 +158,13 @@ public class AccountingDossierController {
     public ResponseEntity<ResAccountingDossierStorageSummaryDTO> getStorageSummary(
             @RequestParam(required = false) Long companyId) {
         return ResponseEntity.ok(service.getStorageSummary(companyId));
+    }
+
+    @GetMapping("/dashboard/metrics")
+    @ApiMessage("Tổng hợp biểu đồ thống kê bộ chứng từ kế toán")
+    public ResponseEntity<ResAccountingDossierDashboardMetricsDTO> getDashboardMetrics(
+            @RequestParam(required = false) Long companyId) {
+        return ResponseEntity.ok(service.getDashboardMetrics(companyId));
     }
 
     @GetMapping("/dashboard/pending-by-role")
@@ -220,8 +230,15 @@ public class AccountingDossierController {
     @ApiMessage("Bật/tắt mẫu bộ chứng từ kế toán")
     public ResponseEntity<ResAccountingDossierCategoryDTO> toggleCategoryActive(
             @PathVariable Long categoryId,
-            @Valid @RequestBody AccountingDossierCategoryRequest req) {
-        return ResponseEntity.ok(service.toggleCategoryActive(categoryId, req.isActive()));
+            @Valid @RequestBody AccountingDossierCategoryActiveRequest req) {
+        return ResponseEntity.ok(service.toggleCategoryActive(categoryId, Boolean.TRUE.equals(req.getActive())));
+    }
+
+    @DeleteMapping("/categories/{categoryId}")
+    @ApiMessage("Xóa mẫu bộ chứng từ kế toán")
+    public ResponseEntity<Void> deleteCategory(@PathVariable Long categoryId) {
+        service.deleteCategory(categoryId);
+        return ResponseEntity.noContent().build();
     }
 
     // ==================== DOCUMENT ITEMS ====================

@@ -102,8 +102,9 @@ public class ApprovalStepGenerationService {
                 step.setApproverUserId(customStep.getApproverUserId());
 
                 if (step.getApproverType() == ApproverType.DEPARTMENT_MANAGER && step.getApproverUserId() == null) {
-                    if (creator.getDirectManager() != null) {
-                        step.setApproverUserId(creator.getDirectManager().getId());
+                    String managerId = resolveRequesterManagerId(creator);
+                    if (managerId != null) {
+                        step.setApproverUserId(managerId);
                     } else if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
                         throw new IdInvalidException(
                                 "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
@@ -135,8 +136,9 @@ public class ApprovalStepGenerationService {
                     }
 
                     if (step.getApproverType() == ApproverType.DEPARTMENT_MANAGER && step.getApproverUserId() == null) {
-                        if (creator.getDirectManager() != null) {
-                            step.setApproverUserId(creator.getDirectManager().getId());
+                        String managerId = resolveRequesterManagerId(creator);
+                        if (managerId != null) {
+                            step.setApproverUserId(managerId);
                         } else if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
                             throw new IdInvalidException(
                                     "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
@@ -160,8 +162,9 @@ public class ApprovalStepGenerationService {
             step1.setStepOrder(1);
             step1.setStepName("Trưởng bộ phận duyệt");
             step1.setApproverType(ApproverType.DEPARTMENT_MANAGER);
-            if (creator.getDirectManager() != null) {
-                step1.setApproverUserId(creator.getDirectManager().getId());
+            String managerId = resolveRequesterManagerId(creator);
+            if (managerId != null) {
+                step1.setApproverUserId(managerId);
             } else {
                 if (dossier.getReturnCount() != null && dossier.getReturnCount() >= 3) {
                     throw new IdInvalidException(
@@ -196,11 +199,12 @@ public class ApprovalStepGenerationService {
                     mgrStep.setStepOrder(0);
                     mgrStep.setStepName("Trưởng bộ phận duyệt (Bắt buộc do hoàn trả >= 3 lần)");
                     mgrStep.setApproverType(ApproverType.DEPARTMENT_MANAGER);
-                    if (creator.getDirectManager() == null) {
+                    String managerId = resolveRequesterManagerId(creator);
+                    if (managerId == null) {
                         throw new IdInvalidException(
                                 "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
                     }
-                    mgrStep.setApproverUserId(creator.getDirectManager().getId());
+                    mgrStep.setApproverUserId(managerId);
                     steps.add(mgrStep);
                 }
             }
@@ -246,6 +250,10 @@ public class ApprovalStepGenerationService {
             AccountingDossierApprovalStep s = steps.get(i);
             s.setStepOrder(i + 1);
             if (s.getStatus() == ApprovalStepStatus.SKIPPED) {
+                continue;
+            }
+            if (isSelfApprovalStep(s, creator)) {
+                s.setStatus(ApprovalStepStatus.SKIPPED);
                 continue;
             }
             if (s.getApproverType() == ApproverType.DEPARTMENT_MANAGER && s.getApproverUserId() == null) {
@@ -310,7 +318,7 @@ public class ApprovalStepGenerationService {
 
         validateDirectorRules(dossier, creator, steps);
         applyReturnCountManagerRule(dossier, creator, steps);
-        activateFirstActionableStep(steps);
+        activateFirstActionableStep(steps, creator);
 
         AccountingApprovalInstance instance = createApprovalInstance(dossier, template, steps);
         for (AccountingDossierApprovalStep step : steps) {
@@ -334,10 +342,11 @@ public class ApprovalStepGenerationService {
         step.setAllowDelegation(templateStep.isAllowDelegation());
 
         if (templateStep.getApproverStrategy() == ApproverStrategy.REQUESTER_MANAGER) {
-            if (creator.getDirectManager() != null && !creator.getDirectManager().getId().equals(creator.getId())) {
-                step.setApproverUserId(creator.getDirectManager().getId());
+            String managerId = resolveRequesterManagerId(creator);
+            if (managerId != null) {
+                step.setApproverUserId(managerId);
             } else if (templateStep.isRequired()) {
-                throw new IdInvalidException("Bước " + templateStep.getStepName() + " không tìm thấy quản lý trực tiếp");
+                step.setStatus(ApprovalStepStatus.SKIPPED);
             } else {
                 step.setStatus(ApprovalStepStatus.SKIPPED);
             }
@@ -593,7 +602,8 @@ public class ApprovalStepGenerationService {
         if (hasManagerStep) {
             return;
         }
-        if (creator.getDirectManager() == null) {
+        String managerId = resolveRequesterManagerId(creator);
+        if (managerId == null) {
             throw new IdInvalidException(
                     "Hồ sơ đã bị hoàn trả 3 lần, bạn cần có Trưởng bộ phận trực tiếp được cấu hình trong hệ thống để xác nhận duyệt lần này");
         }
@@ -603,17 +613,21 @@ public class ApprovalStepGenerationService {
         mgrStep.setStepOrder(0);
         mgrStep.setStepName("Trưởng bộ phận duyệt (Bắt buộc do hoàn trả >= 3 lần)");
         mgrStep.setApproverType(ApproverType.DEPARTMENT_MANAGER);
-        mgrStep.setApproverUserId(creator.getDirectManager().getId());
+        mgrStep.setApproverUserId(managerId);
         steps.add(mgrStep);
     }
 
-    private void activateFirstActionableStep(List<AccountingDossierApprovalStep> steps) {
+    private void activateFirstActionableStep(List<AccountingDossierApprovalStep> steps, User creator) {
         steps.sort(Comparator.comparingInt(AccountingDossierApprovalStep::getStepOrder));
         boolean currentSet = false;
         for (int i = 0; i < steps.size(); i++) {
             AccountingDossierApprovalStep step = steps.get(i);
             step.setStepOrder(i + 1);
             if (step.getStatus() == ApprovalStepStatus.SKIPPED) {
+                continue;
+            }
+            if (isSelfApprovalStep(step, creator)) {
+                step.setStatus(ApprovalStepStatus.SKIPPED);
                 continue;
             }
             if (step.getApproverType() == ApproverType.DEPARTMENT_MANAGER && step.getApproverUserId() == null) {
@@ -633,6 +647,21 @@ public class ApprovalStepGenerationService {
             steps.get(steps.size() - 1).setStatus(ApprovalStepStatus.CURRENT);
             steps.get(steps.size() - 1).setDueAt(calculateDueAt(steps.get(steps.size() - 1)));
         }
+    }
+
+    private String resolveRequesterManagerId(User creator) {
+        if (creator == null || creator.getDirectManager() == null) {
+            return null;
+        }
+        String managerId = creator.getDirectManager().getId();
+        return managerId != null && !managerId.equals(creator.getId()) ? managerId : null;
+    }
+
+    private boolean isSelfApprovalStep(AccountingDossierApprovalStep step, User creator) {
+        return creator != null
+                && step.getApproverType() != ApproverType.DIRECTOR
+                && step.getApproverUserId() != null
+                && step.getApproverUserId().equals(creator.getId());
     }
 
     private Instant calculateDueAt(AccountingDossierApprovalStep step) {

@@ -20,7 +20,10 @@ import vn.system.app.modules.user.domain.User;
  *  - Lưu lý do trả lại để quản lý trực tiếp biết cần sửa gì.
  */
 @Entity
-@Table(name = "evaluation_history")
+@Table(name = "evaluation_history",
+        indexes = {
+            @Index(name = "idx_eval_hist_record_id", columnList = "evaluation_record_id")
+        })
 @Getter
 @Setter
 public class EvaluationHistory {
@@ -44,7 +47,7 @@ public class EvaluationHistory {
 
     /** Người thực hiện thay đổi trạng thái */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "performed_by_user_id", nullable = false)
+    @JoinColumn(name = "performed_by_user_id", nullable = true)
     @JsonIgnoreProperties({ "subordinates", "directManager", "userInfo", "role" })
     private User performedBy;
 

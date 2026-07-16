@@ -26,6 +26,7 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.auth.domain.request.ReqChangePasswordDTO;
 import vn.system.app.modules.auth.domain.request.ReqLoginDTO;
 import vn.system.app.modules.auth.domain.response.ResLoginDTO;
+import vn.system.app.modules.auth.service.AuthLoginRateLimitService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.domain.response.ResCreateUserDTO;
 import vn.system.app.modules.user.service.UserService;
@@ -40,6 +41,7 @@ public class AuthController {
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final UserSessionService userSessionService;
+    private final AuthLoginRateLimitService authLoginRateLimitService;
 
     @Value("${lotusgroup.jwt.refresh-token-validity-in-seconds}")
     private long refreshTokenExpiration;
@@ -49,12 +51,14 @@ public class AuthController {
             SecurityUtil securityUtil,
             UserService userService,
             PasswordEncoder passwordEncoder,
-            UserSessionService userSessionService) {
+            UserSessionService userSessionService,
+            AuthLoginRateLimitService authLoginRateLimitService) {
         this.authenticationManagerBuilder = authenticationManagerBuilder;
         this.securityUtil = securityUtil;
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.userSessionService = userSessionService;
+        this.authLoginRateLimitService = authLoginRateLimitService;
     }
 
     // ── HELPER: map UserInfo entity → DTO ──────────────────────────────────────
@@ -87,6 +91,9 @@ public class AuthController {
 
     @PostMapping("/auth/login")
     public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDto, HttpServletRequest request) {
+        String ip = extractClientIp(request);
+        authLoginRateLimitService.checkAllowed(ip, loginDto.getUsername());
+
         // Nạp input gồm username/password vào Security
         UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                 loginDto.getUsername(), loginDto.getPassword());
@@ -120,15 +127,6 @@ public class AuthController {
 
         // save session
         String userAgent = request.getHeader("User-Agent");
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip != null && !ip.isBlank()) {
-            ip = ip.split(",")[0].trim();
-        } else {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isBlank()) {
-            ip = request.getRemoteAddr();
-        }
         this.userSessionService.createSession(currentUserDB, refresh_token, userAgent, ip);
 
         // set cookies
@@ -143,6 +141,20 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, resCookies.toString())
                 .body(res);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip != null && !ip.isBlank()) {
+            return ip.split(",")[0].trim();
+        }
+
+        ip = request.getHeader("X-Real-IP");
+        if (ip != null && !ip.isBlank()) {
+            return ip.trim();
+        }
+
+        return request.getRemoteAddr();
     }
 
     @GetMapping("/auth/account")

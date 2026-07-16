@@ -15,8 +15,9 @@ public class SchedulerConfig {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(5);
-        scheduler.setThreadNamePrefix("facebook-scheduler-");
-        scheduler.initialize();
+        scheduler.setThreadNamePrefix("hrm-scheduler-");
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(20);
         return scheduler;
     }
 }

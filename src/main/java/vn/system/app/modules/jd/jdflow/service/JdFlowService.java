@@ -647,7 +647,7 @@ public class JdFlowService {
             }
         }
 
-        System.out.println("DEBUG fetchApprovers jdId=" + jdId + " companyIds=" + companyIds);
+
         if (companyIds != null && companyIds.isEmpty()) {
             return new java.util.ArrayList<>();
         }

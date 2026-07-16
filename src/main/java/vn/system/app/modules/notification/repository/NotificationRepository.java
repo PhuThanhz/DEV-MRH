@@ -28,4 +28,6 @@ public interface NotificationRepository extends JpaRepository<AppNotification, L
     @Modifying
     @Query("UPDATE AppNotification n SET n.read = true WHERE n.recipient.id = :userId AND n.module = :module AND n.read = false")
     void markAllAsReadByRecipientIdAndModule(String userId, String module);
+
+    boolean existsByRecipientIdAndTypeAndActionLinkAndCreatedAtAfter(String recipientId, String type, String actionLink, java.time.Instant createdAt);
 }

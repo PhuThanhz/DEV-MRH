@@ -100,7 +100,9 @@ public class PermissionInterceptor implements HandlerInterceptor {
                 Set<Long> companyIds = Set.of();
                 Set<Long> departmentIds = Set.of();
 
-                if (isCompanyLevel) {
+                if (isAdminLevel) {
+                    // Full-access roles do not need company/department scope queries.
+                } else if (isCompanyLevel) {
                     companyIds = userAdminScopeService.getCompanyScopeIds(user.getId());
                 } else if (isDepartmentLevel) {
                     departmentIds = userAdminScopeService.getDepartmentScopeIds(user.getId(), roleName);
