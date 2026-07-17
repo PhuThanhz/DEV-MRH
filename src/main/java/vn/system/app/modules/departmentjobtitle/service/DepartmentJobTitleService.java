@@ -401,10 +401,7 @@ public class DepartmentJobTitleService {
      * =====================================================
      */
     public List<DepartmentJobTitle> fetchAllDepartmentJobTitles() {
-        return repository.findAll()
-                .stream()
-                .filter(DepartmentJobTitle::isActive)
-                .collect(Collectors.toList());
+        return repository.findByActiveTrue();
     }
 
     /*
@@ -433,10 +430,7 @@ public class DepartmentJobTitleService {
      * =====================================================
      */
     public List<DepartmentJobTitle> fetchAll() {
-        return repository.findAll()
-                .stream()
-                .filter(DepartmentJobTitle::isActive)
-                .collect(Collectors.toList());
+        return repository.findByActiveTrue();
     }
 
     /*

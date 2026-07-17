@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.stereotype.Repository;
 
 import vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle;
@@ -20,25 +21,31 @@ public interface SectionJobTitleRepository
         SectionJobTitle findByJobTitle_IdAndSection_Id(Long jobTitleId, Long sectionId);
 
         // Section → Job Titles Active
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findBySection_IdAndActiveTrue(Long sectionId);
 
         // Department → Job Titles Active (Section-based)
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findBySection_Department_IdAndActiveTrue(Long departmentId);
 
         // NEW — kiểm tra active trong Department
         boolean existsBySection_Department_IdAndJobTitle_IdAndActiveTrue(Long departmentId, Long jobTitleId);
 
         // NEW — ACTIVE by jobTitle
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findByJobTitle_IdAndActiveTrue(Long jobTitleId);
 
         // NEW — ACTIVE by jobTitle & department
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findByJobTitle_IdAndSection_Department_IdAndActiveTrue(
                         Long jobTitleId, Long departmentId);
 
         // ALL ACTIVE
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findByActiveTrue();
 
         // COMPANY GET
+        @EntityGraph(attributePaths = { "jobTitle", "jobTitle.positionLevel", "section", "section.department" })
         List<SectionJobTitle> findBySection_Department_Company_IdAndActiveTrue(Long companyId);
 
         // NEW — kiểm tra jobTitle active trong toàn công ty

@@ -1,12 +1,20 @@
 package vn.system.app.modules.dashboard.service;
 
 import java.util.List;
-import java.util.Set;
-import java.util.Collections;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Comparator;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+import vn.system.app.common.response.ResultPaginationDTO;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.company.repository.CompanyRepository;
 import vn.system.app.modules.department.domain.Department;
@@ -14,13 +22,15 @@ import vn.system.app.modules.department.repository.DepartmentRepository;
 import vn.system.app.modules.section.repository.SectionRepository;
 import vn.system.app.modules.dashboard.domain.response.DashboardSummaryDTO;
 import vn.system.app.modules.dashboard.domain.response.DepartmentCompletenessDTO;
-import vn.system.app.modules.jobpositionchart.repository.JobPositionChartRepository;
-import vn.system.app.modules.departmentobjective.repository.DepartmentObjectiveRepository;
-import vn.system.app.modules.departmentprocedure.repository.DepartmentProcedureRepository;
-import vn.system.app.modules.permissioncategory.repository.PermissionCategoryRepository;
-import vn.system.app.modules.careerpath.repository.CareerPathRepository;
-import vn.system.app.modules.salarygrade.repository.SalaryGradeRepository;
-import vn.system.app.modules.departmentjobtitle.repository.DepartmentJobTitleRepository;
+import vn.system.app.modules.dashboard.domain.response.DepartmentCompletenessProjection;
+import vn.system.app.modules.dashboard.domain.response.DepartmentCompletenessOverviewDTO;
+import vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle;
+import vn.system.app.modules.jobpositionchart.domain.JobPositionChart;
+import vn.system.app.modules.departmentobjective.domain.DepartmentObjective;
+import vn.system.app.modules.departmentprocedure.domain.DepartmentProcedure;
+import vn.system.app.modules.permissioncategory.domain.PermissionCategory;
+import vn.system.app.modules.careerpath.domain.CareerPath;
+import vn.system.app.modules.salarygrade.domain.SalaryGrade;
 
 @Service
 public class DashboardService {
@@ -29,36 +39,14 @@ public class DashboardService {
         private final DepartmentRepository departmentRepository;
         private final SectionRepository sectionRepository;
 
-        private final JobPositionChartRepository chartRepository;
-        private final DepartmentObjectiveRepository objectiveRepository;
-        private final DepartmentProcedureRepository departmentProcedureRepository;
-        private final PermissionCategoryRepository permissionCategoryRepository;
-        private final CareerPathRepository careerPathRepository;
-        private final SalaryGradeRepository salaryGradeRepository;
-        private final DepartmentJobTitleRepository departmentJobTitleRepository;
-
         public DashboardService(
                         CompanyRepository companyRepository,
                         DepartmentRepository departmentRepository,
-                        SectionRepository sectionRepository,
-                        JobPositionChartRepository chartRepository,
-                        DepartmentObjectiveRepository objectiveRepository,
-                        DepartmentProcedureRepository departmentProcedureRepository,
-                        PermissionCategoryRepository permissionCategoryRepository,
-                        CareerPathRepository careerPathRepository,
-                        SalaryGradeRepository salaryGradeRepository,
-                        DepartmentJobTitleRepository departmentJobTitleRepository) {
+                        SectionRepository sectionRepository) {
 
                 this.companyRepository = companyRepository;
                 this.departmentRepository = departmentRepository;
                 this.sectionRepository = sectionRepository;
-                this.chartRepository = chartRepository;
-                this.objectiveRepository = objectiveRepository;
-                this.departmentProcedureRepository = departmentProcedureRepository;
-                this.permissionCategoryRepository = permissionCategoryRepository;
-                this.careerPathRepository = careerPathRepository;
-                this.salaryGradeRepository = salaryGradeRepository;
-                this.departmentJobTitleRepository = departmentJobTitleRepository;
         }
 
         /*
@@ -105,84 +93,215 @@ public class DashboardService {
          * DEPARTMENT COMPLETENESS
          * ====================================================
          */
-        public List<DepartmentCompletenessDTO> getDepartmentCompleteness() {
-                return getDepartmentCompleteness(null, null, null);
+        public ResultPaginationDTO getDepartmentCompleteness(String search, String companyName,
+                        String status, String missing, Pageable pageable) {
+
+                Specification<Department> spec = Specification
+                                .where(scopeSpecification(UserScopeContext.get()))
+                                .and(searchSpecification(search))
+                                .and(companySpecification(companyName))
+                                .and(statusSpecification(status))
+                                .and(missingSpecification(missing));
+
+                Page<Department> departmentPage = departmentRepository.findAll(spec, pageable);
+                List<Department> departments = departmentPage.getContent();
+                List<Long> deptIds = departments.stream().map(Department::getId).collect(Collectors.toList());
+                Map<Long, DepartmentCompletenessDTO> completenessById = deptIds.isEmpty()
+                                ? Map.of()
+                                : departmentRepository.findCompletenessOverviewByIdIn(deptIds).stream()
+                                                .map(this::buildCompleteness)
+                                                .collect(Collectors.toMap(
+                                                                DepartmentCompletenessDTO::getDepartmentId,
+                                                                row -> row));
+                List<DepartmentCompletenessDTO> result = departments.stream()
+                                .map(department -> completenessById.get(department.getId()))
+                                .toList();
+
+                ResultPaginationDTO response = new ResultPaginationDTO();
+                ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
+                meta.setPage(departmentPage.getNumber() + 1);
+                meta.setPageSize(departmentPage.getSize());
+                meta.setPages(departmentPage.getTotalPages());
+                meta.setTotal(departmentPage.getTotalElements());
+                response.setMeta(meta);
+                response.setResult(result);
+                return response;
         }
 
-        public List<DepartmentCompletenessDTO> getDepartmentCompleteness(String search, String companyName,
-                        String status) {
+        public DepartmentCompletenessOverviewDTO getDepartmentCompletenessOverview() {
+                List<DepartmentCompletenessDTO> rows = findScopedCompletenessOverview(UserScopeContext.get()).stream()
+                                .map(this::buildCompleteness)
+                                .toList();
 
-                UserScopeContext.UserScope scope = UserScopeContext.get();
+                long full = rows.stream().filter(row -> row.getScore() == 7).count();
+                long empty = rows.stream().filter(row -> row.getScore() == 0).count();
+                List<DepartmentCompletenessDTO> topMissing = rows.stream()
+                                .filter(row -> row.getScore() < 7)
+                                .sorted(Comparator.comparingInt(DepartmentCompletenessDTO::getScore)
+                                                .thenComparing(DepartmentCompletenessDTO::getDepartmentName,
+                                                                String.CASE_INSENSITIVE_ORDER))
+                                .limit(5)
+                                .toList();
 
-                List<Department> departments;
+                return new DepartmentCompletenessOverviewDTO(
+                                rows.size(), full, rows.size() - full - empty, empty,
+                                rows.stream().filter(row -> !row.isOrgChart()).count(),
+                                rows.stream().filter(row -> !row.isObjectives()).count(),
+                                rows.stream().filter(row -> !row.isDepartmentProcedure()).count(),
+                                rows.stream().filter(row -> !row.isPermissions()).count(),
+                                rows.stream().filter(row -> !row.isCareerPath()).count(),
+                                rows.stream().filter(row -> !row.isSalaryGrade()).count(),
+                                rows.stream().filter(row -> !row.isJobTitleMap()).count(),
+                                topMissing);
+        }
 
-                // SUPER_ADMIN và ADMIN_SUB_1 đều thấy toàn bộ hệ thống
+        private List<DepartmentCompletenessProjection> findScopedCompletenessOverview(UserScopeContext.UserScope scope) {
                 if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
-                        departments = departmentRepository.findAll();
-                } else if (scope.isDepartmentLevel()) {
+                        return departmentRepository.findCompletenessOverviewAll();
+                }
+                if (scope.isDepartmentLevel()) {
                         var departmentIds = scope.departmentIds();
-                        if (departmentIds == null || departmentIds.isEmpty()) {
-                                return List.of();
+                        return departmentIds == null || departmentIds.isEmpty()
+                                        ? List.of()
+                                        : departmentRepository.findCompletenessOverviewByIdIn(departmentIds);
+                }
+                var companyIds = scope.companyIds();
+                return companyIds == null || companyIds.isEmpty()
+                                ? List.of()
+                                : departmentRepository.findCompletenessOverviewByCompanyIdIn(companyIds);
+        }
+
+        private Specification<Department> scopeSpecification(UserScopeContext.UserScope scope) {
+                return (root, query, cb) -> {
+                        if (scope == null || scope.isSuperAdmin() || scope.isAdminLevel()) {
+                                return cb.conjunction();
                         }
-                        departments = departmentRepository.findByIdIn(departmentIds);
-                } else {
+                        if (scope.isDepartmentLevel()) {
+                                var departmentIds = scope.departmentIds();
+                                return departmentIds == null || departmentIds.isEmpty()
+                                                ? cb.disjunction()
+                                                : root.get("id").in(departmentIds);
+                        }
                         var companyIds = scope.companyIds();
-                        if (companyIds.isEmpty()) {
-                                return List.of();
-                        }
-                        departments = departmentRepository.findByCompany_IdIn(companyIds);
-                }
-
-                List<Department> filteredDepts = departments.stream()
-                                .filter(dept -> matchesSearch(dept, search))
-                                .filter(dept -> matchesCompany(dept, companyName))
-                                .collect(Collectors.toList());
-
-                List<Long> deptIds = filteredDepts.stream().map(Department::getId).collect(Collectors.toList());
-
-                Set<Long> orgCharts = deptIds.isEmpty() ? Collections.emptySet() : chartRepository.findDepartmentIdsWithChart(deptIds);
-                Set<Long> objectives = deptIds.isEmpty() ? Collections.emptySet() : objectiveRepository.findDepartmentIdsWithObjectives(deptIds);
-                Set<Long> procedures = deptIds.isEmpty() ? Collections.emptySet() : departmentProcedureRepository.findDepartmentIdsWithProcedure(deptIds);
-                Set<Long> permissions = deptIds.isEmpty() ? Collections.emptySet() : permissionCategoryRepository.findDepartmentIdsWithPermissions(deptIds);
-                Set<Long> careerPaths = deptIds.isEmpty() ? Collections.emptySet() : careerPathRepository.findDepartmentIdsWithCareerPath(deptIds);
-                Set<Long> salaryGrades = deptIds.isEmpty() ? Collections.emptySet() : salaryGradeRepository.findDepartmentIdsWithSalaryGrade(deptIds);
-                Set<Long> jobTitleMaps = deptIds.isEmpty() ? Collections.emptySet() : departmentJobTitleRepository.findDepartmentIdsWithJobTitleMap(deptIds);
-
-                return filteredDepts.stream()
-                                .map(dept -> buildCompleteness(dept, orgCharts, objectives, procedures, permissions, careerPaths, salaryGrades, jobTitleMaps))
-                                .filter(dto -> matchesStatus(dto, status))
-                                .collect(Collectors.toList());
-        }
-
-        private boolean matchesSearch(Department dept, String search) {
-                if (isBlank(search)) {
-                        return true;
-                }
-                String keyword = normalize(search);
-                return normalize(dept.getName()).contains(keyword)
-                                || normalize(dept.getCode()).contains(keyword)
-                                || (dept.getCompany() != null
-                                                 && normalize(dept.getCompany().getName()).contains(keyword));
-        }
-
-        private boolean matchesCompany(Department dept, String companyName) {
-                if (isBlank(companyName)) {
-                        return true;
-                }
-                return dept.getCompany() != null
-                                && normalize(dept.getCompany().getName()).equals(normalize(companyName));
-        }
-
-        private boolean matchesStatus(DepartmentCompletenessDTO dto, String status) {
-                if (isBlank(status) || "all".equalsIgnoreCase(status)) {
-                        return true;
-                }
-                return switch (status.toLowerCase()) {
-                        case "full" -> dto.getScore() == 7;
-                        case "partial" -> dto.getScore() > 0 && dto.getScore() < 7;
-                        case "empty" -> dto.getScore() == 0;
-                        default -> true;
+                        return companyIds == null || companyIds.isEmpty()
+                                        ? cb.disjunction()
+                                        : root.get("company").get("id").in(companyIds);
                 };
+        }
+
+        private Specification<Department> searchSpecification(String search) {
+                if (isBlank(search)) {
+                        return null;
+                }
+                String keyword = "%" + normalize(search) + "%";
+                return (root, query, cb) -> cb.or(
+                                cb.like(cb.lower(root.get("name")), keyword),
+                                cb.like(cb.lower(root.get("code")), keyword),
+                                cb.like(cb.lower(root.get("company").get("name")), keyword));
+        }
+
+        private Specification<Department> companySpecification(String companyName) {
+                if (isBlank(companyName)) {
+                        return null;
+                }
+                return (root, query, cb) -> cb.equal(
+                                cb.lower(root.get("company").get("name")), normalize(companyName));
+        }
+
+        private Specification<Department> statusSpecification(String status) {
+                if (isBlank(status) || "all".equalsIgnoreCase(status)) {
+                        return null;
+                }
+                return (root, query, cb) -> {
+                        Predicate[] present = completenessPredicates(root, query, cb);
+                        Predicate full = cb.and(present);
+                        Predicate empty = cb.and(java.util.Arrays.stream(present)
+                                        .map(cb::not)
+                                        .toArray(Predicate[]::new));
+                        return switch (status.toLowerCase()) {
+                                case "full" -> full;
+                                case "partial" -> cb.and(cb.not(full), cb.not(empty));
+                                case "empty" -> empty;
+                                default -> cb.conjunction();
+                        };
+                };
+        }
+
+        private Specification<Department> missingSpecification(String missing) {
+                if (isBlank(missing) || "all".equalsIgnoreCase(missing)) {
+                        return null;
+                }
+                return (root, query, cb) -> {
+                        Predicate[] present = completenessPredicates(root, query, cb);
+                        int index = switch (missing) {
+                                case "orgChart" -> 0;
+                                case "objectives" -> 1;
+                                case "departmentProcedure" -> 2;
+                                case "permissions" -> 3;
+                                case "careerPath" -> 4;
+                                case "salaryGrade" -> 5;
+                                case "jobTitleMap" -> 6;
+                                default -> -1;
+                        };
+                        return index < 0 ? cb.conjunction() : cb.not(present[index]);
+                };
+        }
+
+        private Predicate[] completenessPredicates(Root<Department> department, jakarta.persistence.criteria.CriteriaQuery<?> query,
+                        jakarta.persistence.criteria.CriteriaBuilder cb) {
+                return new Predicate[] {
+                                existsByScalarDepartmentId(query, cb, department, JobPositionChart.class, "departmentId", false),
+                                existsByDepartmentRelation(query, cb, department, DepartmentObjective.class, "department", false),
+                                existsByProcedureDepartment(query, cb, department),
+                                existsByDepartmentRelation(query, cb, department, PermissionCategory.class, "department", true),
+                                existsByDepartmentRelation(query, cb, department, CareerPath.class, "department", true),
+                                existsBySalaryGrade(query, cb, department),
+                                existsByDepartmentRelation(query, cb, department, DepartmentJobTitle.class, "department", true)
+                };
+        }
+
+        private <T> Predicate existsByDepartmentRelation(jakarta.persistence.criteria.CriteriaQuery<?> query,
+                        jakarta.persistence.criteria.CriteriaBuilder cb, Root<Department> department,
+                        Class<T> entityType, String relation, boolean activeOnly) {
+                Subquery<Long> subquery = query.subquery(Long.class);
+                Root<T> item = subquery.from(entityType);
+                Predicate departmentMatch = cb.equal(item.get(relation).get("id"), department.get("id"));
+                subquery.select(cb.literal(1L));
+                subquery.where(activeOnly ? cb.and(departmentMatch, cb.isTrue(item.get("active"))) : departmentMatch);
+                return cb.exists(subquery);
+        }
+
+        private <T> Predicate existsByScalarDepartmentId(jakarta.persistence.criteria.CriteriaQuery<?> query,
+                        jakarta.persistence.criteria.CriteriaBuilder cb, Root<Department> department,
+                        Class<T> entityType, String departmentIdField, boolean activeOnly) {
+                Subquery<Long> subquery = query.subquery(Long.class);
+                Root<T> item = subquery.from(entityType);
+                Predicate departmentMatch = cb.equal(item.get(departmentIdField), department.get("id"));
+                subquery.select(cb.literal(1L));
+                subquery.where(activeOnly ? cb.and(departmentMatch, cb.isTrue(item.get("active"))) : departmentMatch);
+                return cb.exists(subquery);
+        }
+
+        private Predicate existsByProcedureDepartment(jakarta.persistence.criteria.CriteriaQuery<?> query,
+                        jakarta.persistence.criteria.CriteriaBuilder cb, Root<Department> department) {
+                Subquery<Long> subquery = query.subquery(Long.class);
+                Root<DepartmentProcedure> procedure = subquery.from(DepartmentProcedure.class);
+                Join<DepartmentProcedure, Department> mappedDepartment = procedure.join("departments");
+                subquery.select(cb.literal(1L));
+                subquery.where(cb.equal(mappedDepartment.get("id"), department.get("id")));
+                return cb.exists(subquery);
+        }
+
+        private Predicate existsBySalaryGrade(jakarta.persistence.criteria.CriteriaQuery<?> query,
+                        jakarta.persistence.criteria.CriteriaBuilder cb, Root<Department> department) {
+                Subquery<Long> subquery = query.subquery(Long.class);
+                Root<SalaryGrade> salaryGrade = subquery.from(SalaryGrade.class);
+                subquery.select(cb.literal(1L));
+                subquery.where(
+                                cb.equal(salaryGrade.get("contextType"), "DEPARTMENT"),
+                                cb.equal(salaryGrade.get("contextId"), department.get("id")),
+                                cb.isTrue(salaryGrade.get("active")));
+                return cb.exists(subquery);
         }
 
         private boolean isBlank(String value) {
@@ -193,26 +312,14 @@ public class DashboardService {
                 return value == null ? "" : value.trim().toLowerCase();
         }
 
-        private DepartmentCompletenessDTO buildCompleteness(
-                        Department dept,
-                        Set<Long> orgCharts,
-                        Set<Long> objectives,
-                        Set<Long> procedures,
-                        Set<Long> permissions,
-                        Set<Long> careerPaths,
-                        Set<Long> salaryGrades,
-                        Set<Long> jobTitleMaps) {
-
-                Long deptId = dept.getId();
-
-                boolean orgChart = orgCharts.contains(deptId);
-                boolean hasObjectives = objectives.contains(deptId);
-                boolean departmentProcedure = procedures.contains(deptId);
-                boolean hasPermissions = permissions.contains(deptId);
-                boolean careerPath = careerPaths.contains(deptId);
-                boolean salaryGrade = salaryGrades.contains(deptId);
-                boolean jobTitleMap = jobTitleMaps.contains(deptId);
-
+        private DepartmentCompletenessDTO buildCompleteness(DepartmentCompletenessProjection dept) {
+                boolean orgChart = isPresent(dept.getOrgChart());
+                boolean hasObjectives = isPresent(dept.getObjectives());
+                boolean departmentProcedure = isPresent(dept.getDepartmentProcedure());
+                boolean hasPermissions = isPresent(dept.getPermissions());
+                boolean careerPath = isPresent(dept.getCareerPath());
+                boolean salaryGrade = isPresent(dept.getSalaryGrade());
+                boolean jobTitleMap = isPresent(dept.getJobTitleMap());
                 int score = (orgChart ? 1 : 0)
                                 + (hasObjectives ? 1 : 0)
                                 + (departmentProcedure ? 1 : 0)
@@ -221,17 +328,12 @@ public class DashboardService {
                                 + (salaryGrade ? 1 : 0)
                                 + (jobTitleMap ? 1 : 0);
 
-                return new DepartmentCompletenessDTO(
-                                deptId,
-                                dept.getName(),
-                                dept.getCompany() != null ? dept.getCompany().getName() : "",
-                                orgChart,
-                                hasObjectives,
-                                departmentProcedure,
-                                hasPermissions,
-                                careerPath,
-                                salaryGrade,
-                                jobTitleMap,
-                                score);
+                return new DepartmentCompletenessDTO(dept.getDepartmentId(), dept.getDepartmentName(), dept.getCompanyName(),
+                                orgChart, hasObjectives, departmentProcedure, hasPermissions, careerPath,
+                                salaryGrade, jobTitleMap, score);
+        }
+
+        private boolean isPresent(Integer value) {
+                return value != null && value != 0;
         }
 }

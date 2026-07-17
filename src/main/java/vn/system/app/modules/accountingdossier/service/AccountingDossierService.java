@@ -2586,7 +2586,6 @@ public class AccountingDossierService {
             String fromStatus = doc.getCheckStatus();
             doc.setCheckStatus(normalizedCheckStatus);
             doc.setCheckNote(normalizeNote(note, null));
-            documentItemRepository.save(doc);
             response.setSuccessCount(response.getSuccessCount() + 1);
             ResAccountingDossierBulkActionDTO.Item item = new ResAccountingDossierBulkActionDTO.Item();
             item.setId(doc.getId());

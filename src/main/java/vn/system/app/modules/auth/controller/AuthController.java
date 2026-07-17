@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -238,17 +239,9 @@ public class AuthController {
 
     @PostMapping("/auth/logout")
     @ApiMessage("Logout User")
-    public ResponseEntity<Void> logout(@CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token) throws IdInvalidException {
-        String email = SecurityUtil.getCurrentUserLogin().isPresent()
-                ? SecurityUtil.getCurrentUserLogin().get()
-                : "";
-
-        if (email.equals("")) {
-            throw new IdInvalidException("Access Token không hợp lệ");
-        }
-
+    public ResponseEntity<Void> logout(@CookieValue(name = "refresh_token", defaultValue = "abc") String refresh_token) {
         // delete session
-        if (!refresh_token.equals("abc")) {
+        if (StringUtils.hasText(refresh_token) && !refresh_token.equals("abc")) {
             this.userSessionService.deleteSession(refresh_token);
         }
 

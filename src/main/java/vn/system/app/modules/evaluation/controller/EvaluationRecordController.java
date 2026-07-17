@@ -16,6 +16,7 @@ import vn.system.app.modules.evaluation.domain.request.ScoreRequest;
 import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationHistoryDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationRecordDTO;
+import vn.system.app.modules.evaluation.domain.response.ResEvaluationTaskCountsDTO;
 import vn.system.app.modules.evaluation.service.EvaluationMapper;
 import vn.system.app.modules.evaluation.service.EvaluationRecordService;
 import vn.system.app.modules.user.domain.User;
@@ -65,8 +66,22 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá của tôi")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchMyRecords() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsByEmployee(currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchRecordsByEmployee(currentUserId)));
+    }
+
+    /** Quản trị: danh sách toàn bộ bản đánh giá trong hệ thống. */
+    @GetMapping("/records")
+    @ApiMessage("Danh sách toàn bộ bản đánh giá")
+    public ResponseEntity<List<ResEvaluationRecordDTO>> fetchAllRecords() {
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchAllRecordsForAdministration()));
+    }
+
+    @GetMapping("/task-counts")
+    @ApiMessage("Số công việc đánh giá đang chờ")
+    public ResponseEntity<ResEvaluationTaskCountsDTO> fetchTaskCounts() {
+        return ResponseEntity.ok(recordService.fetchTaskCounts(getCurrentUserId()));
     }
 
     /** Quản lý trực tiếp: danh sách nhân viên trong kỳ */
@@ -74,24 +89,24 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá cho quản lý trực tiếp")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchForDirectManager(@PathVariable Long periodId) {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsForDirectManager(periodId, currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchRecordsForDirectManager(periodId, currentUserId)));
     }
 
     @GetMapping("/manager/pending")
     @ApiMessage("Danh sách chờ quản lý trực tiếp chấm")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchPendingForManager() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchPendingForDirectManager(currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchPendingForDirectManager(currentUserId)));
     }
 
     @GetMapping("/manager/records")
     @ApiMessage("Tất cả bản đánh giá của quản lý trực tiếp")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchAllForManager() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchHistoryForDirectManager(currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchHistoryForDirectManager(currentUserId)));
     }
 
     /** Quản lý gián tiếp: danh sách nhân viên trong kỳ */
@@ -99,24 +114,24 @@ public class EvaluationRecordController {
     @ApiMessage("Danh sách bản đánh giá cho quản lý gián tiếp")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchForIndirectManager(@PathVariable Long periodId) {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchRecordsForIndirectManager(periodId, currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchRecordsForIndirectManager(periodId, currentUserId)));
     }
 
     @GetMapping("/approval/pending")
     @ApiMessage("Danh sách chờ phê duyệt")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchPendingForApproval() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchPendingForIndirectManager(currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchPendingForIndirectManager(currentUserId)));
     }
 
     @GetMapping("/approval/records")
     @ApiMessage("Tất cả bản đánh giá của người phê duyệt")
     public ResponseEntity<List<ResEvaluationRecordDTO>> fetchAllForApprover() {
         String currentUserId = getCurrentUserId();
-        return ResponseEntity.ok(recordService.fetchHistoryForIndirectManager(currentUserId).stream()
-                .map(mapper::toResEvaluationRecordDTO).toList());
+        return ResponseEntity.ok(mapper.toResEvaluationRecordSummaryDTOs(
+                recordService.fetchHistoryForIndirectManager(currentUserId)));
     }
 
     @GetMapping("/summary/completed")
@@ -140,7 +155,7 @@ public class EvaluationRecordController {
         meta.setPages(page.getTotalPages());
         meta.setTotal(page.getTotalElements());
         res.setMeta(meta);
-        res.setResult(page.getContent().stream().map(mapper::toResEvaluationRecordDTO).toList());
+        res.setResult(mapper.toResEvaluationRecordSummaryDTOs(page.getContent()));
         return ResponseEntity.ok(res);
     }
 

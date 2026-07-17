@@ -2,6 +2,7 @@ package vn.system.app.modules.notification.listener;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -20,14 +21,17 @@ public class NotificationHubListener {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final boolean evaluationEmailEnabled;
 
     public NotificationHubListener(
             NotificationService notificationService,
             UserRepository userRepository,
-            EmailService emailService) {
+            EmailService emailService,
+            @Value("${app.notifications.evaluation.email.enabled:false}") boolean evaluationEmailEnabled) {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.evaluationEmailEnabled = evaluationEmailEnabled;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -48,7 +52,7 @@ public class NotificationHubListener {
         }
 
         // 3.7: Tự động gửi email bất đồng bộ cho các mốc quan trọng của phân hệ Đánh giá
-        if ("EVALUATION".equals(event.getModule())) {
+        if (false && "EVALUATION".equals(event.getModule())) {
             String type = event.getType();
             if ("PERIOD_OPENED".equals(type) || "MANAGER_REVIEW_NEEDED".equals(type) ||
                 "APPROVAL_NEEDED".equals(type) || "RESULT_AVAILABLE".equals(type) ||

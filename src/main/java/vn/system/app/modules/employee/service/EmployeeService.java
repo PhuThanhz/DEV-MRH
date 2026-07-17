@@ -1,6 +1,7 @@
 package vn.system.app.modules.employee.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -295,9 +296,15 @@ public class EmployeeService {
 
         rs.setMeta(mt);
 
-        List<ResEmployeeDTO> data = page.getContent()
-                .stream()
-                .map(this::mapToDTO)
+        List<User> users = page.getContent();
+        List<String> userIds = users.stream().map(User::getId).toList();
+        Map<String, List<UserPosition>> positionsByUserId = userIds.isEmpty()
+                ? Map.of()
+                : userPositionRepository.findActiveFullByUserIds(userIds).stream()
+                        .collect(Collectors.groupingBy(position -> position.getUser().getId()));
+
+        List<ResEmployeeDTO> data = users.stream()
+                .map(user -> mapToDTO(user, positionsByUserId.getOrDefault(user.getId(), List.of())))
                 .collect(Collectors.toList());
 
         rs.setResult(data);
@@ -309,6 +316,10 @@ public class EmployeeService {
     // MAPPING
     // ======================================================
     private ResEmployeeDTO mapToDTO(User user) {
+        return mapToDTO(user, userPositionRepository.findActiveFullByUserId(user.getId()));
+    }
+
+    private ResEmployeeDTO mapToDTO(User user, List<UserPosition> positions) {
 
         ResEmployeeDTO dto = new ResEmployeeDTO();
 
@@ -346,10 +357,6 @@ public class EmployeeService {
             ui.setContractExpireDate(info.getContractExpireDate());
             dto.setUserInfo(ui);
         }
-
-        // ===== POSITIONS =====
-        List<UserPosition> positions = userPositionRepository
-                .findByUser_IdAndActiveTrue(user.getId());
 
         if (positions != null && !positions.isEmpty()) {
             dto.setPositions(

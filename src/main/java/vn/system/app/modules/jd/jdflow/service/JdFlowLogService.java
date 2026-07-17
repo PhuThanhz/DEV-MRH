@@ -51,6 +51,11 @@ public class JdFlowLogService {
     public User findSubmitUser(Long jdId) {
         List<JdFlowLog> logs = repository
                 .findByJobDescriptionIdOrderByCreatedAtAsc(jdId);
+        return findSubmitUserFromLogs(logs);
+    }
+
+    public User findSubmitUserFromLogs(List<JdFlowLog> logs) {
+        if (logs == null || logs.isEmpty()) return null;
         return logs.stream()
                 .filter(log -> "SUBMIT".equals(log.getAction())
                         || "SUBMIT_TO_FINAL".equals(log.getAction()))
@@ -82,6 +87,11 @@ public class JdFlowLogService {
     public User findLastSenderBeforeReject(Long jdId) {
         List<JdFlowLog> logs = repository
                 .findByJobDescriptionIdOrderByCreatedAtAsc(jdId);
+        return findLastSenderBeforeRejectFromLogs(logs);
+    }
+
+    public User findLastSenderBeforeRejectFromLogs(List<JdFlowLog> logs) {
+        if (logs == null || logs.isEmpty()) return null;
 
         int rejectIndex = -1;
         for (int i = logs.size() - 1; i >= 0; i--) {
@@ -291,6 +301,11 @@ public class JdFlowLogService {
     public JdFlowLog findLatestReturnLog(Long jdId) {
         List<JdFlowLog> logs = repository
                 .findByJobDescriptionIdOrderByCreatedAtDesc(jdId);
+        return findLatestReturnLogFromLogs(logs);
+    }
+
+    public JdFlowLog findLatestReturnLogFromLogs(List<JdFlowLog> logs) {
+        if (logs == null || logs.isEmpty()) return null;
         return logs.stream()
                 .filter(log -> ("SUBMIT".equals(log.getAction())
                         || "SUBMIT_TO_FINAL".equals(log.getAction()))

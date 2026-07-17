@@ -1,7 +1,12 @@
 package vn.system.app.common.config;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.boot.CommandLineRunner;
@@ -41,6 +46,16 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final DocumentCategoryRepository documentCategoryRepository;
     private final JdbcTemplate jdbcTemplate;
     private final Environment environment;
+    private List<Permission> permissionCache;
+    private Set<PermissionKey> permissionKeyCache;
+    private Set<String> permissionNameCache;
+    private Map<String, Role> roleCache;
+
+    private record PermissionKey(String module, String apiPath, String method) {
+        private static PermissionKey of(String module, String apiPath, String method) {
+            return new PermissionKey(module, apiPath, method.toUpperCase(Locale.ROOT));
+        }
+    }
 
     public DatabaseInitializer(
             PermissionRepository permissionRepository,
@@ -63,8 +78,10 @@ public class DatabaseInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) throws Exception {
         System.out.println(">>> START INIT DATABASE");
-        long countPermissions = this.permissionRepository.count();
-        long countRoles = this.roleRepository.count();
+        initializePermissionCache();
+        initializeRoleCache();
+        long countPermissions = this.permissionCache.size();
+        long countRoles = this.roleCache.size();
         long countUsers = this.userRepository.count();
 
         // Only seed test data on local/demo/UAT, never on production
@@ -101,14 +118,9 @@ public class DatabaseInitializer implements CommandLineRunner {
             System.out.println(">>> SEED: ACCOUNTING_DOC Category created");
         }
 
-        if (countPermissions == 0) {
-            ArrayList<Permission> arr = new ArrayList<>();
-            this.permissionRepository.saveAll(arr);
-        }
-
         // Tự động seed quyền cho ACCOUNTING_DOCUMENTS
         String accModule = ACCOUNTING_DOCUMENTS_MODULE;
-        List<Permission> existingAccPerms = this.permissionRepository.findAll().stream()
+        List<Permission> existingAccPerms = allPermissions().stream()
                 .filter(p -> accModule.equals(p.getModule()))
                 .toList();
         
@@ -119,16 +131,16 @@ public class DatabaseInitializer implements CommandLineRunner {
             newPerms.add(createPermission("Tạo mới chứng từ kế toán", "/api/v1/accounting-documents", "POST", accModule));
             newPerms.add(createPermission("Cập nhật chứng từ kế toán", "/api/v1/accounting-documents/{id}", "PUT", accModule));
             newPerms.add(createPermission("Xóa chứng từ kế toán", "/api/v1/accounting-documents/{id}", "DELETE", accModule));
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: ACCOUNTING_DOCUMENTS permissions created");
             
             // Cập nhật lại adminRole nếu nó đã tồn tại
-            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            Role adminRole = findRole("SUPER_ADMIN");
             if (adminRole != null) {
                 List<Permission> allPerms = new ArrayList<>(adminRole.getPermissions());
                 allPerms.addAll(newPerms);
                 adminRole.setPermissions(allPerms);
-                this.roleRepository.save(adminRole);
+                saveRole(adminRole);
             }
         }
 
@@ -183,30 +195,30 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionIfMissing(newPerms, "Quét quá hạn SLA duyệt bộ chứng từ", "/api/v1/accounting-approval-sla/scan-overdue", "POST", dossierModule);
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: ACCOUNTING_DOSSIERS permissions created");
 
-            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            Role adminRole = findRole("SUPER_ADMIN");
             if (adminRole != null) {
                 List<Permission> allPerms = new ArrayList<>(adminRole.getPermissions());
                 allPerms.addAll(newPerms);
                 adminRole.setPermissions(allPerms);
-                this.roleRepository.save(adminRole);
+                saveRole(adminRole);
             }
         }
 
         // Ensure KETOAN role and user exist
-        Role ketoanRole = this.roleRepository.findByName("KETOAN");
+        Role ketoanRole = findRole("KETOAN");
         if (ketoanRole == null) {
             ketoanRole = new Role();
             ketoanRole.setName("KETOAN");
             ketoanRole.setDescription("Kế toán viên");
             ketoanRole.setActive(true);
-            List<Permission> allPerms = this.permissionRepository.findAll().stream()
+            List<Permission> allPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .toList();
             ketoanRole.setPermissions(allPerms);
-            ketoanRole = this.roleRepository.save(ketoanRole);
+            ketoanRole = saveRole(ketoanRole);
         }
 
         if (!isProd) {
@@ -223,17 +235,17 @@ public class DatabaseInitializer implements CommandLineRunner {
         }
 
         // Ensure KETOANTRUONG role and user exist
-        Role ketoanTruongRole = this.roleRepository.findByName("KETOANTRUONG");
+        Role ketoanTruongRole = findRole("KETOANTRUONG");
         if (ketoanTruongRole == null) {
             ketoanTruongRole = new Role();
             ketoanTruongRole.setName("KETOANTRUONG");
             ketoanTruongRole.setDescription("Kế toán trưởng");
             ketoanTruongRole.setActive(true);
-            List<Permission> allPerms = this.permissionRepository.findAll().stream()
+            List<Permission> allPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .toList();
             ketoanTruongRole.setPermissions(allPerms);
-            ketoanTruongRole = this.roleRepository.save(ketoanTruongRole);
+            ketoanTruongRole = saveRole(ketoanTruongRole);
         }
 
         if (!isProd) {
@@ -251,10 +263,10 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         // Mỗi role nghiệp vụ chỉ giữ đúng permission phê duyệt của mình, không giữ chéo permission phê duyệt
         // của cấp khác (kể cả role đã tồn tại từ trước) — nếu không resolver permission-based sẽ chọn nhầm người duyệt.
-        List<Permission> accountantApprovalPerm = this.permissionRepository.findAll().stream()
+        List<Permission> accountantApprovalPerm = allPermissions().stream()
                 .filter(p -> ACCOUNTANT_APPROVAL_PERMISSION_NAME.equals(p.getName()))
                 .toList();
-        List<Permission> chiefApprovalPerm = this.permissionRepository.findAll().stream()
+        List<Permission> chiefApprovalPerm = allPermissions().stream()
                 .filter(p -> CHIEF_ACCOUNTANT_APPROVAL_PERMISSION_NAME.equals(p.getName()))
                 .toList();
         addPermissionsToRoleIfMissing("KETOAN", accountantApprovalPerm);
@@ -265,7 +277,7 @@ public class DatabaseInitializer implements CommandLineRunner {
                 Set.of(ACCOUNTANT_APPROVAL_PERMISSION_NAME, DIRECTOR_APPROVAL_PERMISSION_NAME));
 
         // Ensure EMPLOYEE and DEPARTMENT_MANAGER roles have accounting permissions
-        Role employeeRole = this.roleRepository.findByName("EMPLOYEE");
+        Role employeeRole = findRole("EMPLOYEE");
         if (employeeRole != null) {
             // Keep non-accounting permissions
             List<Permission> nonAccPerms = employeeRole.getPermissions().stream()
@@ -273,7 +285,7 @@ public class DatabaseInitializer implements CommandLineRunner {
                     .toList();
             
             // Get restricted accounting permissions for EMPLOYEE
-            List<Permission> allowedAccPerms = this.permissionRepository.findAll().stream()
+            List<Permission> allowedAccPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> {
                         String path = p.getApiPath();
@@ -296,13 +308,12 @@ public class DatabaseInitializer implements CommandLineRunner {
                     
             List<Permission> finalPerms = new ArrayList<>(nonAccPerms);
             finalPerms.addAll(allowedAccPerms);
-            employeeRole.setPermissions(finalPerms);
-            this.roleRepository.save(employeeRole);
+            replaceRolePermissionsIfChanged(employeeRole, finalPerms);
         }
 
-        Role deptMgrRole = this.roleRepository.findByName("DEPARTMENT_MANAGER");
+        Role deptMgrRole = findRole("DEPARTMENT_MANAGER");
         if (deptMgrRole != null) {
-            List<Permission> dossierPerms = this.permissionRepository.findAll().stream()
+            List<Permission> dossierPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !DIRECTOR_APPROVAL_PERMISSION_NAME.equals(p.getName()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
@@ -318,8 +329,7 @@ public class DatabaseInitializer implements CommandLineRunner {
                     currentPerms.add(p);
                 }
             }
-            deptMgrRole.setPermissions(currentPerms);
-            this.roleRepository.save(deptMgrRole);
+            replaceRolePermissionsIfChanged(deptMgrRole, currentPerms);
         }
         if (!isProd) {
             // Create manager@gmail.com
@@ -349,21 +359,21 @@ public class DatabaseInitializer implements CommandLineRunner {
         }
 
         // Ensure DIRECTOR role and user exist (only for non-production environments)
-        Role directorRole = this.roleRepository.findByName("DIRECTOR");
+        Role directorRole = findRole("DIRECTOR");
         if (directorRole == null) {
             directorRole = new Role();
             directorRole.setName("DIRECTOR");
             directorRole.setDescription("Giám đốc");
             directorRole.setActive(true);
-            List<Permission> allPerms = this.permissionRepository.findAll().stream()
+            List<Permission> allPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
                     .toList();
             directorRole.setPermissions(allPerms);
-            directorRole = this.roleRepository.save(directorRole);
+            directorRole = saveRole(directorRole);
         } else {
             // Đảm bảo DIRECTOR role luôn có đầy đủ ACCOUNTING_DOSSIERS permissions (bao gồm cả permission mới thêm)
-            List<Permission> dossierPerms = this.permissionRepository.findAll().stream()
+            List<Permission> dossierPerms = allPermissions().stream()
                     .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
                     .toList();
@@ -378,7 +388,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             }
             if (updated) {
                 directorRole.setPermissions(currentDirPerms);
-                directorRole = this.roleRepository.save(directorRole);
+                directorRole = saveRole(directorRole);
                 System.out.println(">>> SEED: Updated DIRECTOR role with new accounting permissions");
             }
         }
@@ -440,7 +450,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         syncFullPermissionRoles();
 
         if (countRoles == 0) {
-            List<Permission> allPermissions = this.permissionRepository.findAll();
+            List<Permission> allPermissions = allPermissions();
 
             Role adminRole = new Role();
             adminRole.setName("SUPER_ADMIN");
@@ -448,7 +458,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             adminRole.setActive(true);
             adminRole.setPermissions(allPermissions);
 
-            this.roleRepository.save(adminRole);
+            saveRole(adminRole);
         }
 
         if (countUsers == 0) {
@@ -458,7 +468,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             adminUser.setPassword(this.passwordEncoder.encode("123456"));
             adminUser.setActive(true); // ✅ FIX CHÍNH Ở ĐÂY
 
-            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            Role adminRole = findRole("SUPER_ADMIN");
             if (adminRole != null) {
                 adminUser.setRole(adminRole);
             }
@@ -616,17 +626,93 @@ public class DatabaseInitializer implements CommandLineRunner {
         return p;
     }
 
+    private List<Permission> allPermissions() {
+        if (this.permissionCache == null) {
+            initializePermissionCache();
+        }
+        return this.permissionCache;
+    }
+
+    private void initializePermissionCache() {
+        this.permissionCache = new ArrayList<>(this.permissionRepository.findAll());
+        this.permissionKeyCache = new HashSet<>();
+        this.permissionNameCache = new HashSet<>();
+        this.permissionCache.forEach(this::cachePermission);
+    }
+
+    private void cachePermission(Permission permission) {
+        this.permissionKeyCache.add(PermissionKey.of(
+                permission.getModule(), permission.getApiPath(), permission.getMethod()));
+        this.permissionNameCache.add(permission.getName());
+    }
+
+    private List<Permission> savePermissions(List<Permission> permissions) {
+        List<Permission> saved = this.permissionRepository.saveAll(permissions);
+        allPermissions().addAll(saved);
+        saved.forEach(this::cachePermission);
+        return saved;
+    }
+
+    private Permission savePermission(Permission permission) {
+        Permission saved = this.permissionRepository.save(permission);
+        allPermissions().add(saved);
+        cachePermission(saved);
+        return saved;
+    }
+
+    private void initializeRoleCache() {
+        this.roleCache = new HashMap<>();
+        this.roleRepository.findAllWithPermissions().forEach(role -> this.roleCache.put(role.getName(), role));
+    }
+
+    private Role findRole(String name) {
+        return this.roleCache.get(name);
+    }
+
+    private List<Role> allRoles() {
+        return new ArrayList<>(this.roleCache.values());
+    }
+
+    private Role saveRole(Role role) {
+        Role saved = role.getId() == 0 ? this.roleRepository.save(role) : role;
+        this.roleCache.put(saved.getName(), saved);
+        return saved;
+    }
+
+    private boolean replaceRolePermissionsIfChanged(Role role, List<Permission> permissions) {
+        Map<Long, Permission> uniquePermissions = new LinkedHashMap<>();
+        permissions.stream()
+                .filter(Objects::nonNull)
+                .forEach(permission -> uniquePermissions.put(permission.getId(), permission));
+
+        Set<Long> currentIds = new HashSet<>();
+        if (role.getPermissions() != null) {
+            role.getPermissions().stream()
+                    .filter(Objects::nonNull)
+                    .forEach(permission -> currentIds.add(permission.getId()));
+        }
+        if (currentIds.equals(uniquePermissions.keySet())) {
+            return false;
+        }
+
+        role.setPermissions(new ArrayList<>(uniquePermissions.values()));
+        saveRole(role);
+        return true;
+    }
+
     private void addPermissionIfMissing(List<Permission> target, String name, String apiPath, String method, String module) {
-        if (!this.permissionRepository.existsByModuleAndApiPathAndMethod(module, apiPath, method)) {
+        allPermissions();
+        if (this.permissionKeyCache.add(PermissionKey.of(module, apiPath, method))) {
             target.add(createPermission(name, apiPath, method, module));
+            this.permissionNameCache.add(name);
         }
     }
 
     private void addPermissionByNameIfMissing(List<Permission> target, String name, String apiPath, String method, String module) {
-        boolean exists = this.permissionRepository.findAll().stream()
-                .anyMatch(p -> name.equals(p.getName()));
-        if (!exists) {
+        allPermissions();
+        if (this.permissionNameCache.add(name)) {
             target.add(createPermission(name, apiPath, method, module));
+            this.permissionKeyCache.add(PermissionKey.of(module, apiPath, method));
         }
     }
 
@@ -638,19 +724,19 @@ public class DatabaseInitializer implements CommandLineRunner {
                 "/api/v1/users/{userId}/admin-scopes", "PUT", "USERS");
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: USER ADMIN SCOPES permissions created");
 
-            Role adminRole = this.roleRepository.findByName("SUPER_ADMIN");
+            Role adminRole = findRole("SUPER_ADMIN");
             if (adminRole != null) {
                 List<Permission> allPerms = new ArrayList<>(adminRole.getPermissions());
                 allPerms.addAll(newPerms);
                 adminRole.setPermissions(allPerms);
-                this.roleRepository.save(adminRole);
+                saveRole(adminRole);
             }
         }
 
-        List<Permission> adminScopePermissions = this.permissionRepository.findAll().stream()
+        List<Permission> adminScopePermissions = allPermissions().stream()
                 .filter(p -> "USERS".equals(p.getModule()))
                 .filter(p -> "/api/v1/users/{userId}/admin-scopes".equals(p.getApiPath()))
                 .filter(p -> "GET".equalsIgnoreCase(p.getMethod()) || "PUT".equalsIgnoreCase(p.getMethod()))
@@ -660,19 +746,19 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionsToRoleIfMissing("ADMIN_SUB_1", adminScopePermissions);
         addPermissionsToRoleIfMissing("ADMIN_SUB_2", adminScopePermissions);
 
-        Role departmentManagerRole = this.roleRepository.findByName("DEPARTMENT_MANAGER");
+        Role departmentManagerRole = findRole("DEPARTMENT_MANAGER");
         if (departmentManagerRole == null) {
             departmentManagerRole = new Role();
             departmentManagerRole.setName("DEPARTMENT_MANAGER");
             departmentManagerRole.setActive(true);
             departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
-            this.roleRepository.save(departmentManagerRole);
+            saveRole(departmentManagerRole);
         } else if (departmentManagerRole.getDescription() == null) {
             departmentManagerRole.setDescription("Trưởng bộ phận - chỉ quản lý phòng ban trực thuộc chức danh active");
-            this.roleRepository.save(departmentManagerRole);
+            saveRole(departmentManagerRole);
         }
 
-        List<Permission> managerPermissions = new ArrayList<>(this.permissionRepository.findAll().stream()
+        List<Permission> managerPermissions = new ArrayList<>(allPermissions().stream()
                 .filter(p -> "USERS".equals(p.getModule())
                         || "DEPARTMENTS".equals(p.getModule())
                         || "SECTIONS".equals(p.getModule())
@@ -690,16 +776,16 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         addPermissionsToRoleIfMissing("DEPARTMENT_MANAGER", deptManagerPermissions);
 
-        Role adminSub3Role = this.roleRepository.findByName("ADMIN_SUB_3");
+        Role adminSub3Role = findRole("ADMIN_SUB_3");
         if (adminSub3Role == null) {
             adminSub3Role = new Role();
             adminSub3Role.setName("ADMIN_SUB_3");
             adminSub3Role.setActive(true);
             adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
-            this.roleRepository.save(adminSub3Role);
+            saveRole(adminSub3Role);
         } else if (adminSub3Role.getDescription() == null) {
             adminSub3Role.setDescription("Quản trị viên cấp Phòng ban - quản trị danh sách phòng ban được gán");
-            this.roleRepository.save(adminSub3Role);
+            saveRole(adminSub3Role);
         }
         addPermissionsToRoleIfMissing("ADMIN_SUB_3", managerPermissions);
     }
@@ -714,11 +800,11 @@ public class DatabaseInitializer implements CommandLineRunner {
                 "/api/v1/department-objectives/publish", "POST", "DEPARTMENT_OBJECTIVES");
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: DEPARTMENT_OBJECTIVES extra permissions created");
         }
 
-        List<Permission> departmentObjectivePermissions = this.permissionRepository.findAll().stream()
+        List<Permission> departmentObjectivePermissions = allPermissions().stream()
                 .filter(p -> "DEPARTMENT_OBJECTIVES".equals(p.getModule()))
                 .toList();
 
@@ -736,15 +822,15 @@ public class DatabaseInitializer implements CommandLineRunner {
         final String deletePath = "/api/v1/evaluation/templates/{id}";
         final String updatePath = "/api/v1/evaluation/templates/{id}";
 
-        Permission deletePermission = this.permissionRepository.findAll().stream()
+        Permission deletePermission = allPermissions().stream()
                 .filter(permission -> module.equals(permission.getModule())
                         && deletePath.equals(permission.getApiPath())
                         && "DELETE".equalsIgnoreCase(permission.getMethod()))
                 .findFirst()
-                .orElseGet(() -> this.permissionRepository.save(
+                .orElseGet(() -> savePermission(
                         createPermission("Xóa mẫu đánh giá", deletePath, "DELETE", module)));
 
-        for (Role role : this.roleRepository.findAll()) {
+        for (Role role : allRoles()) {
             boolean canUpdateTemplate = role.getPermissions().stream()
                     .filter(Objects::nonNull)
                     .anyMatch(permission -> module.equals(permission.getModule())
@@ -762,12 +848,12 @@ public class DatabaseInitializer implements CommandLineRunner {
         final String method = "PATCH";
         final String name = "Điều chuyển người chấm/duyệt bản đánh giá";
 
-        Permission reassignPermission = this.permissionRepository.findAll().stream()
+        Permission reassignPermission = allPermissions().stream()
                 .filter(p -> path.equals(p.getApiPath()) && method.equalsIgnoreCase(p.getMethod()))
                 .findFirst()
                 .orElseGet(() -> {
                     Permission newPerm = createPermission(name, path, method, module);
-                    return this.permissionRepository.save(newPerm);
+                    return savePermission(newPerm);
                 });
 
         // Add to admins
@@ -803,11 +889,11 @@ public class DatabaseInitializer implements CommandLineRunner {
                 "/api/v1/accounting-approval-workflows/dossiers/{dossierId}/preview", "POST", ACCOUNTING_WORKFLOWS_MODULE);
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: ACCOUNTING_WORKFLOWS permissions created");
         }
 
-        List<Permission> workflowPermissions = this.permissionRepository.findAll().stream()
+        List<Permission> workflowPermissions = allPermissions().stream()
                 .filter(p -> ACCOUNTING_WORKFLOWS_MODULE.equals(p.getModule()))
                 .toList();
         List<Permission> draftWorkflowPermissions = workflowPermissions.stream()
@@ -834,11 +920,11 @@ public class DatabaseInitializer implements CommandLineRunner {
                 "/api/v1/accounting-approval-delegations/{id}/revoke", "POST", ACCOUNTING_DELEGATIONS_MODULE);
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: ACCOUNTING_DELEGATIONS permissions created");
         }
 
-        List<Permission> delegationPermissions = this.permissionRepository.findAll().stream()
+        List<Permission> delegationPermissions = allPermissions().stream()
                 .filter(p -> ACCOUNTING_DELEGATIONS_MODULE.equals(p.getModule()))
                 .toList();
         addPermissionsToRoleIfMissing("SUPER_ADMIN", delegationPermissions);
@@ -886,6 +972,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionIfMissing(newPerms, "Danh sách hồ sơ chưa hoàn tất trong kỳ", "/api/v1/evaluation/periods/{id}/unfinished-records", "GET", periodModule);
         addPermissionIfMissing(newPerms, "Gia hạn hạn xử lý bản đánh giá", "/api/v1/evaluation/records/deadline-extension", "PATCH", periodModule);
         addPermissionIfMissing(newPerms, "Báo cáo tổng hợp đánh giá hoàn tất", "/api/v1/evaluation/summary/completed", "GET", periodModule);
+        addPermissionIfMissing(newPerms, "Danh sách toàn bộ bản đánh giá", "/api/v1/evaluation/records", "GET", periodModule);
         addPermissionIfMissing(newPerms, "Phân bổ trạng thái trong kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/status-distribution", "GET", periodModule);
         addPermissionIfMissing(newPerms, "Phân bổ xếp loại trong kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/grade-distribution", "GET", periodModule);
 
@@ -918,20 +1005,20 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionIfMissing(newPerms, "Số lần bản đánh giá bị trả lại", "/api/v1/evaluation/records/{recordId}/rejection-count", "GET", managerModule);
 
         if (!newPerms.isEmpty()) {
-            this.permissionRepository.saveAll(newPerms);
+            savePermissions(newPerms);
             System.out.println(">>> SEED: EVALUATION permissions created");
         }
 
-        List<Permission> templatePermissions = this.permissionRepository.findAll().stream()
+        List<Permission> templatePermissions = allPermissions().stream()
                 .filter(p -> templateModule.equals(p.getModule()))
                 .toList();
-        List<Permission> periodPermissions = this.permissionRepository.findAll().stream()
+        List<Permission> periodPermissions = allPermissions().stream()
                 .filter(p -> periodModule.equals(p.getModule()))
                 .toList();
-        List<Permission> employeePermissions = this.permissionRepository.findAll().stream()
+        List<Permission> employeePermissions = allPermissions().stream()
                 .filter(p -> employeeModule.equals(p.getModule()))
                 .toList();
-        List<Permission> managerPermissions = this.permissionRepository.findAll().stream()
+        List<Permission> managerPermissions = allPermissions().stream()
                 .filter(p -> managerModule.equals(p.getModule()))
                 .toList();
         List<Permission> employeeSharedReadPermissions = managerPermissions.stream()
@@ -941,13 +1028,13 @@ public class DatabaseInitializer implements CommandLineRunner {
                         || "/api/v1/evaluation/records/{recordId}/rejection-count".equals(p.getApiPath())))
                 .toList();
 
-        addPermissionsToRoleIfMissing("SUPER_ADMIN", this.permissionRepository.findAll().stream()
+        addPermissionsToRoleIfMissing("SUPER_ADMIN", allPermissions().stream()
                 .filter(p -> templateModule.equals(p.getModule())
                         || periodModule.equals(p.getModule())
                         || employeeModule.equals(p.getModule())
                         || managerModule.equals(p.getModule()))
                 .toList());
-        addPermissionsToRoleIfMissing("ADMIN_SUB_1", this.permissionRepository.findAll().stream()
+        addPermissionsToRoleIfMissing("ADMIN_SUB_1", allPermissions().stream()
                 .filter(p -> templateModule.equals(p.getModule())
                         || periodModule.equals(p.getModule())
                         || employeeModule.equals(p.getModule())
@@ -964,7 +1051,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     private void syncFullPermissionRoles() {
-        List<Permission> adminPermissions = this.permissionRepository.findAll().stream()
+        List<Permission> adminPermissions = allPermissions().stream()
                 .filter(permission -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(permission.getName()))
                 .toList();
         addPermissionsToRoleIfMissing("SUPER_ADMIN", adminPermissions);
@@ -975,7 +1062,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     private void removePermissionsFromRoleIfPresent(String roleName, Set<String> permissionNames) {
-        Role role = this.roleRepository.findByName(roleName);
+        Role role = findRole(roleName);
         if (role == null || role.getPermissions() == null || role.getPermissions().isEmpty()) {
             return;
         }
@@ -984,13 +1071,12 @@ public class DatabaseInitializer implements CommandLineRunner {
                 .filter(permission -> permission == null || !permissionNames.contains(permission.getName()))
                 .toList();
         if (filteredPermissions.size() != role.getPermissions().size()) {
-            role.setPermissions(new ArrayList<>(filteredPermissions));
-            this.roleRepository.save(role);
+            replaceRolePermissionsIfChanged(role, filteredPermissions);
         }
     }
 
     private void addPermissionsToRoleIfMissing(String roleName, List<Permission> permissions) {
-        Role role = this.roleRepository.findByName(roleName);
+        Role role = findRole(roleName);
         if (role == null || permissions == null || permissions.isEmpty()) {
             return;
         }
@@ -999,26 +1085,21 @@ public class DatabaseInitializer implements CommandLineRunner {
                 ? new ArrayList<>(role.getPermissions())
                 : new ArrayList<>();
 
-        boolean changed = false;
+        Set<Long> permissionIds = new HashSet<>();
+        currentPermissions.stream()
+                .filter(Objects::nonNull)
+                .forEach(permission -> permissionIds.add(permission.getId()));
         for (Permission permission : permissions) {
-            boolean exists = currentPermissions.stream()
-                    .filter(Objects::nonNull)
-                    .anyMatch(item -> item.getId() == permission.getId());
-            if (!exists) {
+            if (permission != null && permissionIds.add(permission.getId())) {
                 currentPermissions.add(permission);
-                changed = true;
             }
         }
-
-        if (changed) {
-            role.setPermissions(currentPermissions);
-            this.roleRepository.save(role);
-        }
+        replaceRolePermissionsIfChanged(role, currentPermissions);
     }
 
     private void seedUatUsers() {
-        Role ketoanRole = this.roleRepository.findByName("KETOAN");
-        Role ketoanTruongRole = this.roleRepository.findByName("KETOANTRUONG");
+        Role ketoanRole = findRole("KETOAN");
+        Role ketoanTruongRole = findRole("KETOANTRUONG");
 
         createUserIfNotExist("emp1@lotte.vn", "UAT EMP 1 Gương mẫu", ketoanRole);
         createUserIfNotExist("emp2@lotte.vn", "UAT EMP 2 Nghỉ việc", ketoanRole);

@@ -31,8 +31,7 @@ public class AccountingDossierOutboxScheduler {
         log.info("Processing {} outbox records...", pendingRecords.size());
         for (AccountingDossierOutbox record : pendingRecords) {
             record.setStatus("PROCESSING");
-            outboxRepository.saveAndFlush(record);
-            
+
             try {
                 // Execute mock notification delivery. In production, this would send an email.
                 sendMockNotification(record);
@@ -46,7 +45,6 @@ public class AccountingDossierOutboxScheduler {
                 record.setNextRetryAt(Instant.now().plus(1, ChronoUnit.MINUTES));
                 record.setErrorMessage(e.getMessage());
             }
-            outboxRepository.save(record);
         }
     }
 

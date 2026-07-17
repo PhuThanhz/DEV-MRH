@@ -16,7 +16,9 @@ import vn.system.app.modules.user.domain.User;
 @Entity
 @Table(name = "notifications",
         indexes = {
-            @Index(name = "idx_notif_recipient_type_link_created", columnList = "user_id, notification_type, action_link, created_at")
+            @Index(name = "idx_notif_recipient_type_link_created", columnList = "user_id, notification_type, action_link, created_at"),
+            @Index(name = "idx_notif_user_created", columnList = "user_id, created_at"),
+            @Index(name = "idx_notif_user_read_created", columnList = "user_id, is_read, created_at")
         })
 @Getter
 @Setter

@@ -10,7 +10,11 @@ import vn.system.app.modules.company.domain.response.ResCompanyDTO;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
 import vn.system.app.modules.userposition.domain.UserPosition;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import vn.system.app.modules.evaluation.repository.EvaluationRecordRepository;
@@ -59,6 +63,29 @@ public class EvaluationMapper {
         
         if (entity.getSections() != null) {
             dto.setSections(entity.getSections().stream().map(this::toResSectionDTO).collect(Collectors.toList()));
+        }
+        return dto;
+    }
+
+    private ResTemplateDTO toResTemplateSummaryDTO(EvaluationTemplate entity) {
+        if (entity == null) return null;
+        ResTemplateDTO dto = new ResTemplateDTO();
+        dto.setId(entity.getId());
+        dto.setName(entity.getName());
+        dto.setType(entity.getType());
+        dto.setDescription(entity.getDescription());
+        dto.setStatus(entity.getStatus());
+        dto.setCreatedAt(entity.getCreatedAt());
+        dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setCreatedBy(entity.getCreatedBy());
+        dto.setUpdatedBy(entity.getUpdatedBy());
+
+        if (entity.getCompany() != null && entity.getCompany().getId() > 0) {
+            ResCompanyDTO company = new ResCompanyDTO();
+            company.setId(entity.getCompany().getId());
+            company.setCode(entity.getCompany().getCode());
+            company.setName(entity.getCompany().getName());
+            dto.setCompany(company);
         }
         return dto;
     }
@@ -173,15 +200,56 @@ public class EvaluationMapper {
     }
 
     public ResEvaluationRecordDTO toResEvaluationRecordDTO(EvaluationRecord entity, List<EvaluationScore> scores, List<EvaluationComment> comments, List<EvaluationTrainingPlan> plans) {
+        return mapEvaluationRecord(entity, scores, comments, plans, Collections.emptyMap(), true);
+    }
+
+    public List<ResEvaluationRecordDTO> toResEvaluationRecordSummaryDTOs(List<EvaluationRecord> entities) {
+        if (entities == null || entities.isEmpty()) return List.of();
+
+        Set<String> userIds = entities.stream()
+                .flatMap(record -> java.util.stream.Stream.of(
+                        record.getEmployee(), record.getDirectManager(), record.getIndirectManager()))
+                .filter(java.util.Objects::nonNull)
+                .map(User::getId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<String, List<UserPosition>> positionsByUserId = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : userPositionRepository.findActiveFullByUserIds(new ArrayList<>(userIds)).stream()
+                        .filter(position -> position.getUser() != null)
+                        .collect(Collectors.groupingBy(position -> position.getUser().getId()));
+
+        return entities.stream()
+                .map(entity -> mapEvaluationRecord(
+                        entity, null, null, null, positionsByUserId, false))
+                .toList();
+    }
+
+    private ResEvaluationRecordDTO mapEvaluationRecord(
+            EvaluationRecord entity,
+            List<EvaluationScore> scores,
+            List<EvaluationComment> comments,
+            List<EvaluationTrainingPlan> plans,
+            Map<String, List<UserPosition>> positionsByUserId,
+            boolean includeFullTemplate) {
         if (entity == null) return null;
         ResEvaluationRecordDTO dto = new ResEvaluationRecordDTO();
         dto.setId(entity.getId());
         dto.setPeriodId(entity.getPeriod().getId());
         dto.setPeriod(toResPeriodDTO(entity.getPeriod()));
-        dto.setEmployee(toResEmployeeInfo(entity.getEmployee()));
-        dto.setDirectManager(toResEmployeeInfo(entity.getDirectManager()));
-        dto.setIndirectManager(toResEmployeeInfo(entity.getIndirectManager()));
-        dto.setTemplate(toResTemplateDTO(entity.getTemplate()));
+        dto.setEmployee(includeFullTemplate
+                ? toResEmployeeInfo(entity.getEmployee())
+                : toResEmployeeInfo(entity.getEmployee(), positionsByUserId));
+        dto.setDirectManager(includeFullTemplate
+                ? toResEmployeeInfo(entity.getDirectManager())
+                : toResEmployeeInfo(entity.getDirectManager(), positionsByUserId));
+        dto.setIndirectManager(includeFullTemplate
+                ? toResEmployeeInfo(entity.getIndirectManager())
+                : toResEmployeeInfo(entity.getIndirectManager(), positionsByUserId));
+        dto.setTemplate(includeFullTemplate
+                ? toResTemplateDTO(entity.getTemplate())
+                : toResTemplateSummaryDTO(entity.getTemplate()));
         dto.setStatus(entity.getStatus());
         dto.setEmployeeSubmittedAt(entity.getEmployeeSubmittedAt());
         dto.setManagerSubmittedAt(entity.getManagerSubmittedAt());
@@ -219,6 +287,27 @@ public class EvaluationMapper {
 
     public ResEvaluationRecordDTO.ResEmployeeInfo toResEmployeeInfo(User entity) {
         if (entity == null) return null;
+        List<UserPosition> positions;
+        try {
+            positions = userPositionRepository.findActiveFullByUserId(entity.getId());
+        } catch (Exception ignored) {
+            positions = List.of();
+        }
+        return toResEmployeeInfo(entity, positions);
+    }
+
+    private ResEvaluationRecordDTO.ResEmployeeInfo toResEmployeeInfo(
+            User entity,
+            Map<String, List<UserPosition>> positionsByUserId) {
+        if (entity == null) return null;
+        return toResEmployeeInfo(entity,
+                positionsByUserId.getOrDefault(entity.getId(), List.of()));
+    }
+
+    private ResEvaluationRecordDTO.ResEmployeeInfo toResEmployeeInfo(
+            User entity,
+            List<UserPosition> posList) {
+        if (entity == null) return null;
         ResEvaluationRecordDTO.ResEmployeeInfo dto = new ResEvaluationRecordDTO.ResEmployeeInfo();
         dto.setId(entity.getId());
         dto.setUsername(entity.getName()); // Tạm lấy Name vì model User trong dự án map Name
@@ -229,7 +318,6 @@ public class EvaluationMapper {
         dto.setEmail(entity.getEmail());
         
         try {
-            List<UserPosition> posList = userPositionRepository.findActiveFullByUserId(entity.getId());
             if (posList != null && !posList.isEmpty()) {
                 UserPosition chosen = null;
                 for (UserPosition p : posList) {

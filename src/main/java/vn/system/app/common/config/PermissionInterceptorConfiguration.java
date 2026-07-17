@@ -23,6 +23,8 @@ public class PermissionInterceptorConfiguration implements WebMvcConfigurer {
                 "/api/v1/users/profile",
                 // --- EVALUATION: Notifications (Skipping Permission Check) ---
                 "/api/v1/evaluation/notifications/**",
+                // Authenticated users only receive counts for their own user id.
+                "/api/v1/evaluation/task-counts",
                 "/api/v1/notifications/**", "/api/v1/notifications",
                 "/api/v1/ws-endpoint/**", "/api/v1/ws-endpoint"
         };

@@ -436,6 +436,7 @@ public class JdFlowService {
      * JD CHỜ TÔI XỬ LÝ (INBOX)
      * ==========================================
      */
+    @Transactional(readOnly = true)
     public List<ResJdInboxDTO> fetchInbox() {
 
         String email = SecurityUtil.getCurrentUserLogin().orElse("");
@@ -490,8 +491,9 @@ public class JdFlowService {
             }
 
             if ("REJECTED".equals(jd.getStatus())) {
-                JdFlowLogService.RejectInfo rejectInfo = logService.findRejectInfoFromLogs(jd.getLogs());
-                User lastSender = findLastSender(jd);
+                List<JdFlowLog> logs = jd.getLogs();
+                JdFlowLogService.RejectInfo rejectInfo = logService.findRejectInfoFromLogs(logs);
+                User lastSender = fromUser;
                 JdFlowLog rejectLog = findLatestRejectLog(jd);
 
                 boolean rejectorIsLastSender = lastSender != null
@@ -507,7 +509,7 @@ public class JdFlowService {
                     dto.setRejectorPositionCode(rejectInfo.getRejectorPositionCode());
                 } else {
                     // ✅ Hiện comment [TRẢ VỀ] từ người gửi về
-                    JdFlowLog returnLog = logService.findLatestReturnLog(jd.getId());
+                    JdFlowLog returnLog = logService.findLatestReturnLogFromLogs(logs);
                     if (returnLog != null && returnLog.getComment() != null) {
                         dto.setRejectComment(returnLog.getComment());
                         if (returnLog.getFromUser() != null) {
@@ -516,8 +518,8 @@ public class JdFlowService {
                     }
                 }
 
-                User senderBefore = logService.findLastSenderBeforeReject(jd.getId());
-                User submitUser = logService.findSubmitUser(jd.getId());
+                User senderBefore = logService.findLastSenderBeforeRejectFromLogs(logs);
+                User submitUser = logService.findSubmitUserFromLogs(logs);
                 boolean isCreator = submitUser != null
                         && flow.getCurrentUser() != null
                         && submitUser.getId().equals(flow.getCurrentUser().getId());

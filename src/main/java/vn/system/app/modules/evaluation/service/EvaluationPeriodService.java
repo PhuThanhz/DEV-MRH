@@ -27,6 +27,7 @@ import vn.system.app.modules.userposition.repository.UserPositionRepository;
 import vn.system.app.common.util.UserScopeContext;
 import vn.system.app.modules.evaluation.domain.response.ResPeriodProgressDTO;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -48,6 +49,7 @@ public class EvaluationPeriodService {
     private final CompanyRepository companyRepo;
     private final UserPositionRepository userPositionRepo;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final EvaluationTemplateValidator templateValidator;
 
     public EvaluationPeriodService(
             EvaluationPeriodRepository periodRepo,
@@ -60,7 +62,8 @@ public class EvaluationPeriodService {
             UserRepository userRepo,
             CompanyRepository companyRepo,
             UserPositionRepository userPositionRepo,
-            org.springframework.context.ApplicationEventPublisher eventPublisher) {
+            org.springframework.context.ApplicationEventPublisher eventPublisher,
+            EvaluationTemplateValidator templateValidator) {
         this.periodRepo = periodRepo;
         this.periodTemplateRepo = periodTemplateRepo;
         this.periodEmployeeRepo = periodEmployeeRepo;
@@ -72,6 +75,7 @@ public class EvaluationPeriodService {
         this.companyRepo = companyRepo;
         this.userPositionRepo = userPositionRepo;
         this.eventPublisher = eventPublisher;
+        this.templateValidator = templateValidator;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -157,6 +161,7 @@ public class EvaluationPeriodService {
         if (template.getStatus() != TemplateStatus.ACTIVE) {
             throw new IdInvalidException("Chỉ có thể dùng template đã ACTIVE");
         }
+        templateValidator.validateReadyForUse(template);
 
         if (template.getCompany() == null
                 || !Objects.equals(template.getCompany().getId(), period.getCompany().getId())) {
@@ -232,6 +237,7 @@ public class EvaluationPeriodService {
         if (template.getStatus() != TemplateStatus.ACTIVE) {
             throw new IdInvalidException("Chỉ có thể dùng template đã ACTIVE");
         }
+        templateValidator.validateReadyForUse(template);
 
         if (template.getCompany() == null
                 || !Objects.equals(template.getCompany().getId(), period.getCompany().getId())) {
@@ -370,6 +376,12 @@ public class EvaluationPeriodService {
         if (templates.isEmpty()) {
             throw new IdInvalidException("Kỳ đánh giá chưa gắn template nào");
         }
+        Set<Long> validatedTemplateIds = new HashSet<>();
+        for (PeriodTemplate periodTemplate : templates) {
+            EvaluationTemplate template = periodTemplate.getTemplate();
+            templateValidator.validateReadyForUse(template);
+            validatedTemplateIds.add(template.getId());
+        }
 
         // Validate deadlines
         if (period.getEmployeeStartDate() == null || period.getEmployeeDeadline() == null
@@ -382,6 +394,11 @@ public class EvaluationPeriodService {
 
         // Sinh evaluation_record cho từng nhân viên
         for (PeriodEmployee pe : employees) {
+            if (pe.getTemplate() == null || !validatedTemplateIds.contains(pe.getTemplate().getId())) {
+                throw new IdInvalidException(String.format(
+                        "Mẫu đánh giá của nhân viên %s không còn được gắn với kỳ đánh giá",
+                        pe.getEmployee().getName()));
+            }
             EvaluationRecord record = new EvaluationRecord();
             record.setPeriod(period);
             record.setEmployee(pe.getEmployee());

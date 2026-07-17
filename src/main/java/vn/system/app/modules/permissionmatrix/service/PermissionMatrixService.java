@@ -81,13 +81,13 @@ public class PermissionMatrixService {
         }
 
         // 5️⃣ Load ALL assignment của category (tối ưu hiệu năng)
-        List<Long> contentIds = contents.stream()
+        Set<Long> contentIds = contents.stream()
                 .map(PermissionContent::getId)
-                .toList();
+                .collect(Collectors.toSet());
 
-        List<PermissionAssignment> assignments = assignmentRepo.findAll().stream()
-                .filter(a -> contentIds.contains(a.getPermissionContent().getId()))
-                .collect(Collectors.toList());
+        List<PermissionAssignment> assignments = contentIds.isEmpty()
+                ? List.of()
+                : assignmentRepo.findByPermissionContent_IdIn(contentIds);
 
         Map<String, ProcessAction> assignmentMap = new HashMap<>();
         for (PermissionAssignment pa : assignments) {

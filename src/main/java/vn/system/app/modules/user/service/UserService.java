@@ -287,9 +287,15 @@ public class UserService {
         mt.setTotal(pageUser.getTotalElements());
         rs.setMeta(mt);
 
-        List<ResUserDTO> listUser = pageUser.getContent()
-                .stream()
-                .map(this::convertToResUserDTO)
+        List<User> users = pageUser.getContent();
+        List<String> userIds = users.stream().map(User::getId).toList();
+        Map<String, List<UserPosition>> positionsByUserId = userIds.isEmpty()
+                ? Map.of()
+                : userPositionRepository.findActiveFullByUserIds(userIds).stream()
+                        .collect(Collectors.groupingBy(position -> position.getUser().getId()));
+
+        List<ResUserDTO> listUser = users.stream()
+                .map(user -> convertToResUserDTO(user, positionsByUserId.getOrDefault(user.getId(), List.of())))
                 .collect(Collectors.toList());
 
         rs.setResult(listUser);
@@ -482,6 +488,10 @@ public class UserService {
     }
 
     public ResUserDTO convertToResUserDTO(User user) {
+        return convertToResUserDTO(user, userPositionRepository.findActiveFullByUserId(user.getId()));
+    }
+
+    private ResUserDTO convertToResUserDTO(User user, List<UserPosition> posList) {
 
         ResUserDTO res = new ResUserDTO();
 
@@ -545,9 +555,6 @@ public class UserService {
             userInfoBasic.setContractExpireDate(info.getContractExpireDate());
             res.setUserInfo(userInfoBasic);
         }
-
-        List<UserPosition> posList = userPositionRepository
-                .findByUser_IdAndActiveTrue(user.getId());
 
         if (posList != null && !posList.isEmpty()) {
             List<ResUserDTO.PositionBasic> positionBasics = posList.stream()

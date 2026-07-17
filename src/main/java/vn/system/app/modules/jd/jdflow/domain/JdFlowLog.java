@@ -13,7 +13,10 @@ import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 import vn.system.app.modules.user.domain.User;
 
 @Entity
-@Table(name = "jd_flow_logs")
+@Table(name = "jd_flow_logs", indexes = {
+        @Index(name = "idx_jd_flow_log_jd_created", columnList = "jd_id, created_at"),
+        @Index(name = "idx_jd_flow_log_jd_action_created", columnList = "jd_id, action, created_at")
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })

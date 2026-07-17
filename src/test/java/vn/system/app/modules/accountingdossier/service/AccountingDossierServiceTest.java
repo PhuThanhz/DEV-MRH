@@ -977,9 +977,6 @@ class AccountingDossierServiceTest {
                 .thenReturn(List.of(step));
         when(documentItemRepository.findByIdInAndDossierIdAndActiveTrue(List.of(55L), dossierId))
                 .thenReturn(List.of(doc));
-        when(documentItemRepository.save(any(AccountingDossierDocument.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
         ResAccountingDossierBulkActionDTO result = service.bulkCheckDocuments(
                 dossierId,
                 List.of(55L),
@@ -992,7 +989,7 @@ class AccountingDossierServiceTest {
         assertEquals(1, result.getTotal());
         assertEquals(1, result.getSuccessCount());
         assertEquals(0, result.getFailureCount());
-        verify(documentItemRepository, times(1)).save(doc);
+        verify(documentItemRepository, never()).save(any(AccountingDossierDocument.class));
     }
 
     @Test

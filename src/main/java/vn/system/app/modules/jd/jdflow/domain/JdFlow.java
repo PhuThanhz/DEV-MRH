@@ -14,7 +14,9 @@ import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 import vn.system.app.modules.user.domain.User;
 
 @Entity
-@Table(name = "jd_flow")
+@Table(name = "jd_flow", indexes = {
+        @Index(name = "idx_jd_flow_current_status", columnList = "current_user_id, status")
+})
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })

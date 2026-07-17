@@ -19,7 +19,9 @@ import vn.system.app.modules.evaluation.domain.enums.ScoredBy;
  *   - score = trung bình cộng score của các sub-tiêu chí con
  *   - không cho nhập tay
  *
- * RULE: weightedScore = score × criteria.weight × section.weight
+ * RULE: Trọng số tiêu chí cha là trọng số tuyệt đối trên toàn mẫu.
+ * weightedScore = score × criteria.weight; với tiêu chí con, trọng số cha được
+ * chia đều cho số tiêu chí con.
  */
 @Entity
 @Table(name = "evaluation_scores",
@@ -58,7 +60,8 @@ public class EvaluationScore {
     private Double score;
 
     /**
-     * Điểm có trọng số = score × criteria.weight × section.weight.
+     * Điểm có trọng số = score × trọng số tuyệt đối của tiêu chí.
+     * Tiêu chí con dùng trọng số tiêu chí cha chia đều cho số tiêu chí con.
      * Được tính và lưu mỗi khi nhập/sửa score.
      */
     @Column(name = "weighted_score", nullable = false)

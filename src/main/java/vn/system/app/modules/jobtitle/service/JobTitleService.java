@@ -164,13 +164,13 @@ public class JobTitleService {
      * GET ALL (PAGINATION)
      * ==========================================
      */
+    @Transactional(readOnly = true)
     public ResultPaginationDTO fetchAll(
             Specification<JobTitle> spec,
             Pageable pageable) {
 
         spec = Specification.where(spec)
-                .and(ScopeSpec.byCompanyScope("positionLevel.company.id"))
-                .and((root, query, cb) -> cb.equal(root.get("active"), true));
+                .and(ScopeSpec.byCompanyScope("positionLevel.company.id"));
 
         Page<JobTitle> page = jobTitleRepo.findAll(spec, pageable);
 

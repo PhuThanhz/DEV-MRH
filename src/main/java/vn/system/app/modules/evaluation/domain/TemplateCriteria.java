@@ -16,7 +16,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  *  - Nếu parentCriteria != null → đây là sub-tiêu chí con.
  *
  * RULE: Điểm tiêu chí cha = trung bình cộng điểm các sub-tiêu chí (không cho nhập tay).
- * RULE: Tổng weight của các tiêu chí cha trong cùng section phải bằng 1.0.
+ * RULE: Trọng số tiêu chí cha là trọng số tuyệt đối trên toàn mẫu; tổng trong
+ * cùng section phải bằng trọng số của section.
  */
 @Entity
 @Table(name = "template_criteria")
@@ -46,9 +47,9 @@ public class TemplateCriteria {
     private String description;
 
     /**
-     * Trọng số của tiêu chí này trong section.
+     * Trọng số tuyệt đối của tiêu chí này trong toàn mẫu.
      * Chỉ áp dụng cho tiêu chí cha (parentCriteria = null).
-     * Tổng weight các tiêu chí cha trong cùng section phải bằng 1.0.
+     * Tổng weight các tiêu chí cha phải bằng weight của section; tiêu chí con = 0.
      */
     @Column(nullable = false)
     private Double weight;

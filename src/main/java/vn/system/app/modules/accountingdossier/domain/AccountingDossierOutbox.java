@@ -8,6 +8,8 @@ import java.time.Instant;
 @Entity
 @Table(name = "accounting_dossier_outbox", uniqueConstraints = {
     @UniqueConstraint(columnNames = "idempotency_key")
+}, indexes = {
+    @Index(name = "idx_accounting_outbox_dispatch", columnList = "status, retry_count, next_retry_at, created_at")
 })
 @Getter
 @Setter

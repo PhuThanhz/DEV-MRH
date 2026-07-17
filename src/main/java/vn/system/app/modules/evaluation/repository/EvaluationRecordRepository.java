@@ -3,6 +3,7 @@ package vn.system.app.modules.evaluation.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,9 +19,24 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
 
     List<EvaluationRecord> findByPeriodId(Long periodId);
 
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    List<EvaluationRecord> findAllByOrderByCreatedAtDesc();
+
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    List<EvaluationRecord> findByPeriodIdOrderByCreatedAtDesc(Long periodId);
+
     List<EvaluationRecord> findByPeriodIdAndStatus(Long periodId, RecordStatus status);
 
     List<EvaluationRecord> findByStatus(RecordStatus status);
+
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    List<EvaluationRecord> findByStatusInOrderByCreatedAtDesc(java.util.Collection<RecordStatus> statuses);
 
     List<EvaluationRecord> findByPeriodIdAndStatusAndEmployeeIdIn(Long periodId, RecordStatus status, java.util.Collection<String> employeeIds);
 
@@ -34,6 +50,9 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
 
     org.springframework.data.domain.Page<EvaluationRecord> findByStatus(RecordStatus status, org.springframework.data.domain.Pageable pageable);
 
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     @Query(value = """
         SELECT r FROM EvaluationRecord r
         WHERE r.status = 'COMPLETED'
@@ -54,25 +73,54 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
     boolean existsByTemplateId(Long templateId);
 
     /** Danh sách form nhân viên mà quản lý trực tiếp cần chấm */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByDirectManagerIdAndStatusIn(String directManagerId, List<RecordStatus> statuses);
 
     /** Tất cả form của quản lý trực tiếp trong kỳ */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByPeriodIdAndDirectManagerId(Long periodId, String directManagerId);
 
     /** Tất cả form của quản lý trực tiếp */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByDirectManagerIdOrderByCreatedAtDesc(String directManagerId);
 
     /** Danh sách form mà quản lý gián tiếp cần phê duyệt */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByIndirectManagerIdAndStatusIn(String indirectManagerId, List<RecordStatus> statuses);
 
     /** Tất cả form của quản lý gián tiếp trong kỳ */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByPeriodIdAndIndirectManagerId(Long periodId, String indirectManagerId);
 
     /** Tất cả form của quản lý gián tiếp (lịch sử) */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByIndirectManagerIdOrderByCreatedAtDesc(String indirectManagerId);
 
     /** Các kỳ mà nhân viên tham gia (lịch sử) */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
     List<EvaluationRecord> findByEmployeeIdOrderByCreatedAtDesc(String employeeId);
+
+    long countByEmployeeIdAndStatusIn(String employeeId, java.util.Collection<RecordStatus> statuses);
+
+    long countByDirectManagerIdAndStatusIn(String directManagerId, java.util.Collection<RecordStatus> statuses);
+
+    long countByIndirectManagerIdAndStatusIn(String indirectManagerId, java.util.Collection<RecordStatus> statuses);
+
+    long countByStatusIn(java.util.Collection<RecordStatus> statuses);
 
     /**
      * Fetch record kèm template + sections + criteria (không fetch levels ở đây
