@@ -118,6 +118,11 @@ public class DatabaseInitializer implements CommandLineRunner {
             System.out.println(">>> SEED: ACCOUNTING_DOC Category created");
         }
 
+        ensureEvaluationCommentTypeSupportsOverrideNote();
+        ensureDashboardCompletenessIndexesExist();
+        ensureEvaluationWeightUnitsAreCorrect();
+        normalizeEvaluationSubcriteriaWeights();
+
         // Tự động seed quyền cho ACCOUNTING_DOCUMENTS
         String accModule = ACCOUNTING_DOCUMENTS_MODULE;
         List<Permission> existingAccPerms = allPermissions().stream()
@@ -518,7 +523,95 @@ public class DatabaseInitializer implements CommandLineRunner {
         if (countPermissions > 0 && countRoles > 0 && countUsers > 0) {
             System.out.println(">>> SKIP INIT DATABASE ~ ALREADY HAVE DATA...");
         } else
-            System.out.println(">>> END INIT DATABASE");
+        System.out.println(">>> END INIT DATABASE");
+    }
+
+    private void ensureEvaluationCommentTypeSupportsOverrideNote() {
+        try {
+            String columnType = this.jdbcTemplate.queryForObject("""
+                    SELECT COLUMN_TYPE
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'evaluation_comments'
+                      AND COLUMN_NAME = 'comment_type'
+                    """, String.class);
+
+            if (columnType != null && columnType.contains("APPROVER_OVERRIDE_NOTE")) {
+                System.out.println(">>> SCHEMA: evaluation_comments.comment_type already supports APPROVER_OVERRIDE_NOTE");
+                return;
+            }
+
+            this.jdbcTemplate.execute("""
+                    ALTER TABLE evaluation_comments
+                    MODIFY comment_type ENUM('SELF_REVIEW', 'MANAGER_FEEDBACK', 'REJECTION_REASON', 'APPROVER_OVERRIDE_NOTE') NOT NULL
+                    """);
+            System.out.println(">>> SCHEMA: evaluation_comments.comment_type upgraded with APPROVER_OVERRIDE_NOTE");
+        } catch (Exception e) {
+            System.out.println(">>> SCHEMA: skip evaluation_comments.comment_type upgrade: " + e.getMessage());
+        }
+    }
+
+    private void ensureDashboardCompletenessIndexesExist() {
+        try {
+            createIndexIfMissing("job_position_charts", "idx_job_position_charts_department", "department_id");
+            createIndexIfMissing("permission_categories", "idx_permission_categories_department_active", "department_id, active");
+            createIndexIfMissing("career_paths", "idx_career_paths_department_active", "department_id, active");
+            createIndexIfMissing("department_job_titles", "idx_department_job_titles_department_active", "department_id, active");
+        } catch (Exception e) {
+            System.out.println(">>> SCHEMA: skip index creation: " + e.getMessage());
+        }
+    }
+
+    private void createIndexIfMissing(String tableName, String indexName, String columns) {
+        try {
+            Integer exists = this.jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*) FROM information_schema.statistics
+                    WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+                    """, Integer.class, tableName, indexName);
+            if (exists == null || exists == 0) {
+                this.jdbcTemplate.execute("CREATE INDEX `" + indexName + "` ON `" + tableName + "` (" + columns + ")");
+                System.out.println(">>> SCHEMA: index " + indexName + " created successfully.");
+            }
+        } catch (Exception e) {
+            System.out.println(">>> SCHEMA: skip creating index " + indexName + ": " + e.getMessage());
+        }
+    }
+
+    private void ensureEvaluationWeightUnitsAreCorrect() {
+        try {
+            int secRows = this.jdbcTemplate.update("""
+                    UPDATE template_sections
+                    SET weight = weight / 100.0
+                    WHERE id > 0 AND weight > 1.0
+                    """);
+            int critRows = this.jdbcTemplate.update("""
+                    UPDATE template_criteria
+                    SET weight = weight / 100.0
+                    WHERE id > 0 AND weight > 1.0
+                    """);
+            if (secRows > 0 || critRows > 0) {
+                System.out.println(">>> SCHEMA: Fixed weight units (sections updated: " + secRows + ", criteria updated: " + critRows + ")");
+            }
+        } catch (Exception e) {
+            System.out.println(">>> SCHEMA: skip weight units fix: " + e.getMessage());
+        }
+    }
+
+    private void normalizeEvaluationSubcriteriaWeights() {
+        try {
+            int rows = this.jdbcTemplate.update("""
+                    UPDATE template_criteria
+                    SET weight = 0
+                    WHERE id > 0
+                      AND parent_id IS NOT NULL
+                      AND weight <> 0
+                    """);
+            if (rows > 0) {
+                System.out.println(">>> SCHEMA: Normalized " + rows + " legacy sub-criteria weights to 0.");
+            }
+        } catch (Exception e) {
+            System.out.println(">>> SCHEMA: skip subcriteria weight normalization: " + e.getMessage());
+        }
     }
 
     private void seedAccountingApprovalDelegations() {
@@ -964,6 +1057,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionIfMissing(newPerms, "Danh sách kỳ đánh giá", "/api/v1/evaluation/periods", "GET", periodModule);
         addPermissionIfMissing(newPerms, "Gắn mẫu vào kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/templates", "POST", periodModule);
         addPermissionIfMissing(newPerms, "Danh sách mẫu trong kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/templates", "GET", periodModule);
+        addPermissionIfMissing(newPerms, "Gỡ mẫu khỏi kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/templates/{templateId}", "DELETE", periodModule);
         addPermissionIfMissing(newPerms, "Thêm nhân viên vào kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/employees", "POST", periodModule);
         addPermissionIfMissing(newPerms, "Hủy hồ sơ nhân viên trong kỳ đánh giá", "/api/v1/evaluation/period-employees/{id}/cancel", "PATCH", periodModule);
         addPermissionIfMissing(newPerms, "Danh sách nhân viên trong kỳ đánh giá", "/api/v1/evaluation/periods/{periodId}/employees", "GET", periodModule);

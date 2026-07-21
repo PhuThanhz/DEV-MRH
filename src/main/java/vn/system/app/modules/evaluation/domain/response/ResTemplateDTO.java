@@ -46,6 +46,8 @@ public class ResTemplateDTO {
         private String measurementMethod;
         private String description;
         private Double weight;
+        /** Trọng số thực dùng để tính điểm; tiêu chí con được chia từ tiêu chí cha. */
+        private Double effectiveWeight;
         private Integer displayOrder;
         private List<ResCriteriaDTO> subCriteria;
         private List<ResCriteriaLevelDTO> levels;

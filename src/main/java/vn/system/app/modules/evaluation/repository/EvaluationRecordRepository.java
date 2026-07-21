@@ -108,6 +108,104 @@ public interface EvaluationRecordRepository extends JpaRepository<EvaluationReco
             "template", "template.company" })
     List<EvaluationRecord> findByIndirectManagerIdOrderByCreatedAtDesc(String indirectManagerId);
 
+    /**
+     * Hồ sơ người dùng có liên quan hoặc đã từng xử lý.
+     * Dùng cho tab lịch sử để form không biến mất sau khi quản lý nộp lên bước duyệt
+     * hoặc sau khi có điều chuyển người xử lý.
+     */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    @Query("""
+        SELECT DISTINCT r FROM EvaluationRecord r
+        WHERE (r.directManager IS NOT NULL AND r.directManager.id = :userId)
+           OR (r.indirectManager IS NOT NULL AND r.indirectManager.id = :userId)
+           OR EXISTS (
+                SELECT 1 FROM EvaluationHistory h
+                WHERE h.evaluationRecord = r
+                  AND h.performedBy IS NOT NULL
+                  AND h.performedBy.id = :userId
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationComment c
+                WHERE c.evaluationRecord = r
+                  AND c.writtenBy IS NOT NULL
+                  AND c.writtenBy.id = :userId
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationScoreAudit a
+                WHERE a.evaluationRecord = r
+                  AND a.changedBy IS NOT NULL
+                  AND a.changedBy.id = :userId
+           )
+        ORDER BY r.createdAt DESC
+    """)
+    List<EvaluationRecord> findInvolvedRecordsForUser(@Param("userId") String userId);
+
+    /** Hồ sơ quản lý trực tiếp đang phụ trách hoặc đã từng chấm/nộp. */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    @Query("""
+        SELECT DISTINCT r FROM EvaluationRecord r
+        WHERE (r.directManager IS NOT NULL AND r.directManager.id = :userId)
+           OR EXISTS (
+                SELECT 1 FROM EvaluationHistory h
+                WHERE h.evaluationRecord = r
+                  AND h.performedBy IS NOT NULL
+                  AND h.performedBy.id = :userId
+                  AND h.toStatus IN ('PENDING_APPROVAL', 'MANAGER_REVIEWING')
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationComment c
+                WHERE c.evaluationRecord = r
+                  AND c.writtenBy IS NOT NULL
+                  AND c.writtenBy.id = :userId
+                  AND c.commentType = 'MANAGER_FEEDBACK'
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationScoreAudit a
+                WHERE a.evaluationRecord = r
+                  AND a.changedBy IS NOT NULL
+                  AND a.changedBy.id = :userId
+                  AND a.scoredBy = 'MANAGER'
+           )
+        ORDER BY r.createdAt DESC
+    """)
+    List<EvaluationRecord> findManagerInvolvedRecordsForUser(@Param("userId") String userId);
+
+    /** Hồ sơ người duyệt cuối đang phụ trách hoặc đã từng duyệt/trả lại/điều chỉnh điểm. */
+    @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
+            "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",
+            "template", "template.company" })
+    @Query("""
+        SELECT DISTINCT r FROM EvaluationRecord r
+        WHERE (r.indirectManager IS NOT NULL AND r.indirectManager.id = :userId)
+           OR EXISTS (
+                SELECT 1 FROM EvaluationHistory h
+                WHERE h.evaluationRecord = r
+                  AND h.performedBy IS NOT NULL
+                  AND h.performedBy.id = :userId
+                  AND h.toStatus IN ('COMPLETED', 'REVISION_NEEDED')
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationComment c
+                WHERE c.evaluationRecord = r
+                  AND c.writtenBy IS NOT NULL
+                  AND c.writtenBy.id = :userId
+                  AND c.commentType IN ('REJECTION_REASON', 'APPROVER_OVERRIDE_NOTE')
+           )
+           OR EXISTS (
+                SELECT 1 FROM EvaluationScoreAudit a
+                WHERE a.evaluationRecord = r
+                  AND a.changedBy IS NOT NULL
+                  AND a.changedBy.id = :userId
+                  AND a.scoredBy = 'APPROVER'
+           )
+        ORDER BY r.createdAt DESC
+    """)
+    List<EvaluationRecord> findApproverInvolvedRecordsForUser(@Param("userId") String userId);
+
     /** Các kỳ mà nhân viên tham gia (lịch sử) */
     @EntityGraph(attributePaths = { "period", "period.company", "employee", "employee.userInfo",
             "directManager", "directManager.userInfo", "indirectManager", "indirectManager.userInfo",

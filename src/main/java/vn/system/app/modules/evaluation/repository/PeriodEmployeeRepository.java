@@ -20,6 +20,9 @@ public interface PeriodEmployeeRepository extends JpaRepository<PeriodEmployee, 
 
     boolean existsByPeriodIdAndEmployeeId(Long periodId, String employeeId);
 
+    boolean existsByPeriodIdAndTemplateIdAndStatus(
+            Long periodId, Long templateId, PeriodEmployeeStatus status);
+
     /** Tìm nhân viên theo quản lý trực tiếp trong kỳ */
     List<PeriodEmployee> findByPeriodIdAndDirectManagerId(Long periodId, String directManagerId);
 

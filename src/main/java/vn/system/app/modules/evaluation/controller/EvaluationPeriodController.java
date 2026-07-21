@@ -17,6 +17,8 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.modules.evaluation.domain.*;
 import vn.system.app.modules.evaluation.domain.response.*;
 import vn.system.app.modules.evaluation.domain.enums.TemplateType;
+import java.time.Instant;
+import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.evaluation.service.EvaluationMapper;
 import vn.system.app.modules.evaluation.service.EvaluationPeriodService;
 
@@ -93,6 +95,15 @@ public class EvaluationPeriodController {
         return ResponseEntity.ok(periodService.fetchTemplatesByPeriod(periodId).stream().map(mapper::toResPeriodTemplateDTO).toList());
     }
 
+    @DeleteMapping("/periods/{periodId}/templates/{templateId}")
+    @ApiMessage("Gỡ template khỏi kỳ đánh giá")
+    public ResponseEntity<Void> removeTemplate(
+            @PathVariable Long periodId,
+            @PathVariable Long templateId) {
+        periodService.removeTemplateFromPeriod(periodId, templateId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ═══════════════ PERIOD EMPLOYEES ═══════════════
 
     @PostMapping("/periods/{periodId}/employees")
@@ -136,5 +147,18 @@ public class EvaluationPeriodController {
     public ResponseEntity<List<ResEvaluationRecordDTO>> getUnfinishedRecords(@PathVariable Long id) {
         return ResponseEntity.ok(periodService.getUnfinishedRecords(id).stream()
                 .map(mapper::toResEvaluationRecordDTO).toList());
+    }
+
+    @PatchMapping("/periods/{id}/adjust-start-date")
+    @ApiMessage("Điều chỉnh ngày mở cổng tự đánh giá")
+    public ResponseEntity<ResPeriodDTO> adjustStartDate(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String startDateStr = body.get("employeeStartDate");
+        if (startDateStr == null || startDateStr.isBlank()) {
+            throw new IdInvalidException("Ngày mở cổng không được để trống");
+        }
+        Instant newStartDate = Instant.parse(startDateStr);
+        return ResponseEntity.ok(mapper.toResPeriodDTO(periodService.adjustStartDate(id, newStartDate)));
     }
 }

@@ -33,6 +33,7 @@ public class ResEvaluationRecordDTO {
     private Double approverTotalScore;
     private String finalGrade;
     private List<ResScoreDTO> scores;
+    private ResScoringSummaryDTO scoringSummary;
     private List<ResCommentDTO> comments;
     private List<ResTrainingPlanDTO> trainingPlans;
 
@@ -59,7 +60,24 @@ public class ResEvaluationRecordDTO {
         private Long criteriaId;
         private ScoredBy scoredBy;
         private Double score;
+        private Double effectiveWeight;
         private Double weightedScore;
+    }
+
+    @Data
+    public static class ResScoringSummaryDTO {
+        private Double employeeTotalScore;
+        private Double managerTotalScore;
+        private Double approverTotalScore;
+        private List<ResSectionScoreDTO> sections;
+    }
+
+    @Data
+    public static class ResSectionScoreDTO {
+        private Long sectionId;
+        private Double employeeScore;
+        private Double managerScore;
+        private Double approverScore;
     }
 
     @Data

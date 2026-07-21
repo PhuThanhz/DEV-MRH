@@ -50,6 +50,9 @@ class EvaluationModuleUatTest {
     private PeriodEmployeeRepository periodEmployeeRepo;
 
     @Mock
+    private PeriodTemplateRepository periodTemplateRepo;
+
+    @Mock
     private UserRepository userRepo;
 
     @Mock
@@ -137,6 +140,56 @@ class EvaluationModuleUatTest {
         assertEquals(RecordStatus.CANCELLED, record.getStatus());
         verify(recordRepo, times(1)).save(record);
         verify(historyRepo, times(1)).save(any(EvaluationHistory.class));
+    }
+
+    @Test
+    void testRemoveUnusedTemplateFromDraftPeriod() {
+        Long periodId = 1L;
+        Long templateId = 10L;
+
+        EvaluationPeriod period = new EvaluationPeriod();
+        period.setId(periodId);
+        period.setStatus(PeriodStatus.DRAFT);
+
+        PeriodTemplate linkedTemplate = new PeriodTemplate();
+        linkedTemplate.setId(100L);
+        linkedTemplate.setPeriod(period);
+
+        when(periodRepo.findById(periodId)).thenReturn(Optional.of(period));
+        when(periodTemplateRepo.findByPeriodIdAndTemplateId(periodId, templateId))
+                .thenReturn(Optional.of(linkedTemplate));
+        when(periodEmployeeRepo.existsByPeriodIdAndTemplateIdAndStatus(
+                periodId, templateId, PeriodEmployeeStatus.ACTIVE)).thenReturn(false);
+
+        periodService.removeTemplateFromPeriod(periodId, templateId);
+
+        verify(periodTemplateRepo).delete(linkedTemplate);
+    }
+
+    @Test
+    void testCannotRemoveTemplateWhileItHasActiveEmployees() {
+        Long periodId = 1L;
+        Long templateId = 10L;
+
+        EvaluationPeriod period = new EvaluationPeriod();
+        period.setId(periodId);
+        period.setStatus(PeriodStatus.DRAFT);
+
+        PeriodTemplate linkedTemplate = new PeriodTemplate();
+        linkedTemplate.setId(100L);
+        linkedTemplate.setPeriod(period);
+
+        when(periodRepo.findById(periodId)).thenReturn(Optional.of(period));
+        when(periodTemplateRepo.findByPeriodIdAndTemplateId(periodId, templateId))
+                .thenReturn(Optional.of(linkedTemplate));
+        when(periodEmployeeRepo.existsByPeriodIdAndTemplateIdAndStatus(
+                periodId, templateId, PeriodEmployeeStatus.ACTIVE)).thenReturn(true);
+
+        IdInvalidException error = assertThrows(IdInvalidException.class,
+                () -> periodService.removeTemplateFromPeriod(periodId, templateId));
+
+        assertTrue(error.getMessage().contains("gỡ toàn bộ nhân sự"));
+        verify(periodTemplateRepo, never()).delete(any());
     }
 
     /**
@@ -874,5 +927,57 @@ class EvaluationModuleUatTest {
         assertNotNull(secondOverride);
         // Lần reject thứ 2 phải tiếp tục nới hạn xa hơn lần 1
         assertTrue(secondOverride.isAfter(firstOverride));
+    }
+
+    @Test
+    void testAdjustStartDateForActivePeriod() {
+        // Arrange
+        Long periodId = 500L;
+        EvaluationPeriod period = new EvaluationPeriod();
+        period.setId(periodId);
+        period.setStatus(PeriodStatus.ACTIVE);
+        period.setEmployeeDeadline(Instant.now().plus(5, ChronoUnit.DAYS));
+        period.setManagerDeadline(Instant.now().plus(10, ChronoUnit.DAYS));
+        period.setApprovalDeadline(Instant.now().plus(15, ChronoUnit.DAYS));
+
+        User employee1 = new User();
+        employee1.setId("emp-01");
+        User employee2 = new User();
+        employee2.setId("emp-02");
+
+        EvaluationRecord record1 = new EvaluationRecord();
+        record1.setId(1001L);
+        record1.setStatus(RecordStatus.NOT_STARTED);
+        record1.setEmployee(employee1);
+
+        EvaluationRecord record2 = new EvaluationRecord();
+        record2.setId(1002L);
+        record2.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+        record2.setEmployee(employee2);
+
+        when(periodRepo.findById(periodId)).thenReturn(Optional.of(period));
+        when(periodRepo.save(any(EvaluationPeriod.class))).thenAnswer(i -> i.getArgument(0));
+
+        // Act 1: Đổi ngày mở về tương lai (+2 ngày) -> Cả 2 record phải bị khóa về NOT_STARTED
+        Instant futureStartDate = Instant.now().plus(2, ChronoUnit.DAYS);
+        when(recordRepo.findByPeriodIdAndStatus(periodId, RecordStatus.EMPLOYEE_DRAFTING))
+                .thenReturn(List.of(record2));
+
+        EvaluationPeriod result1 = periodService.adjustStartDate(periodId, futureStartDate);
+
+        assertEquals(RecordStatus.NOT_STARTED, record2.getStatus());
+        assertEquals(futureStartDate, result1.getEmployeeStartDate());
+        verify(recordRepo, times(1)).saveAll(anyList());
+
+        // Act 2: Đổi ngày mở về quá khứ (-1 ngày) -> Các record NOT_STARTED (bao gồm record1 và record2 vừa bị khóa) phải mở thành EMPLOYEE_DRAFTING
+        Instant pastStartDate = Instant.now().minus(1, ChronoUnit.DAYS);
+        when(recordRepo.findByPeriodIdAndStatus(periodId, RecordStatus.NOT_STARTED))
+                .thenReturn(List.of(record1, record2));
+
+        EvaluationPeriod result2 = periodService.adjustStartDate(periodId, pastStartDate);
+
+        assertEquals(RecordStatus.EMPLOYEE_DRAFTING, record1.getStatus());
+        assertEquals(RecordStatus.EMPLOYEE_DRAFTING, record2.getStatus());
+        assertEquals(pastStartDate, result2.getEmployeeStartDate());
     }
 }

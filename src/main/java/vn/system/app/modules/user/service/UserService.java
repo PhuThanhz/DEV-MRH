@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.criteria.JoinType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -214,6 +215,8 @@ public class UserService {
                 Specification<User> scopeSpec = (root, query, cb) -> {
                     var sub = query.subquery(String.class);
                     var posRoot = sub.from(UserPosition.class);
+                    var djtDept = posRoot.join("departmentJobTitle", JoinType.LEFT).join("department", JoinType.LEFT);
+                    var sjtDept = posRoot.join("sectionJobTitle", JoinType.LEFT).join("section", JoinType.LEFT).join("department", JoinType.LEFT);
 
                     sub.select(posRoot.get("user").get("id"))
                             .where(cb.and(
@@ -221,12 +224,10 @@ public class UserService {
                                     cb.or(
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                    posRoot.get("departmentJobTitle").get("department").get("id")
-                                                            .in(scope.departmentIds())),
+                                                    djtDept.get("id").in(scope.departmentIds())),
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "SECTION"),
-                                                    posRoot.get("sectionJobTitle").get("section").get("department").get("id")
-                                                            .in(scope.departmentIds())))));
+                                                    sjtDept.get("id").in(scope.departmentIds())))));
 
                     return root.get("id").in(sub);
                 };
@@ -250,6 +251,9 @@ public class UserService {
                 Specification<User> scopeSpec = (root, query, cb) -> {
                     var sub = query.subquery(String.class);
                     var posRoot = sub.from(UserPosition.class);
+                    var cjtCompany = posRoot.join("companyJobTitle", JoinType.LEFT).join("company", JoinType.LEFT);
+                    var djtCompany = posRoot.join("departmentJobTitle", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
+                    var sjtCompany = posRoot.join("sectionJobTitle", JoinType.LEFT).join("section", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
 
                     sub.select(posRoot.get("user").get("id"))
                             .where(cb.and(
@@ -257,18 +261,13 @@ public class UserService {
                                     cb.or(
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "COMPANY"),
-                                                    posRoot.get("companyJobTitle").get("company").get("id")
-                                                            .in(scope.companyIds())),
+                                                    cjtCompany.get("id").in(scope.companyIds())),
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                    posRoot.get("departmentJobTitle").get("department").get("company")
-                                                            .get("id")
-                                                            .in(scope.companyIds())),
+                                                    djtCompany.get("id").in(scope.companyIds())),
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "SECTION"),
-                                                    posRoot.get("sectionJobTitle").get("section").get("department")
-                                                            .get("company").get("id")
-                                                            .in(scope.companyIds())))));
+                                                    sjtCompany.get("id").in(scope.companyIds())))));
 
                     return root.get("id").in(sub);
                 };
@@ -644,7 +643,7 @@ public class UserService {
     // ======================================================
     // FETCH CROSS COMPANY USERS WITH PAGINATION
     // ======================================================
-    public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, Long departmentId, Long sectionId, Pageable pageable) {
+    public ResultPaginationDTO fetchCrossCompanyUsers(String search, Long companyId, java.util.List<Long> departmentIds, Long sectionId, Boolean hasDirectManager, Pageable pageable) {
         Specification<User> spec = (root, query, cb) -> cb.equal(root.get("active"), true);
 
         UserScopeContext.UserScope scope = UserScopeContext.get();
@@ -661,6 +660,9 @@ public class UserService {
                 Specification<User> scopeSpec = (root, query, cb) -> {
                     var sub = query.subquery(String.class);
                     var posRoot = sub.from(UserPosition.class);
+                    var cjtCompany = posRoot.join("companyJobTitle", JoinType.LEFT).join("company", JoinType.LEFT);
+                    var djtCompany = posRoot.join("departmentJobTitle", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
+                    var sjtCompany = posRoot.join("sectionJobTitle", JoinType.LEFT).join("section", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
 
                     sub.select(posRoot.get("user").get("id"))
                             .where(cb.and(
@@ -668,18 +670,13 @@ public class UserService {
                                     cb.or(
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "COMPANY"),
-                                                    posRoot.get("companyJobTitle").get("company").get("id")
-                                                            .in(scope.companyIds())),
+                                                    cjtCompany.get("id").in(scope.companyIds())),
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "DEPARTMENT"),
-                                                    posRoot.get("departmentJobTitle").get("department").get("company")
-                                                            .get("id")
-                                                            .in(scope.companyIds())),
+                                                    djtCompany.get("id").in(scope.companyIds())),
                                             cb.and(
                                                     cb.equal(posRoot.get("source"), "SECTION"),
-                                                    posRoot.get("sectionJobTitle").get("section").get("department")
-                                                            .get("company").get("id")
-                                                            .in(scope.companyIds())))));
+                                                    sjtCompany.get("id").in(scope.companyIds())))));
 
                     return root.get("id").in(sub);
                 };
@@ -702,13 +699,18 @@ public class UserService {
             Specification<User> companySpec = (root, query, cb) -> {
                 var sub = query.subquery(String.class);
                 var posRoot = sub.from(UserPosition.class);
+                // LEFT JOIN từng association: mỗi user_position chỉ có đúng 1 FK khác null,
+                // navigate ngầm bằng .get() sẽ sinh INNER JOIN cả 3 → loại sạch mọi row.
+                var cjtCompany = posRoot.join("companyJobTitle", JoinType.LEFT).join("company", JoinType.LEFT);
+                var djtCompany = posRoot.join("departmentJobTitle", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
+                var sjtCompany = posRoot.join("sectionJobTitle", JoinType.LEFT).join("section", JoinType.LEFT).join("department", JoinType.LEFT).join("company", JoinType.LEFT);
                 sub.select(posRoot.get("user").get("id"))
                         .where(cb.and(
                                 cb.isTrue(posRoot.get("active")),
                                 cb.or(
-                                        cb.and(cb.equal(posRoot.get("source"), "COMPANY"), cb.equal(posRoot.get("companyJobTitle").get("company").get("id"), companyId)),
-                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), cb.equal(posRoot.get("departmentJobTitle").get("department").get("company").get("id"), companyId)),
-                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("company").get("id"), companyId))
+                                        cb.and(cb.equal(posRoot.get("source"), "COMPANY"), cb.equal(cjtCompany.get("id"), companyId)),
+                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), cb.equal(djtCompany.get("id"), companyId)),
+                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), cb.equal(sjtCompany.get("id"), companyId))
                                 )
                         ));
                 return root.get("id").in(sub);
@@ -716,16 +718,18 @@ public class UserService {
             spec = spec.and(companySpec);
         }
 
-        if (departmentId != null) {
+        if (departmentIds != null && !departmentIds.isEmpty()) {
             Specification<User> deptSpec = (root, query, cb) -> {
                 var sub = query.subquery(String.class);
                 var posRoot = sub.from(UserPosition.class);
+                var djtDept = posRoot.join("departmentJobTitle", JoinType.LEFT).join("department", JoinType.LEFT);
+                var sjtDept = posRoot.join("sectionJobTitle", JoinType.LEFT).join("section", JoinType.LEFT).join("department", JoinType.LEFT);
                 sub.select(posRoot.get("user").get("id"))
                         .where(cb.and(
                                 cb.isTrue(posRoot.get("active")),
                                 cb.or(
-                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), cb.equal(posRoot.get("departmentJobTitle").get("department").get("id"), departmentId)),
-                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), cb.equal(posRoot.get("sectionJobTitle").get("section").get("department").get("id"), departmentId))
+                                        cb.and(cb.equal(posRoot.get("source"), "DEPARTMENT"), djtDept.get("id").in(departmentIds)),
+                                        cb.and(cb.equal(posRoot.get("source"), "SECTION"), sjtDept.get("id").in(departmentIds))
                                 )
                         ));
                 return root.get("id").in(sub);
@@ -746,6 +750,24 @@ public class UserService {
                 return root.get("id").in(sub);
             };
             spec = spec.and(sectionSpec);
+        }
+
+        if (hasDirectManager != null) {
+            Specification<User> directManagerSpec = (root, query, cb) -> {
+                jakarta.persistence.criteria.Join<User, User> managerJoin = root.join("directManager", jakarta.persistence.criteria.JoinType.LEFT);
+                if (hasDirectManager) {
+                    return cb.and(
+                        cb.isNotNull(root.get("directManager")),
+                        cb.isNotNull(managerJoin.get("directManager"))
+                    );
+                } else {
+                    return cb.or(
+                        cb.isNull(root.get("directManager")),
+                        cb.isNull(managerJoin.get("directManager"))
+                    );
+                }
+            };
+            spec = spec.and(directManagerSpec);
         }
 
         Page<User> pageUser = this.userRepository.findAll(spec, pageable);
@@ -791,6 +813,14 @@ public class UserService {
             if (user.getDirectManager() != null) {
                 dto.setDirectManagerId(user.getDirectManager().getId());
                 dto.setDirectManagerName(user.getDirectManager().getName());
+                dto.setDirectManagerCompanyIds(userPositionRepository.findActiveCompanyIdsByUserId(user.getDirectManager().getId()));
+                
+                User indirect = user.getDirectManager().getDirectManager();
+                if (indirect != null) {
+                    dto.setIndirectManagerId(indirect.getId());
+                    dto.setIndirectManagerName(indirect.getName());
+                    dto.setIndirectManagerCompanyIds(userPositionRepository.findActiveCompanyIdsByUserId(indirect.getId()));
+                }
             }
             
             List<UserPosition> userPos = positionsByUser.getOrDefault(user.getId(), List.of());

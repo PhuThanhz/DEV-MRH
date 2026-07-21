@@ -116,6 +116,7 @@ public class EvaluationMapper {
         dto.setMeasurementMethod(entity.getMeasurementMethod());
         dto.setDescription(entity.getDescription());
         dto.setWeight(entity.getWeight());
+        dto.setEffectiveWeight(resolveEffectiveWeight(entity));
         dto.setDisplayOrder(entity.getDisplayOrder());
         
         if (entity.getSubCriteria() != null) {
@@ -274,6 +275,7 @@ public class EvaluationMapper {
         
         if (scores != null) {
             dto.setScores(scores.stream().map(this::toResScoreDTO).collect(Collectors.toList()));
+            dto.setScoringSummary(toResScoringSummaryDTO(entity, scores));
         }
         if (comments != null) {
             dto.setComments(comments.stream().map(this::toResCommentDTO).collect(Collectors.toList()));
@@ -401,8 +403,88 @@ public class EvaluationMapper {
         dto.setCriteriaId(entity.getCriteria().getId());
         dto.setScoredBy(entity.getScoredBy());
         dto.setScore(entity.getScore());
+        dto.setEffectiveWeight(resolveEffectiveWeight(entity.getCriteria()));
         dto.setWeightedScore(entity.getWeightedScore());
         return dto;
+    }
+
+    public ResScoreUpdateDTO toResScoreUpdateDTO(EvaluationRecord record, List<EvaluationScore> scores) {
+        ResScoreUpdateDTO dto = new ResScoreUpdateDTO();
+        dto.setScores(scores.stream().map(this::toResScoreDTO).toList());
+        dto.setScoringSummary(toResScoringSummaryDTO(record, scores));
+        return dto;
+    }
+
+    public ResEvaluationRecordDTO.ResScoringSummaryDTO toResScoringSummaryDTO(
+            EvaluationRecord record, List<EvaluationScore> scores) {
+        ResEvaluationRecordDTO.ResScoringSummaryDTO summary = new ResEvaluationRecordDTO.ResScoringSummaryDTO();
+        List<ResEvaluationRecordDTO.ResSectionScoreDTO> sectionSummaries = new ArrayList<>();
+        Map<Long, ResEvaluationRecordDTO.ResSectionScoreDTO> sectionById = new java.util.LinkedHashMap<>();
+
+        if (record.getTemplate() != null && record.getTemplate().getSections() != null) {
+            record.getTemplate().getSections().forEach(section -> {
+                ResEvaluationRecordDTO.ResSectionScoreDTO sectionSummary = new ResEvaluationRecordDTO.ResSectionScoreDTO();
+                sectionSummary.setSectionId(section.getId());
+                sectionById.put(section.getId(), sectionSummary);
+                sectionSummaries.add(sectionSummary);
+            });
+        }
+
+        Set<Long> parentCriteriaIds = scores.stream()
+                .map(EvaluationScore::getCriteria)
+                .map(TemplateCriteria::getParentCriteria)
+                .filter(java.util.Objects::nonNull)
+                .map(TemplateCriteria::getId)
+                .collect(Collectors.toSet());
+
+        double employeeTotal = 0;
+        double managerTotal = 0;
+        double approverTotal = 0;
+        boolean hasEmployee = false;
+        boolean hasManager = false;
+        boolean hasApprover = false;
+
+        for (EvaluationScore score : scores) {
+            if (score.getCriteria() == null || parentCriteriaIds.contains(score.getCriteria().getId())) continue;
+            double weightedScore = score.getWeightedScore() == null ? 0 : score.getWeightedScore();
+            Long sectionId = score.getCriteria().getSection().getId();
+            ResEvaluationRecordDTO.ResSectionScoreDTO section = sectionById.get(sectionId);
+            switch (score.getScoredBy()) {
+                case EMPLOYEE -> {
+                    employeeTotal += weightedScore;
+                    hasEmployee = true;
+                    if (section != null) section.setEmployeeScore(valueOrZero(section.getEmployeeScore()) + weightedScore);
+                }
+                case MANAGER -> {
+                    managerTotal += weightedScore;
+                    hasManager = true;
+                    if (section != null) section.setManagerScore(valueOrZero(section.getManagerScore()) + weightedScore);
+                }
+                case APPROVER -> {
+                    approverTotal += weightedScore;
+                    hasApprover = true;
+                    if (section != null) section.setApproverScore(valueOrZero(section.getApproverScore()) + weightedScore);
+                }
+            }
+        }
+
+        summary.setEmployeeTotalScore(hasEmployee ? employeeTotal : null);
+        summary.setManagerTotalScore(hasManager ? managerTotal : null);
+        summary.setApproverTotalScore(hasApprover ? approverTotal : null);
+        summary.setSections(sectionSummaries);
+        return summary;
+    }
+
+    private double resolveEffectiveWeight(TemplateCriteria criteria) {
+        if (criteria == null) return 0;
+        if (criteria.getParentCriteria() == null) return criteria.getWeight() == null ? 0 : criteria.getWeight();
+        TemplateCriteria parent = criteria.getParentCriteria();
+        int siblingCount = parent.getSubCriteria() == null ? 0 : parent.getSubCriteria().size();
+        return siblingCount == 0 || parent.getWeight() == null ? 0 : parent.getWeight() / siblingCount;
+    }
+
+    private double valueOrZero(Double value) {
+        return value == null ? 0 : value;
     }
 
     public ResEvaluationRecordDTO.ResCommentDTO toResCommentDTO(EvaluationComment entity) {

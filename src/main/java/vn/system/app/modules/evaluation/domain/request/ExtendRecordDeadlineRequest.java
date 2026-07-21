@@ -21,6 +21,12 @@ public class ExtendRecordDeadlineRequest {
     @NotNull(message = "Hạn mới không được để trống")
     private Instant deadline;
 
+    @jakarta.validation.Valid
+    private List<RecordDeadlineOverride> recordDeadlines;
+
+    @jakarta.validation.Valid
+    private List<PhaseDeadlineOverride> phaseDeadlines;
+
     private String reason;
 
     private boolean cascade = true;
@@ -29,5 +35,25 @@ public class ExtendRecordDeadlineRequest {
         EMPLOYEE,
         MANAGER,
         APPROVAL
+    }
+
+    @Getter
+    @Setter
+    public static class RecordDeadlineOverride {
+        @NotNull(message = "recordId không được để trống")
+        private Long recordId;
+
+        @NotNull(message = "deadline không được để trống")
+        private Instant deadline;
+    }
+
+    @Getter
+    @Setter
+    public static class PhaseDeadlineOverride {
+        @NotNull(message = "phase không được để trống")
+        private Phase phase;
+
+        @NotNull(message = "deadline không được để trống")
+        private Instant deadline;
     }
 }

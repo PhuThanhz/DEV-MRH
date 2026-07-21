@@ -203,9 +203,17 @@ public class UserController {
                         @RequestParam(value = "search", required = false) String search,
                         @RequestParam(value = "companyId", required = false) Long companyId,
                         @RequestParam(value = "departmentId", required = false) Long departmentId,
-                        @RequestParam(value = "sectionId", required = false) Long sectionId) {
+                        @RequestParam(value = "departmentIds", required = false) java.util.List<Long> departmentIds,
+                        @RequestParam(value = "sectionId", required = false) Long sectionId,
+                        @RequestParam(value = "hasDirectManager", required = false) Boolean hasDirectManager) {
                 Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, size);
-                return ResponseEntity.ok(this.userService.fetchCrossCompanyUsers(search, companyId, departmentId, sectionId, pageable));
+                java.util.List<Long> deptIds = departmentIds;
+                if (deptIds == null || deptIds.isEmpty()) {
+                        if (departmentId != null) {
+                                deptIds = java.util.Collections.singletonList(departmentId);
+                        }
+                }
+                return ResponseEntity.ok(this.userService.fetchCrossCompanyUsers(search, companyId, deptIds, sectionId, hasDirectManager, pageable));
         }
 
         // ===========================================================

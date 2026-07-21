@@ -28,7 +28,6 @@ DELIMITER ;
 
 -- 1. Thêm cột version cho optimistic locking của evaluation_records
 CALL add_evaluation_column_if_missing('evaluation_records', 'version', 'BIGINT NOT NULL DEFAULT 0');
-UPDATE `evaluation_records` SET `version` = 0 WHERE `version` IS NULL;
 ALTER TABLE `evaluation_records` MODIFY COLUMN `version` BIGINT NOT NULL DEFAULT 0;
 
 -- 2. Thay đổi performed_by_user_id trong evaluation_history thành nullable

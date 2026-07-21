@@ -17,6 +17,7 @@ import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationHistoryDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationRecordDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationTaskCountsDTO;
+import vn.system.app.modules.evaluation.domain.response.ResScoreUpdateDTO;
 import vn.system.app.modules.evaluation.service.EvaluationMapper;
 import vn.system.app.modules.evaluation.service.EvaluationRecordService;
 import vn.system.app.modules.user.domain.User;
@@ -168,6 +169,8 @@ public class EvaluationRecordController {
                 body.getRecordIds(),
                 body.getPhase(),
                 body.getDeadline(),
+                body.getRecordDeadlines(),
+                body.getPhaseDeadlines(),
                 body.getReason(),
                 body.isCascade(),
                 currentUser).stream().map(mapper::toResEvaluationRecordDTO).toList());
@@ -190,12 +193,12 @@ public class EvaluationRecordController {
 
     @PostMapping("/records/{recordId}/employee-scores")
     @ApiMessage("Nhân viên chấm điểm tiêu chí")
-    public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveEmployeeScore(
+    public ResponseEntity<ResScoreUpdateDTO> saveEmployeeScore(
             @PathVariable Long recordId,
             @Valid @RequestBody ScoreRequest body) {
         User employee = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(
-                recordService.saveEmployeeScore(recordId, body.getCriteriaId(), body.getScore(), employee)));
+        recordService.saveEmployeeScore(recordId, body.getCriteriaId(), body.getScore(), employee);
+        return ResponseEntity.ok(fetchScoreUpdate(recordId, employee));
     }
 
     @PostMapping("/records/{recordId}/employee-submit")
@@ -219,12 +222,12 @@ public class EvaluationRecordController {
 
     @PostMapping("/records/{recordId}/manager-scores")
     @ApiMessage("Quản lý chấm điểm tiêu chí")
-    public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveManagerScore(
+    public ResponseEntity<ResScoreUpdateDTO> saveManagerScore(
             @PathVariable Long recordId,
             @Valid @RequestBody ScoreRequest body) {
         User manager = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(
-                recordService.saveManagerScore(recordId, body.getCriteriaId(), body.getScore(), manager)));
+        recordService.saveManagerScore(recordId, body.getCriteriaId(), body.getScore(), manager);
+        return ResponseEntity.ok(fetchScoreUpdate(recordId, manager));
     }
 
     @PostMapping("/records/{recordId}/manager-submit")
@@ -257,12 +260,12 @@ public class EvaluationRecordController {
 
     @PostMapping("/records/{recordId}/approver-scores")
     @ApiMessage("Người phê duyệt chấm điểm tiêu chí")
-    public ResponseEntity<ResEvaluationRecordDTO.ResScoreDTO> saveApproverScore(
+    public ResponseEntity<ResScoreUpdateDTO> saveApproverScore(
             @PathVariable Long recordId,
             @Valid @RequestBody ScoreRequest body) {
         User approver = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResScoreDTO(
-                recordService.saveApproverScore(recordId, body.getCriteriaId(), body.getScore(), approver)));
+        recordService.saveApproverScore(recordId, body.getCriteriaId(), body.getScore(), approver);
+        return ResponseEntity.ok(fetchScoreUpdate(recordId, approver));
     }
 
     @PostMapping("/records/{recordId}/approve")
@@ -357,5 +360,10 @@ public class EvaluationRecordController {
         if (user == null)
             throw new IdInvalidException("Người dùng không tồn tại");
         return user;
+    }
+
+    private ResScoreUpdateDTO fetchScoreUpdate(Long recordId, User requester) {
+        EvaluationRecord record = recordService.fetchRecordByIdWithFullTemplateForUser(recordId, requester);
+        return mapper.toResScoreUpdateDTO(record, recordService.fetchScores(recordId));
     }
 }

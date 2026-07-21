@@ -62,34 +62,6 @@ public class EvaluationReminderScheduler {
         Instant now = Instant.now();
 
         for (EvaluationPeriod period : activePeriods) {
-            // Mở cổng tự động
-            if (period.getEmployeeStartDate() != null && !now.isBefore(period.getEmployeeStartDate())) {
-                List<EvaluationRecord> notStartedRecords = recordRepo.findByPeriodIdAndStatus(period.getId(), RecordStatus.NOT_STARTED);
-                java.util.List<String> employeeIds = new java.util.ArrayList<>();
-                for (EvaluationRecord record : notStartedRecords) {
-                    record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
-                    
-                    // Ghi lịch sử Audit
-                    EvaluationHistory history = new EvaluationHistory();
-                    history.setEvaluationRecord(record);
-                    history.setFromStatus(RecordStatus.NOT_STARTED);
-                    history.setToStatus(RecordStatus.EMPLOYEE_DRAFTING);
-                    history.setPerformedBy(null); // Hệ thống tự động
-                    history.setNote("Hệ thống tự động mở cổng tự đánh giá khi đến ngày");
-                    historyRepo.save(history);
-
-                    employeeIds.add(record.getEmployee().getId());
-                }
-                if (!notStartedRecords.isEmpty()) {
-                    recordRepo.saveAll(notStartedRecords);
-                }
-                if (!employeeIds.isEmpty()) {
-                    sendNotifications(employeeIds, "PERIOD_OPENED",
-                            String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước hạn chót.", period.getName()),
-                            "/admin/evaluation/my-records");
-                }
-            }
-
             // 1. Nhắc nhở nhân viên chưa nộp (còn 3 ngày và 1 ngày)
             if (period.getEmployeeDeadline() != null) {
                 LocalDate empDeadline = period.getEmployeeDeadline().atZone(zoneVN).toLocalDate();
@@ -292,5 +264,42 @@ public class EvaluationReminderScheduler {
     private void sendNotifications(java.util.Collection<String> userIds, String type, String content, String actionLink) {
         eventPublisher.publishEvent(new vn.system.app.modules.notification.event.AppNotificationEvent(
                 new java.util.ArrayList<>(userIds), "EVALUATION", type, content, actionLink));
+    }
+
+    // Tự động quét mở cổng tự đánh giá mỗi 60 giây (1 phút)
+    @Scheduled(fixedDelay = 60000)
+    @Transactional
+    public void autoOpenPeriods() {
+        List<EvaluationPeriod> activePeriods = periodRepo.findByStatus(PeriodStatus.ACTIVE);
+        Instant now = Instant.now();
+
+        for (EvaluationPeriod period : activePeriods) {
+            if (period.getEmployeeStartDate() != null && !now.isBefore(period.getEmployeeStartDate())) {
+                List<EvaluationRecord> notStartedRecords = recordRepo.findByPeriodIdAndStatus(period.getId(), RecordStatus.NOT_STARTED);
+                java.util.List<String> employeeIds = new java.util.ArrayList<>();
+                for (EvaluationRecord record : notStartedRecords) {
+                    record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+                    
+                    // Ghi lịch sử Audit
+                    EvaluationHistory history = new EvaluationHistory();
+                    history.setEvaluationRecord(record);
+                    history.setFromStatus(RecordStatus.NOT_STARTED);
+                    history.setToStatus(RecordStatus.EMPLOYEE_DRAFTING);
+                    history.setPerformedBy(null); // Hệ thống tự động
+                    history.setNote("Hệ thống tự động mở cổng tự đánh giá khi đến ngày");
+                    historyRepo.save(history);
+
+                    employeeIds.add(record.getEmployee().getId());
+                }
+                if (!notStartedRecords.isEmpty()) {
+                    recordRepo.saveAll(notStartedRecords);
+                }
+                if (!employeeIds.isEmpty()) {
+                    sendNotifications(employeeIds, "PERIOD_OPENED",
+                            String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước hạn chót.", period.getName()),
+                            "/admin/evaluation/my-records");
+                }
+            }
+        }
     }
 }

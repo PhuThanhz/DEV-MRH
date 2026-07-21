@@ -84,6 +84,7 @@ public class EvaluationPeriodService {
 
     @Transactional
     public EvaluationPeriod createPeriod(EvaluationPeriod period) {
+        normalizePeriodText(period);
         validatePeriodDates(period, true);
         period.setStatus(PeriodStatus.DRAFT);
         
@@ -103,6 +104,7 @@ public class EvaluationPeriodService {
     public EvaluationPeriod updatePeriod(Long id, EvaluationPeriod updates) {
         EvaluationPeriod existing = fetchPeriodById(id);
         checkPeriodEditable(existing);
+        normalizePeriodText(updates);
 
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getDescription() != null) existing.setDescription(updates.getDescription());
@@ -185,6 +187,29 @@ public class EvaluationPeriodService {
         return periodTemplateRepo.findByPeriodId(periodId);
     }
 
+    /**
+     * Gỡ liên kết mẫu khỏi một kỳ nháp. Mẫu gốc vẫn được giữ nguyên để có thể
+     * sử dụng ở các kỳ khác. Quản trị viên phải gỡ toàn bộ nhân sự đang áp dụng
+     * mẫu trước để tránh tạo cấu hình kỳ không nhất quán.
+     */
+    @Transactional
+    public void removeTemplateFromPeriod(Long periodId, Long templateId) {
+        EvaluationPeriod period = fetchPeriodById(periodId);
+        checkPeriodEditable(period);
+
+        PeriodTemplate periodTemplate = periodTemplateRepo
+                .findByPeriodIdAndTemplateId(periodId, templateId)
+                .orElseThrow(() -> new IdInvalidException("Mẫu không được gắn trong kỳ đánh giá này"));
+
+        if (periodEmployeeRepo.existsByPeriodIdAndTemplateIdAndStatus(
+                periodId, templateId, PeriodEmployeeStatus.ACTIVE)) {
+            throw new IdInvalidException(
+                    "Mẫu đang có nhân sự tham gia. Vui lòng gỡ toàn bộ nhân sự khỏi mẫu trước khi gỡ mẫu");
+        }
+
+        periodTemplateRepo.delete(periodTemplate);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // PERIOD EMPLOYEES (add nhân viên vào kỳ)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -203,6 +228,9 @@ public class EvaluationPeriodService {
         }
         if (!userBelongsToCompany(employeeId, period.getCompany().getId())) {
             throw new IdInvalidException("Nhân viên không thuộc công ty của kỳ đánh giá này");
+        }
+        if (employee.getDirectManager() == null) {
+            throw new IdInvalidException("Nhân viên " + employee.getName() + " chưa được cấu hình Quản lý trực tiếp trong Hồ sơ nhân sự.");
         }
         
         User directManager = userRepo.findById(directManagerId)
@@ -390,6 +418,10 @@ public class EvaluationPeriodService {
         }
 
         Instant now = Instant.now();
+        if (!now.isBefore(period.getEmployeeDeadline())) {
+            throw new IdInvalidException(
+                    "Không thể kích hoạt kỳ vì hạn nhân viên nộp đã qua. Vui lòng cập nhật lại các mốc thời gian.");
+        }
         boolean employeePhaseStarted = !now.isBefore(period.getEmployeeStartDate());
 
         // Sinh evaluation_record cho từng nhân viên
@@ -409,7 +441,12 @@ public class EvaluationPeriodService {
             recordRepo.save(record);
 
             if (employeePhaseStarted) {
-                sendNotification(pe.getEmployee(), "PERIOD_OPENED", String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước deadline.", period.getName()), "/admin/evaluation/my-records");
+                sendNotification(pe.getEmployee(), "PERIOD_OPENED", String.format("Kỳ đánh giá \"%s\" đã mở. Vui lòng hoàn thành tự đánh giá trước hạn chót.", period.getName()), "/admin/evaluation/my-records");
+            } else {
+                String formattedDate = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                        .withZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))
+                        .format(period.getEmployeeStartDate());
+                sendNotification(pe.getEmployee(), "PERIOD_UPCOMING", String.format("Kỳ đánh giá \"%s\" sắp diễn ra. Cổng tự đánh giá sẽ mở vào lúc %s.", period.getName(), formattedDate), "/admin/evaluation/my-records");
             }
         }
 
@@ -696,24 +733,128 @@ public class EvaluationPeriodService {
         });
     }
 
+    private void normalizePeriodText(EvaluationPeriod period) {
+        if (period == null) return;
+        if (period.getName() != null) {
+            String normalizedName = period.getName().trim().replaceAll("\\s+", " ");
+            if (normalizedName.isBlank()) {
+                throw new IdInvalidException("Vui lòng nhập tên kỳ đánh giá");
+            }
+            if (normalizedName.length() > 200) {
+                throw new IdInvalidException("Tên kỳ đánh giá không vượt quá 200 ký tự");
+            }
+            period.setName(normalizedName);
+        }
+        if (period.getDescription() != null) {
+            period.setDescription(period.getDescription().trim());
+        }
+    }
+
+    @Transactional
+    public EvaluationPeriod adjustStartDate(Long periodId, Instant newStartDate) {
+        EvaluationPeriod period = fetchPeriodById(periodId);
+
+        // Chỉ cho phép điều chỉnh khi kỳ đang ở trạng thái ACTIVE hoặc DRAFT
+        if (period.getStatus() != PeriodStatus.ACTIVE && period.getStatus() != PeriodStatus.DRAFT) {
+            throw new IdInvalidException("Chỉ có thể điều chỉnh ngày mở cổng của kỳ đánh giá ở trạng thái DRAFT hoặc ACTIVE");
+        }
+
+        period.setEmployeeStartDate(newStartDate);
+        // validate các mốc ngày (employeeStartDate phải trước employeeDeadline)
+        validatePeriodDates(period, false);
+
+        // Nếu kỳ đang ACTIVE, ta cần cập nhật trạng thái của các bản ghi chưa bắt đầu đánh giá
+        if (period.getStatus() == PeriodStatus.ACTIVE) {
+            Instant now = Instant.now();
+            boolean employeePhaseStarted = !now.isBefore(newStartDate);
+
+            String email = vn.system.app.common.util.SecurityUtil.getCurrentUserLogin().orElse(null);
+            User actor = email != null ? userRepo.findByEmail(email) : null;
+
+            if (employeePhaseStarted) {
+                // Chuyển các bản ghi NOT_STARTED -> EMPLOYEE_DRAFTING
+                List<EvaluationRecord> notStartedRecords = recordRepo.findByPeriodIdAndStatus(periodId, RecordStatus.NOT_STARTED);
+                java.util.List<String> employeeIds = new java.util.ArrayList<>();
+                for (EvaluationRecord record : notStartedRecords) {
+                    RecordStatus oldStatus = record.getStatus();
+                    record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+
+                    EvaluationHistory history = new EvaluationHistory();
+                    history.setEvaluationRecord(record);
+                    history.setFromStatus(oldStatus);
+                    history.setToStatus(RecordStatus.EMPLOYEE_DRAFTING);
+                    history.setPerformedBy(actor);
+                    history.setNote("Đổi ngày mở cổng về quá khứ/hiện tại: Tự động mở cổng tự đánh giá");
+                    historyRepo.save(history);
+
+                    employeeIds.add(record.getEmployee().getId());
+                }
+                if (!notStartedRecords.isEmpty()) {
+                    recordRepo.saveAll(notStartedRecords);
+                }
+                if (!employeeIds.isEmpty()) {
+                    // Gửi thông báo đến nhân viên
+                    for (String empId : employeeIds) {
+                        User employee = userRepo.findById(empId).orElse(null);
+                        sendNotification(employee, "PERIOD_OPENED",
+                                String.format("Kỳ đánh giá \"%s\" đã được điều chỉnh ngày mở cổng và hiện đã mở. Vui lòng hoàn thành tự đánh giá.", period.getName()),
+                                "/admin/evaluation/my-records");
+                    }
+                }
+            } else {
+                // Chuyển các bản ghi EMPLOYEE_DRAFTING (chưa có điểm tự đánh giá hoặc chưa nộp) về NOT_STARTED
+                List<EvaluationRecord> draftingRecords = recordRepo.findByPeriodIdAndStatus(periodId, RecordStatus.EMPLOYEE_DRAFTING);
+                for (EvaluationRecord record : draftingRecords) {
+                    RecordStatus oldStatus = record.getStatus();
+                    record.setStatus(RecordStatus.NOT_STARTED);
+
+                    EvaluationHistory history = new EvaluationHistory();
+                    history.setEvaluationRecord(record);
+                    history.setFromStatus(oldStatus);
+                    history.setToStatus(RecordStatus.NOT_STARTED);
+                    history.setPerformedBy(actor);
+                    history.setNote("Đổi ngày mở cổng về tương lai: Tự động khóa cổng tự đánh giá");
+                    historyRepo.save(history);
+                }
+                if (!draftingRecords.isEmpty()) {
+                    recordRepo.saveAll(draftingRecords);
+                }
+            }
+        }
+
+        return periodRepo.save(period);
+    }
+
     private void validatePeriodDates(EvaluationPeriod period, boolean validateStartDateNotPast) {
+        Instant now = Instant.now();
+
+        if (validateStartDateNotPast && period.getEmployeeStartDate() != null
+                && period.getEmployeeStartDate().isBefore(now)) {
+            throw new IdInvalidException("Ngày mở cổng tự đánh giá không được nằm trong quá khứ!");
+        }
+        if (period.getEmployeeDeadline() != null && period.getEmployeeDeadline().isBefore(now)) {
+            throw new IdInvalidException("Hạn chót Nhân viên nộp không được nằm trong quá khứ!");
+        }
+        if (period.getManagerDeadline() != null && period.getManagerDeadline().isBefore(now)) {
+            throw new IdInvalidException("Hạn chót Quản lý chấm xong không được nằm trong quá khứ!");
+        }
+        if (period.getApprovalDeadline() != null && period.getApprovalDeadline().isBefore(now)) {
+            throw new IdInvalidException("Hạn chót Quản lý gián tiếp duyệt không được nằm trong quá khứ!");
+        }
+
         if (period.getEmployeeStartDate() == null || period.getEmployeeDeadline() == null
                 || period.getManagerDeadline() == null || period.getApprovalDeadline() == null) {
             return; // allowed to be null in draft before full configuration
         }
 
-        if (validateStartDateNotPast && period.getEmployeeStartDate().isBefore(java.time.Instant.now())) {
-            throw new IdInvalidException("Ngày mở cổng tự đánh giá không được nằm trong quá khứ!");
-        }
-
-        if (period.getEmployeeStartDate().isAfter(period.getEmployeeDeadline())) {
+        if (!period.getEmployeeStartDate().isBefore(period.getEmployeeDeadline())) {
             throw new IdInvalidException("Ngày mở cổng phải diễn ra trước Hạn chót Nhân viên nộp!");
         }
-        if (period.getEmployeeDeadline().isAfter(period.getManagerDeadline())) {
+        if (!period.getEmployeeDeadline().isBefore(period.getManagerDeadline())) {
             throw new IdInvalidException("Hạn chót Nhân viên nộp phải diễn ra trước Hạn chót Quản lý chấm xong!");
         }
-        if (period.getManagerDeadline().isAfter(period.getApprovalDeadline())) {
-            throw new IdInvalidException("Hạn chót Quản lý chấm xong phải diễn ra trước Hạn chót Ban lãnh đạo duyệt!");
+        if (!period.getManagerDeadline().isBefore(period.getApprovalDeadline())) {
+            throw new IdInvalidException("Hạn chót Quản lý chấm xong phải diễn ra trước Hạn chót Quản lý gián tiếp duyệt!");
         }
     }
     private void sendNotification(User recipient, String type, String content, String actionLink) {

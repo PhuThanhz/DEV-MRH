@@ -52,7 +52,7 @@ public class NotificationHubListener {
         }
 
         // 3.7: Tự động gửi email bất đồng bộ cho các mốc quan trọng của phân hệ Đánh giá
-        if (false && "EVALUATION".equals(event.getModule())) {
+        if (evaluationEmailEnabled && "EVALUATION".equals(event.getModule())) {
             String type = event.getType();
             if ("PERIOD_OPENED".equals(type) || "MANAGER_REVIEW_NEEDED".equals(type) ||
                 "APPROVAL_NEEDED".equals(type) || "RESULT_AVAILABLE".equals(type) ||
@@ -78,17 +78,17 @@ public class NotificationHubListener {
                                 } else if ("REVISION_NEEDED".equals(type)) {
                                     subject = "[Lotus HRM] Yêu cầu sửa đổi/bổ sung đánh giá HQCV";
                                 } else if ("DEADLINE_EXTENDED".equals(type)) {
-                                    subject = "[Lotus HRM] Deadline đánh giá HQCV đã được gia hạn";
+                                    subject = "[Lotus HRM] Hạn đánh giá HQCV đã được gia hạn";
                                 } else if ("REMINDER_DEADLINE".equals(type)) {
                                     subject = "[Lotus HRM] Nhắc nhở hạn chót đánh giá HQCV";
                                 } else if ("REMIND_ACKNOWLEDGE".equals(type)) {
                                     subject = "[Lotus HRM] Nhắc xác nhận kết quả đánh giá HQCV";
                                 } else if ("ESCALATION".equals(type)) {
-                                    subject = "[Lotus HRM] Cảnh báo quá hạn đánh giá HQCV (Escalation)";
+                                    subject = "[Lotus HRM] Cảnh báo quá hạn đánh giá HQCV";
                                 }
                                 
                                 String mailContent = String.format(
-                                    "Chào %s,\n\nBạn có thông báo mới từ phân hệ Đánh giá HQCV:\n\n\"%s\"\n\nVui lòng truy cập hệ thống để xử lý.\n\nTrân trọng,\nLotus HRM Support Team",
+                                    "Chào %s,\n\nBạn có thông báo mới từ phân hệ Đánh giá HQCV:\n\n\"%s\"\n\nVui lòng truy cập hệ thống để xử lý.\n\nTrân trọng,\nĐội ngũ Lotus HRM",
                                     user.getName(), event.getContent()
                                 );
                                 emailService.sendEmailAsync(user.getEmail(), subject, mailContent, false);
