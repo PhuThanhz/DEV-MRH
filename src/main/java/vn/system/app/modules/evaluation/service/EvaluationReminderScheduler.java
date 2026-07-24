@@ -14,7 +14,6 @@ import vn.system.app.modules.evaluation.repository.EvaluationHistoryRepository;
 import vn.system.app.modules.evaluation.repository.EvaluationPeriodRepository;
 import vn.system.app.modules.evaluation.repository.EvaluationRecordRepository;
 import vn.system.app.modules.notification.repository.NotificationRepository;
-import vn.system.app.modules.notification.service.NotificationService;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
@@ -25,6 +24,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -60,6 +60,8 @@ public class EvaluationReminderScheduler {
         LocalDate today = LocalDate.now(zoneVN);
         Instant todayMidnight = today.atStartOfDay(zoneVN).toInstant();
         Instant now = Instant.now();
+
+        AdminScopeCache adminScopeCache = activePeriods.isEmpty() ? null : buildAdminScopeCache();
 
         for (EvaluationPeriod period : activePeriods) {
             // 1. Nhắc nhở nhân viên chưa nộp (còn 3 ngày và 1 ngày)
@@ -142,7 +144,7 @@ public class EvaluationReminderScheduler {
             }
 
             // 4. Leo thang trễ hạn (Escalation)
-            List<EvaluationRecord> allRecords = recordRepo.findByPeriodId(period.getId());
+            List<EvaluationRecord> allRecords = recordRepo.findByPeriodIdOrderByCreatedAtDesc(period.getId());
             for (EvaluationRecord record : allRecords) {
                 RecordStatus status = record.getStatus();
                 if (status == RecordStatus.COMPLETED || status == RecordStatus.CANCELLED || status == RecordStatus.NOT_STARTED) {
@@ -159,7 +161,7 @@ public class EvaluationReminderScheduler {
                 }
 
                 if (deadline != null && now.isAfter(deadline)) {
-                    List<String> adminIds = getAdminRecipientIdsForEmployee(record.getEmployee());
+                    List<String> adminIds = getAdminRecipientIdsForEmployee(record.getEmployee(), adminScopeCache);
                     if (!adminIds.isEmpty()) {
                         String actionLink = "/admin/evaluation/periods/" + period.getId() + "/progress";
                         List<String> adminsToSend = adminIds.stream()
@@ -222,29 +224,50 @@ public class EvaluationReminderScheduler {
         log.info("Đã hoàn thành cron job nhắc nhở đánh giá HQCV.");
     }
 
-    private List<String> getAdminRecipientIdsForEmployee(User employee) {
-        List<Long> empCompanyIds = userPositionRepo.findActiveCompanyIdsByUserId(employee.getId());
-        List<Long> empDeptIds = userPositionRepo.findActiveDepartmentIdsByUserId(employee.getId());
+    /**
+     * Danh sách admin + phạm vi, tính sẵn 1 lần cho mỗi lần chạy scheduler
+     * (thay vì query lại cho từng record quá hạn).
+     */
+    private record AdminScopeCache(
+            List<String> globalAdminIds,
+            Map<String, Set<Long>> companyAdminScopes,
+            Map<String, Set<Long>> deptAdminScopes) {
+    }
 
+    private AdminScopeCache buildAdminScopeCache() {
         List<User> activeAdmins = userRepo.findActiveUsersByRoleNames(List.of(
-                "SUPER_ADMIN", "ADMIN_SUB_1", "ADMIN_SUB_2", "ADMIN_SUB_3"
-        ));
+                "SUPER_ADMIN", "ADMIN_SUB_1", "ADMIN_SUB_2", "ADMIN_SUB_3"));
 
-        List<String> recipientIds = new java.util.ArrayList<>();
+        List<String> globalAdminIds = new java.util.ArrayList<>();
+        Map<String, Set<Long>> companyAdminScopes = new java.util.LinkedHashMap<>();
+        Map<String, Set<Long>> deptAdminScopes = new java.util.LinkedHashMap<>();
+
         for (User admin : activeAdmins) {
             String roleName = admin.getRole() != null ? admin.getRole().getName() : "";
             if ("SUPER_ADMIN".equals(roleName) || "ADMIN_SUB_1".equals(roleName)) {
-                recipientIds.add(admin.getId());
+                globalAdminIds.add(admin.getId());
             } else if ("ADMIN_SUB_2".equals(roleName)) {
-                Set<Long> adminCompIds = userAdminScopeService.getCompanyScopeIds(admin.getId());
-                if (empCompanyIds.stream().anyMatch(adminCompIds::contains)) {
-                    recipientIds.add(admin.getId());
-                }
+                companyAdminScopes.put(admin.getId(), userAdminScopeService.getCompanyScopeIds(admin.getId()));
             } else if ("ADMIN_SUB_3".equals(roleName)) {
-                Set<Long> adminDeptIds = userAdminScopeService.getDepartmentScopeIds(admin.getId(), roleName);
-                if (empDeptIds.stream().anyMatch(adminDeptIds::contains)) {
-                    recipientIds.add(admin.getId());
-                }
+                deptAdminScopes.put(admin.getId(), userAdminScopeService.getDepartmentScopeIds(admin.getId(), roleName));
+            }
+        }
+        return new AdminScopeCache(globalAdminIds, companyAdminScopes, deptAdminScopes);
+    }
+
+    private List<String> getAdminRecipientIdsForEmployee(User employee, AdminScopeCache cache) {
+        List<Long> empCompanyIds = userPositionRepo.findActiveCompanyIdsByUserId(employee.getId());
+        List<Long> empDeptIds = userPositionRepo.findActiveDepartmentIdsByUserId(employee.getId());
+
+        List<String> recipientIds = new java.util.ArrayList<>(cache.globalAdminIds());
+        for (Map.Entry<String, Set<Long>> e : cache.companyAdminScopes().entrySet()) {
+            if (empCompanyIds.stream().anyMatch(e.getValue()::contains)) {
+                recipientIds.add(e.getKey());
+            }
+        }
+        for (Map.Entry<String, Set<Long>> e : cache.deptAdminScopes().entrySet()) {
+            if (empDeptIds.stream().anyMatch(e.getValue()::contains)) {
+                recipientIds.add(e.getKey());
             }
         }
         return recipientIds.stream().distinct().toList();

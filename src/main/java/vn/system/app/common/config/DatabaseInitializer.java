@@ -28,6 +28,13 @@ import org.springframework.core.env.Environment;
 @Service
 public class DatabaseInitializer implements CommandLineRunner {
     private static final String ACCOUNTING_DOSSIERS_MODULE = "ACCOUNTING_DOSSIERS";
+    private static final Set<String> ALL_ACCOUNTING_DOSSIERS_SUBMODULES = Set.of(
+            "ACCOUNTING_DOSSIERS_MGMT",
+            "ACCOUNTING_DOSSIERS_DOCS",
+            "ACCOUNTING_DOSSIERS_WORKFLOW",
+            "ACCOUNTING_DOSSIERS_TEMPLATES",
+            "ACCOUNTING_DOSSIERS_REPORTS"
+    );
     private static final String ACCOUNTING_DOCUMENTS_MODULE = "ACCOUNTING_DOCUMENTS";
     private static final String ACCOUNTING_WORKFLOWS_MODULE = "ACCOUNTING_WORKFLOWS";
     private static final String ACCOUNTING_DELEGATIONS_MODULE = "ACCOUNTING_DELEGATIONS";
@@ -74,10 +81,26 @@ public class DatabaseInitializer implements CommandLineRunner {
         this.environment = environment;
     }
 
+    private boolean isAccountingDossiersModule(String module) {
+        return ACCOUNTING_DOSSIERS_MODULE.equals(module) || ALL_ACCOUNTING_DOSSIERS_SUBMODULES.contains(module);
+    }
+
     @Override
     @Transactional
     public void run(String... args) throws Exception {
         System.out.println(">>> START INIT DATABASE");
+
+        // Tự động migration gộp các module phân quyền ACCOUNTING_DOSSIERS_% lại thành ACCOUNTING_DOSSIERS cũ
+        try {
+            String updateSql = "UPDATE permissions SET module = 'ACCOUNTING_DOSSIERS' WHERE module LIKE 'ACCOUNTING_DOSSIERS_%'";
+            int updatedRows = this.jdbcTemplate.update(updateSql);
+            if (updatedRows > 0) {
+                System.out.println(">>> MIGRATION: Merged " + updatedRows + " ACCOUNTING_DOSSIERS submodules back to ACCOUNTING_DOSSIERS");
+            }
+        } catch (Exception e) {
+            System.err.println(">>> MIGRATION ERROR: Failed to merge ACCOUNTING_DOSSIERS submodules: " + e.getMessage());
+        }
+
         initializePermissionCache();
         initializeRoleCache();
         long countPermissions = this.permissionCache.size();
@@ -94,7 +117,7 @@ public class DatabaseInitializer implements CommandLineRunner {
                 }
             }
             String dbUrl = this.environment.getProperty("spring.datasource.url");
-            if (dbUrl != null && !dbUrl.contains("localhost") && !dbUrl.contains("127.0.0.1") && !dbUrl.contains("hrm_0107")) {
+            if (dbUrl != null && !dbUrl.contains("localhost") && !dbUrl.contains("127.0.0.1") && !dbUrl.contains("hrm_0107") && !dbUrl.contains("hrm_21062026")) {
                 isProd = true;
             }
         }
@@ -149,8 +172,8 @@ public class DatabaseInitializer implements CommandLineRunner {
             }
         }
 
-        String dossierModule = ACCOUNTING_DOSSIERS_MODULE;
         List<Permission> newPerms = new ArrayList<>();
+        String dossierModule = ACCOUNTING_DOSSIERS_MODULE;
         addPermissionIfMissing(newPerms, "Danh sách bộ chứng từ kế toán", "/api/v1/accounting-dossiers", "GET", dossierModule);
         addPermissionIfMissing(newPerms, "Chi tiết bộ chứng từ kế toán", "/api/v1/accounting-dossiers/{id}", "GET", dossierModule);
         addPermissionIfMissing(newPerms, "Tạo mới bộ chứng từ kế toán", "/api/v1/accounting-dossiers", "POST", dossierModule);
@@ -220,7 +243,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             ketoanRole.setDescription("Kế toán viên");
             ketoanRole.setActive(true);
             List<Permission> allPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .toList();
             ketoanRole.setPermissions(allPerms);
             ketoanRole = saveRole(ketoanRole);
@@ -247,7 +270,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             ketoanTruongRole.setDescription("Kế toán trưởng");
             ketoanTruongRole.setActive(true);
             List<Permission> allPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .toList();
             ketoanTruongRole.setPermissions(allPerms);
             ketoanTruongRole = saveRole(ketoanTruongRole);
@@ -286,12 +309,12 @@ public class DatabaseInitializer implements CommandLineRunner {
         if (employeeRole != null) {
             // Keep non-accounting permissions
             List<Permission> nonAccPerms = employeeRole.getPermissions().stream()
-                    .filter(p -> !ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) && !ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> !isAccountingDossiersModule(p.getModule()) && !ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .toList();
             
             // Get restricted accounting permissions for EMPLOYEE
             List<Permission> allowedAccPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> {
                         String path = p.getApiPath();
                         // Filter out approval, template, and report paths
@@ -319,7 +342,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         Role deptMgrRole = findRole("DEPARTMENT_MANAGER");
         if (deptMgrRole != null) {
             List<Permission> dossierPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !DIRECTOR_APPROVAL_PERMISSION_NAME.equals(p.getName()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
                     .toList();
@@ -371,7 +394,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             directorRole.setDescription("Giám đốc");
             directorRole.setActive(true);
             List<Permission> allPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
                     .toList();
             directorRole.setPermissions(allPerms);
@@ -379,7 +402,7 @@ public class DatabaseInitializer implements CommandLineRunner {
         } else {
             // Đảm bảo DIRECTOR role luôn có đầy đủ ACCOUNTING_DOSSIERS permissions (bao gồm cả permission mới thêm)
             List<Permission> dossierPerms = allPermissions().stream()
-                    .filter(p -> ACCOUNTING_DOSSIERS_MODULE.equals(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
+                    .filter(p -> isAccountingDossiersModule(p.getModule()) || ACCOUNTING_DOCUMENTS_MODULE.equals(p.getModule()))
                     .filter(p -> !NON_ADMIN_BUSINESS_APPROVER_PERMISSION_NAMES.contains(p.getName()))
                     .toList();
             List<Permission> currentDirPerms = new ArrayList<>(directorRole.getPermissions());

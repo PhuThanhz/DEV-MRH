@@ -45,8 +45,10 @@ public interface DepartmentRepository
             SELECT d.id AS departmentId,
                    d.name AS departmentName,
                    c.name AS companyName,
-                   EXISTS(SELECT 1 FROM job_position_charts jpc
-                          WHERE jpc.department_id = d.id) AS orgChart,
+                   ((SELECT COUNT(*) FROM job_position_nodes jpn
+                          JOIN job_position_charts jpc ON jpc.id = jpn.chart_id
+                          WHERE jpc.department_id = d.id
+                            AND jpn.active = TRUE) >= 3) AS orgChart,
                    EXISTS(SELECT 1 FROM department_objectives obj
                           WHERE obj.department_id = d.id) AS objectives,
                    EXISTS(SELECT 1 FROM department_procedure_mapping dpm

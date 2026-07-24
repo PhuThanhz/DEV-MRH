@@ -13,6 +13,8 @@ public class ResPeriodProgressDTO {
     @Data
     public static class KpiProgress {
         private int totalRecords;
+        private int notStartedCount;
+        private double notStartedPercentage;
         private int draftingCount;
         private double draftingPercentage;
         private int pendingManagerCount;
@@ -23,6 +25,8 @@ public class ResPeriodProgressDTO {
         private double completedPercentage;
         private int cancelledCount;
         private double cancelledPercentage;
+        // overdue là chỉ số cross-cutting (chồng lấn drafting/pendingManager/pendingApproval)
+        // — KHÔNG cộng vào tổng khi vẽ biểu đồ tròn.
         private int overdueCount;
         private double overduePercentage;
     }

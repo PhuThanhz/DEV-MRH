@@ -2,6 +2,7 @@ package vn.system.app.common.util;
 
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -35,7 +36,7 @@ public class FormatRestResponse implements ResponseBodyAdvice<Object> {
         RestResponse<Object> res = new RestResponse<Object>();
         res.setStatusCode(status);
 
-        if (body instanceof String || body instanceof Resource) {
+        if (body instanceof String || body instanceof Resource || body instanceof ResourceRegion) {
             return body;
         }
 

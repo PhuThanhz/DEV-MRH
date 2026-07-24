@@ -14,6 +14,8 @@ import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineReque
 import vn.system.app.modules.evaluation.domain.request.ReassignEvaluatorRequest;
 import vn.system.app.modules.evaluation.domain.request.ScoreRequest;
 import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
+import vn.system.app.modules.evaluation.domain.response.ResDashboardApproverDTO;
+import vn.system.app.modules.evaluation.domain.response.ResDashboardManagerDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationHistoryDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationRecordDTO;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationTaskCountsDTO;
@@ -58,8 +60,7 @@ public class EvaluationRecordController {
                 record,
                 recordService.fetchScores(id),
                 recordService.fetchComments(id),
-                recordService.fetchTrainingPlans(id)
-        ));
+                recordService.fetchTrainingPlans(id)));
     }
 
     /** Nhân viên: danh sách bản đánh giá của mình (lịch sử) */
@@ -135,6 +136,24 @@ public class EvaluationRecordController {
                 recordService.fetchHistoryForIndirectManager(currentUserId)));
     }
 
+    /** Dashboard tổng hợp cho quản lý trực tiếp */
+    @GetMapping("/dashboard/manager")
+    @ApiMessage("Dashboard quản lý trực tiếp")
+    public ResponseEntity<ResDashboardManagerDTO> fetchManagerDashboard(
+            @RequestParam(required = false) Long periodId) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(recordService.getManagerDashboard(periodId, currentUser));
+    }
+
+    /** Dashboard tổng hợp cho người phê duyệt */
+    @GetMapping("/dashboard/approver")
+    @ApiMessage("Dashboard người phê duyệt")
+    public ResponseEntity<ResDashboardApproverDTO> fetchApproverDashboard(
+            @RequestParam(required = false) Long periodId) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(recordService.getApproverDashboard(periodId, currentUser));
+    }
+
     @GetMapping("/summary/completed")
     @ApiMessage("Danh sách tổng hợp đánh giá hoàn tất")
     public ResponseEntity<vn.system.app.common.response.ResultPaginationDTO> fetchCompletedSummary(
@@ -148,7 +167,7 @@ public class EvaluationRecordController {
         User currentUser = getCurrentUser();
         org.springframework.data.domain.Page<EvaluationRecord> page = recordService.fetchCompletedSummary(
                 periodId, departmentId, companyId, sectionId, searchText, filterGrade, currentUser, pageable);
-        
+
         vn.system.app.common.response.ResultPaginationDTO res = new vn.system.app.common.response.ResultPaginationDTO();
         vn.system.app.common.response.ResultPaginationDTO.Meta meta = new vn.system.app.common.response.ResultPaginationDTO.Meta();
         meta.setPage(page.getNumber() + 1);
@@ -205,7 +224,8 @@ public class EvaluationRecordController {
     @ApiMessage("Nhân viên nộp tự đánh giá")
     public ResponseEntity<ResEvaluationRecordDTO> submitEmployeeEvaluation(@PathVariable Long recordId) {
         User employee = getCurrentUser();
-        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.submitEmployeeEvaluation(recordId, employee)));
+        return ResponseEntity
+                .ok(mapper.toResEvaluationRecordDTO(recordService.submitEmployeeEvaluation(recordId, employee)));
     }
 
     @PostMapping("/records/{recordId}/self-review")
@@ -275,7 +295,8 @@ public class EvaluationRecordController {
             @RequestBody(required = false) java.util.Map<String, String> body) {
         User approver = getCurrentUser();
         String overrideReason = body != null ? body.get("overrideReason") : null;
-        return ResponseEntity.ok(mapper.toResEvaluationRecordDTO(recordService.approveRecord(recordId, overrideReason, approver)));
+        return ResponseEntity
+                .ok(mapper.toResEvaluationRecordDTO(recordService.approveRecord(recordId, overrideReason, approver)));
     }
 
     @PostMapping("/records/batch-approve")

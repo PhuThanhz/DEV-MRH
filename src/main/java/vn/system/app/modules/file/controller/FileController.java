@@ -139,8 +139,6 @@ public class FileController {
                                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
-                                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileLength)
-                                .contentLength(rangeLength)
                                 .contentType(mediaType)
                                 .body(region);
         }
@@ -191,8 +189,6 @@ public class FileController {
                                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileLength)
-                                .contentLength(rangeLength)
                                 .contentType(mediaType)
                                 .body(region);
         }

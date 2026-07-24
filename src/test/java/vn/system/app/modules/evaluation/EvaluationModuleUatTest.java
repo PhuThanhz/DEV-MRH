@@ -384,7 +384,7 @@ class EvaluationModuleUatTest {
         record.setEmployee(employee);
         record.setPeriod(period);
 
-        when(recordRepo.findByPeriodId(10L)).thenReturn(List.of(record));
+        when(recordRepo.findByPeriodIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(record));
         when(userPositionRepo.findActiveCompanyIdsByUserId("emp-01")).thenReturn(List.of(1L));
         when(userPositionRepo.findActiveDepartmentIdsByUserId("emp-01")).thenReturn(List.of(2L));
 
@@ -440,7 +440,7 @@ class EvaluationModuleUatTest {
             record1.setEmployee(employee1);
             record1.setPeriod(period);
 
-            when(recordRepo.findByPeriodId(10L)).thenReturn(List.of(record1));
+            when(recordRepo.findByPeriodIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(record1));
 
             // Position mapping
             UserPosition pos1 = new UserPosition();
@@ -510,7 +510,7 @@ class EvaluationModuleUatTest {
         period.setStatus(PeriodStatus.ACTIVE);
 
         when(periodRepo.findByStatus(PeriodStatus.ACTIVE)).thenReturn(List.of(period));
-        when(recordRepo.findByPeriodId(anyLong())).thenReturn(List.of());
+        when(recordRepo.findByPeriodIdOrderByCreatedAtDesc(anyLong())).thenReturn(List.of());
 
         EvaluationRecord record = new EvaluationRecord();
         record.setId(10L);

@@ -490,7 +490,7 @@ public class EvaluationPeriodService {
             throw new IdInvalidException("Không tìm thấy thông tin phiên làm việc");
         }
 
-        List<EvaluationRecord> allRecords = recordRepo.findByPeriodId(periodId);
+        List<EvaluationRecord> allRecords = recordRepo.findByPeriodIdOrderByCreatedAtDesc(periodId);
         List<String> empIds = allRecords.stream().map(r -> r.getEmployee().getId()).distinct().toList();
         List<UserPosition> positions = userPositionRepo.findActiveFullByUserIds(empIds);
 
@@ -670,12 +670,24 @@ public class EvaluationPeriodService {
         int total = filteredRecords.size();
         kpi.setTotalRecords(total);
 
-        int drafting = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.EMPLOYEE_DRAFTING).count();
-        int pendingManager = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW || r.getStatus() == RecordStatus.MANAGER_REVIEWING || r.getStatus() == RecordStatus.REVISION_NEEDED).count();
-        int pendingApproval = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.PENDING_APPROVAL).count();
-        int completed = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.COMPLETED).count();
-        int cancelled = (int) filteredRecords.stream().filter(r -> r.getStatus() == RecordStatus.CANCELLED).count();
+        int notStarted = 0;
+        int drafting = 0;
+        int pendingManager = 0;
+        int pendingApproval = 0;
+        int completed = 0;
+        int cancelled = 0;
+        for (EvaluationRecord r : filteredRecords) {
+            switch (r.getStatus()) {
+                case NOT_STARTED -> notStarted++;
+                case EMPLOYEE_DRAFTING -> drafting++;
+                case PENDING_MANAGER_REVIEW, MANAGER_REVIEWING, REVISION_NEEDED -> pendingManager++;
+                case PENDING_APPROVAL -> pendingApproval++;
+                case COMPLETED -> completed++;
+                case CANCELLED -> cancelled++;
+            }
+        }
 
+        kpi.setNotStartedCount(notStarted);
         kpi.setDraftingCount(drafting);
         kpi.setPendingManagerCount(pendingManager);
         kpi.setPendingApprovalCount(pendingApproval);
@@ -684,6 +696,7 @@ public class EvaluationPeriodService {
         kpi.setOverdueCount(overdueCount);
 
         double denom = Math.max(1, total);
+        kpi.setNotStartedPercentage(Math.round((notStarted * 100.0 / denom) * 100.0) / 100.0);
         kpi.setDraftingPercentage(Math.round((drafting * 100.0 / denom) * 100.0) / 100.0);
         kpi.setPendingManagerPercentage(Math.round((pendingManager * 100.0 / denom) * 100.0) / 100.0);
         kpi.setPendingApprovalPercentage(Math.round((pendingApproval * 100.0 / denom) * 100.0) / 100.0);

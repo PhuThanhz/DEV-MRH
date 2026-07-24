@@ -18,6 +18,8 @@ import vn.system.app.modules.evaluation.domain.request.ExtendRecordDeadlineReque
 import vn.system.app.modules.evaluation.domain.request.TrainingPlanRequest;
 import vn.system.app.modules.evaluation.domain.request.ReassignEvaluatorRequest;
 import vn.system.app.modules.evaluation.domain.response.ResEvaluationTaskCountsDTO;
+import vn.system.app.modules.evaluation.domain.response.ResDashboardManagerDTO;
+import vn.system.app.modules.evaluation.domain.response.ResDashboardApproverDTO;
 import java.util.Map;
 import vn.system.app.modules.evaluation.repository.*;
 import vn.system.app.modules.notification.service.NotificationService;
@@ -49,7 +51,8 @@ public class EvaluationRecordService {
     private final UserPositionRepository userPositionRepo;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final EvaluationTemplateValidator templateValidator;
-
+    private final EvaluationPeriodService periodService;
+    private final EvaluationMapper mapper;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -66,7 +69,9 @@ public class EvaluationRecordService {
             UserRepository userRepo,
             UserPositionRepository userPositionRepo,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
-            EvaluationTemplateValidator templateValidator) {
+            EvaluationTemplateValidator templateValidator,
+            EvaluationPeriodService periodService,
+            EvaluationMapper mapper) {
         this.recordRepo = recordRepo;
         this.scoreRepo = scoreRepo;
         this.commentRepo = commentRepo;
@@ -78,6 +83,8 @@ public class EvaluationRecordService {
         this.userPositionRepo = userPositionRepo;
         this.eventPublisher = eventPublisher;
         this.templateValidator = templateValidator;
+        this.periodService = periodService;
+        this.mapper = mapper;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -137,7 +144,10 @@ public class EvaluationRecordService {
         return recordRepo.findAllByOrderByCreatedAtDesc();
     }
 
-    /** Danh sách form cho quản lý trực tiếp trong kỳ (bao gồm cả record được uỷ quyền) */
+    /**
+     * Danh sách form cho quản lý trực tiếp trong kỳ (bao gồm cả record được uỷ
+     * quyền)
+     */
     public List<EvaluationRecord> fetchRecordsForDirectManager(Long periodId, String managerId) {
         if (canSeeAllEvaluationRecords()) {
             return recordRepo.findByPeriodIdOrderByCreatedAtDesc(periodId);
@@ -165,12 +175,14 @@ public class EvaluationRecordService {
         return trainingPlanRepo.findByEvaluationRecordId(recordId);
     }
 
-    /** Danh sách form chờ quản lý trực tiếp chấm (bao gồm cả record được uỷ quyền) */
+    /**
+     * Danh sách form chờ quản lý trực tiếp chấm (bao gồm cả record được uỷ quyền)
+     */
     public List<EvaluationRecord> fetchPendingForDirectManager(String managerId) {
         List<RecordStatus> pendingStatuses = List.of(
-            RecordStatus.PENDING_MANAGER_REVIEW,
-            RecordStatus.MANAGER_REVIEWING,
-            RecordStatus.REVISION_NEEDED);
+                RecordStatus.PENDING_MANAGER_REVIEW,
+                RecordStatus.MANAGER_REVIEWING,
+                RecordStatus.REVISION_NEEDED);
         return recordRepo.findByDirectManagerIdAndStatusIn(managerId, pendingStatuses);
     }
 
@@ -185,8 +197,8 @@ public class EvaluationRecordService {
 
     /** Danh sách form chờ quản lý gián tiếp phê duyệt */
     public List<EvaluationRecord> fetchPendingForIndirectManager(String managerId) {
-        return recordRepo.findByIndirectManagerIdAndStatusIn(managerId, 
-            List.of(RecordStatus.PENDING_APPROVAL));
+        return recordRepo.findByIndirectManagerIdAndStatusIn(managerId,
+                List.of(RecordStatus.PENDING_APPROVAL));
     }
 
     @Transactional(readOnly = true)
@@ -217,7 +229,7 @@ public class EvaluationRecordService {
         }
 
         boolean isAllVisible = scope.isSuperAdmin() || scope.isAdminLevel();
-        
+
         List<String> targetEmployeeIds = null;
         if (sectionId != null) {
             targetEmployeeIds = userPositionRepo.findUserIdsBySectionId(sectionId);
@@ -256,8 +268,9 @@ public class EvaluationRecordService {
         }
 
         boolean hasEmployeeIds = (targetEmployeeIds != null);
-        java.util.Collection<String> queryEmployeeIds = hasEmployeeIds ? targetEmployeeIds : java.util.Collections.emptyList();
-        
+        java.util.Collection<String> queryEmployeeIds = hasEmployeeIds ? targetEmployeeIds
+                : java.util.Collections.emptyList();
+
         String cleanSearchText = (searchText == null || searchText.trim().isEmpty()) ? null : searchText.trim();
         String cleanGrade = (filterGrade == null || filterGrade.trim().isEmpty()) ? null : filterGrade.trim();
 
@@ -267,8 +280,7 @@ public class EvaluationRecordService {
                 queryEmployeeIds,
                 cleanGrade,
                 cleanSearchText,
-                pageable
-        );
+                pageable);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -289,8 +301,18 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Bạn không có quyền đánh giá bản đánh giá này");
         }
 
-        if (record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING) {
+        if (record.getStatus() != RecordStatus.NOT_STARTED
+                && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING
+                && record.getStatus() != RecordStatus.REVISION_NEEDED) {
             throw new IdInvalidException("Bạn không thể đánh giá ở trạng thái hiện tại");
+        }
+
+        // Chuyển trạng thái sang EMPLOYEE_DRAFTING nếu đang NOT_STARTED
+        if (record.getStatus() == RecordStatus.NOT_STARTED) {
+            RecordStatus oldStatus = record.getStatus();
+            record.setStatus(RecordStatus.EMPLOYEE_DRAFTING);
+            recordRepo.save(record);
+            saveHistory(record, oldStatus, RecordStatus.EMPLOYEE_DRAFTING, employee, null);
         }
 
         validateScore(score);
@@ -510,7 +532,8 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Quản lý không thể nhận xét ở trạng thái hiện tại");
         }
 
-        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc REVISION_NEEDED
+        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc
+        // REVISION_NEEDED
         if (record.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW
                 || record.getStatus() == RecordStatus.REVISION_NEEDED) {
             RecordStatus oldStatus = record.getStatus();
@@ -554,7 +577,8 @@ public class EvaluationRecordService {
             throw new IdInvalidException("Quản lý không thể thêm kế hoạch đào tạo ở trạng thái hiện tại");
         }
 
-        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc REVISION_NEEDED
+        // Chuyển trạng thái sang MANAGER_REVIEWING nếu đang PENDING hoặc
+        // REVISION_NEEDED
         if (record.getStatus() == RecordStatus.PENDING_MANAGER_REVIEW
                 || record.getStatus() == RecordStatus.REVISION_NEEDED) {
             RecordStatus oldStatus = record.getStatus();
@@ -588,7 +612,8 @@ public class EvaluationRecordService {
         assertApprovalPhaseOpen(record);
 
         if (record.getStatus() != RecordStatus.PENDING_APPROVAL) {
-            throw new IdInvalidException("Người phê duyệt chỉ có thể đánh giá khi bản đánh giá ở trạng thái chờ phê duyệt");
+            throw new IdInvalidException(
+                    "Người phê duyệt chỉ có thể đánh giá khi bản đánh giá ở trạng thái chờ phê duyệt");
         }
 
         validateScore(score);
@@ -603,9 +628,11 @@ public class EvaluationRecordService {
         }
 
         // Copy điểm MANAGER sang APPROVER nếu chưa có điểm APPROVER nào
-        List<EvaluationScore> existingApproverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId, ScoredBy.APPROVER);
+        List<EvaluationScore> existingApproverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId,
+                ScoredBy.APPROVER);
         if (existingApproverScores.isEmpty()) {
-            List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId, ScoredBy.MANAGER);
+            List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(recordId,
+                    ScoredBy.MANAGER);
             for (EvaluationScore ms : managerScores) {
                 saveOrUpdateScore(record, ms.getCriteria(), ScoredBy.APPROVER, ms.getScore());
             }
@@ -628,8 +655,10 @@ public class EvaluationRecordService {
         templateValidator.validateReadyForUse(record.getTemplate());
 
         // T4: Bắt buộc lý do khi người phê duyệt đè điểm quản lý
-        List<EvaluationScore> approverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.APPROVER);
-        List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(), ScoredBy.MANAGER);
+        List<EvaluationScore> approverScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(),
+                ScoredBy.APPROVER);
+        List<EvaluationScore> managerScores = scoreRepo.findByEvaluationRecordIdAndScoredBy(record.getId(),
+                ScoredBy.MANAGER);
 
         boolean hasOverride = false;
         for (EvaluationScore appScore : approverScores) {
@@ -698,7 +727,8 @@ public class EvaluationRecordService {
     }
 
     /** Phê duyệt hàng loạt */
-    public vn.system.app.modules.evaluation.domain.response.BatchApproveResponse batchApproveRecords(List<Long> recordIds, User approver) {
+    public vn.system.app.modules.evaluation.domain.response.BatchApproveResponse batchApproveRecords(
+            List<Long> recordIds, User approver) {
         List<Long> successIds = new java.util.ArrayList<>();
         List<vn.system.app.modules.evaluation.domain.response.BatchApproveResponse.FailedApproval> failedRecords = new java.util.ArrayList<>();
         for (Long id : recordIds) {
@@ -707,7 +737,9 @@ public class EvaluationRecordService {
                 successIds.add(record.getId());
             } catch (Exception e) {
                 log.error("Lỗi khi phê duyệt hàng loạt bản đánh giá ID {}: {}", id, e.getMessage());
-                failedRecords.add(new vn.system.app.modules.evaluation.domain.response.BatchApproveResponse.FailedApproval(id, e.getMessage()));
+                failedRecords.add(
+                        new vn.system.app.modules.evaluation.domain.response.BatchApproveResponse.FailedApproval(id,
+                                e.getMessage()));
             }
         }
         return new vn.system.app.modules.evaluation.domain.response.BatchApproveResponse(successIds, failedRecords);
@@ -722,17 +754,18 @@ public class EvaluationRecordService {
     public EvaluationRecord confirmEmployeeAcknowledge(Long recordId, User employee) {
         EvaluationRecord record = fetchRecordById(recordId);
 
-        if (record.getCompletedAt() != null) {
-            return record;
+        // Kiểm tra đúng nhân viên trước mọi thao tác để tránh rò rỉ dữ liệu phiếu người
+        // khác
+        if (!record.getEmployee().getId().equals(employee.getId())) {
+            throw new IdInvalidException("Bạn không có quyền xác nhận bản đánh giá này");
         }
 
         if (record.getStatus() != RecordStatus.COMPLETED) {
             throw new IdInvalidException("Bản đánh giá chưa được phê duyệt hoàn tất");
         }
 
-        // Kiểm tra đúng nhân viên
-        if (!record.getEmployee().getId().equals(employee.getId())) {
-            throw new IdInvalidException("Bạn không có quyền xác nhận bản đánh giá này");
+        if (record.getCompletedAt() != null) {
+            return record;
         }
 
         // Set completedAt là thời điểm nhân viên xác nhận đã xem
@@ -818,7 +851,7 @@ public class EvaluationRecordService {
         if (currentEmpDeadline == null || targetDeadline.isAfter(currentEmpDeadline)) {
             record.setEmployeeDeadlineOverride(targetDeadline);
         }
-        
+
         recordRepo.save(record);
 
         // Xóa điểm của APPROVER để tránh rác khi chấm lại
@@ -862,7 +895,7 @@ public class EvaluationRecordService {
             String reason,
             boolean cascade,
             User performer) {
-        
+
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null) {
             throw new IdInvalidException("Bạn không có quyền thực hiện hành động này");
@@ -895,8 +928,8 @@ public class EvaluationRecordService {
             }
         }
 
-        Map<ExtendRecordDeadlineRequest.Phase, Instant> customPhaseDeadlineMap =
-                new java.util.EnumMap<>(ExtendRecordDeadlineRequest.Phase.class);
+        Map<ExtendRecordDeadlineRequest.Phase, Instant> customPhaseDeadlineMap = new java.util.EnumMap<>(
+                ExtendRecordDeadlineRequest.Phase.class);
         if (phaseDeadlines != null && !phaseDeadlines.isEmpty()) {
             for (ExtendRecordDeadlineRequest.PhaseDeadlineOverride item : phaseDeadlines) {
                 if (item == null || item.getPhase() == null || item.getDeadline() == null) {
@@ -907,7 +940,7 @@ public class EvaluationRecordService {
         }
 
         for (EvaluationRecord record : records) {
-            assertCanViewRecord(record, performer);
+            assertAdminAction(record);
             if (record.getPeriod() == null || record.getPeriod().getStatus() != PeriodStatus.ACTIVE) {
                 throw new IdInvalidException("Chỉ có thể gia hạn bản đánh giá thuộc kỳ đang hoạt động");
             }
@@ -956,18 +989,19 @@ public class EvaluationRecordService {
                     reason != null && !reason.isBlank() ? ". Lý do: " + reason.trim() : "");
             saveHistory(record, record.getStatus(), record.getStatus(), performer, note);
 
-        if (!Objects.equals(oldEmployeeDeadline, newEmployeeDeadline)) {
-            notifyDeadlineExtended(record, record.getEmployee(), "tự đánh giá", newEmployeeDeadline,
-                    "/admin/evaluation/my-records/" + record.getId(), reason);
-        }
-        if (!Objects.equals(oldManagerDeadline, newManagerDeadline)) {
-            notifyDeadlineExtended(record, record.getDirectManager(), "quản lý trực tiếp chấm", newManagerDeadline,
-                    managerDrawerLink(record.getId()), reason);
-        }
-        if (!Objects.equals(oldApprovalDeadline, newApprovalDeadline)) {
-            notifyDeadlineExtended(record, record.getIndirectManager(), "quản lý gián tiếp duyệt", newApprovalDeadline,
-                    approverDrawerLink(record.getId()), reason);
-        }
+            if (!Objects.equals(oldEmployeeDeadline, newEmployeeDeadline)) {
+                notifyDeadlineExtended(record, record.getEmployee(), "tự đánh giá", newEmployeeDeadline,
+                        "/admin/evaluation/my-records/" + record.getId(), reason);
+            }
+            if (!Objects.equals(oldManagerDeadline, newManagerDeadline)) {
+                notifyDeadlineExtended(record, record.getDirectManager(), "quản lý trực tiếp chấm", newManagerDeadline,
+                        managerDrawerLink(record.getId()), reason);
+            }
+            if (!Objects.equals(oldApprovalDeadline, newApprovalDeadline)) {
+                notifyDeadlineExtended(record, record.getIndirectManager(), "quản lý gián tiếp duyệt",
+                        newApprovalDeadline,
+                        approverDrawerLink(record.getId()), reason);
+            }
         }
 
         return recordRepo.saveAll(records);
@@ -1005,39 +1039,46 @@ public class EvaluationRecordService {
         }
 
         for (EvaluationRecord record : records) {
-            assertCanViewRecord(record, performer);
+            assertAdminAction(record);
             if (record.getPeriod() == null || record.getPeriod().getStatus() != PeriodStatus.ACTIVE) {
-                throw new IdInvalidException("Chỉ có thể điều chuyển người đánh giá cho bản đánh giá thuộc kỳ đang hoạt động");
+                throw new IdInvalidException(
+                        "Chỉ có thể điều chuyển người đánh giá cho bản đánh giá thuộc kỳ đang hoạt động");
             }
             if (record.getStatus() == RecordStatus.COMPLETED || record.getStatus() == RecordStatus.CANCELLED) {
-                throw new IdInvalidException("Không thể điều chuyển người đánh giá cho bản đánh giá đã hoàn tất hoặc đã hủy");
+                throw new IdInvalidException(
+                        "Không thể điều chuyển người đánh giá cho bản đánh giá đã hoàn tất hoặc đã hủy");
             }
 
             String oldEvaluatorName = "";
             if (role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER) {
-                oldEvaluatorName = record.getDirectManager() != null ? record.getDirectManager().getName() : "Chưa phân công";
+                oldEvaluatorName = record.getDirectManager() != null ? record.getDirectManager().getName()
+                        : "Chưa phân công";
                 record.setDirectManager(newEvaluator);
             } else {
-                oldEvaluatorName = record.getIndirectManager() != null ? record.getIndirectManager().getName() : "Chưa phân công";
+                oldEvaluatorName = record.getIndirectManager() != null ? record.getIndirectManager().getName()
+                        : "Chưa phân công";
                 record.setIndirectManager(newEvaluator);
             }
 
             String note = String.format("Điều chuyển %s từ [%s] sang [%s]%s",
-                    role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER ? "Quản lý trực tiếp" : "Người phê duyệt",
+                    role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER ? "Quản lý trực tiếp"
+                            : "Người phê duyệt",
                     oldEvaluatorName,
                     newEvaluator.getName(),
                     reason != null && !reason.isBlank() ? ". Lý do: " + reason.trim() : "");
-            
+
             saveHistory(record, record.getStatus(), record.getStatus(), performer, note);
 
             // Gửi thông báo đến người chấm mới
             if (role == ReassignEvaluatorRequest.EvaluatorRole.DIRECT_MANAGER) {
                 sendNotification(newEvaluator, "MANAGER_ASSIGNED",
-                        String.format("Bạn được phân công chấm điểm đánh giá cho nhân viên %s", record.getEmployee().getName()),
+                        String.format("Bạn được phân công chấm điểm đánh giá cho nhân viên %s",
+                                record.getEmployee().getName()),
                         managerDrawerLink(record.getId()));
             } else {
                 sendNotification(newEvaluator, "APPROVER_ASSIGNED",
-                        String.format("Bạn được phân công phê duyệt đánh giá cho nhân viên %s", record.getEmployee().getName()),
+                        String.format("Bạn được phân công phê duyệt đánh giá cho nhân viên %s",
+                                record.getEmployee().getName()),
                         approverDrawerLink(record.getId()));
             }
         }
@@ -1065,12 +1106,86 @@ public class EvaluationRecordService {
 
     /** Đếm theo trạng thái trong kỳ */
     public List<Object[]> getStatusDistribution(Long periodId) {
+        periodService.fetchPeriodById(periodId);
         return recordRepo.countByPeriodGroupByStatus(periodId);
     }
 
     /** Đếm theo xếp loại A/B/C/D/E trong kỳ */
     public List<Object[]> getGradeDistribution(Long periodId) {
+        periodService.fetchPeriodById(periodId);
         return recordRepo.countByPeriodGroupByFinalGrade(periodId);
+    }
+
+    /**
+     * Dashboard cho quản lý trực tiếp: tổng hợp phiếu của các nhân viên mình phụ
+     * trách.
+     * Lọc theo chính người dùng (directManager) nên an toàn về phạm vi.
+     */
+    @Transactional(readOnly = true)
+    public ResDashboardManagerDTO getManagerDashboard(Long periodId, User manager) {
+        List<EvaluationRecord> records = periodId != null
+                ? recordRepo.findByPeriodIdAndDirectManagerId(periodId, manager.getId())
+                : recordRepo.findByDirectManagerIdOrderByCreatedAtDesc(manager.getId());
+
+        int notStarted = 0, pendingReview = 0, reviewed = 0, approved = 0, revisionNeeded = 0;
+        for (EvaluationRecord r : records) {
+            switch (r.getStatus()) {
+                case NOT_STARTED, EMPLOYEE_DRAFTING -> notStarted++;
+                case PENDING_MANAGER_REVIEW, MANAGER_REVIEWING -> pendingReview++;
+                case PENDING_APPROVAL -> reviewed++;
+                case COMPLETED -> approved++;
+                case REVISION_NEEDED -> revisionNeeded++;
+                default -> {
+                }
+            }
+        }
+
+        ResDashboardManagerDTO dto = new ResDashboardManagerDTO();
+        dto.setTotalEmployees(records.size());
+        dto.setNotStartedCount(notStarted);
+        dto.setPendingReviewCount(pendingReview);
+        dto.setReviewedCount(reviewed);
+        dto.setApprovedCount(approved);
+        dto.setRevisionNeededCount(revisionNeeded);
+        dto.setRecords(mapper.toResEvaluationRecordSummaryDTOs(records));
+        return dto;
+    }
+
+    /**
+     * Dashboard cho người phê duyệt (quản lý gián tiếp): tổng hợp phiếu mình phụ
+     * trách,
+     * kèm phân bổ xếp loại của các phiếu đã hoàn tất.
+     */
+    @Transactional(readOnly = true)
+    public ResDashboardApproverDTO getApproverDashboard(Long periodId, User approver) {
+        List<EvaluationRecord> records = periodId != null
+                ? recordRepo.findByPeriodIdAndIndirectManagerId(periodId, approver.getId())
+                : recordRepo.findByIndirectManagerIdOrderByCreatedAtDesc(approver.getId());
+
+        int completed = 0, pendingApproval = 0, revisionNeeded = 0;
+        Map<String, Integer> gradeDistribution = new java.util.LinkedHashMap<>();
+        for (EvaluationRecord r : records) {
+            switch (r.getStatus()) {
+                case COMPLETED -> {
+                    completed++;
+                    String grade = r.getFinalGrade() != null ? r.getFinalGrade() : "Chưa xếp loại";
+                    gradeDistribution.merge(grade, 1, Integer::sum);
+                }
+                case PENDING_APPROVAL -> pendingApproval++;
+                case REVISION_NEEDED -> revisionNeeded++;
+                default -> {
+                }
+            }
+        }
+
+        ResDashboardApproverDTO dto = new ResDashboardApproverDTO();
+        dto.setTotalEmployees(records.size());
+        dto.setCompletedCount(completed);
+        dto.setPendingApprovalCount(pendingApproval);
+        dto.setRevisionNeededCount(revisionNeeded);
+        dto.setGradeDistribution(gradeDistribution);
+        dto.setRecords(mapper.toResEvaluationRecordSummaryDTOs(records));
+        return dto;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1098,7 +1213,8 @@ public class EvaluationRecordService {
     }
 
     private EvaluationScore saveOrUpdateScore(EvaluationRecord record, TemplateCriteria criteria,
-            ScoredBy scoredBy, Double score, List<TemplateCriteria> allCriteria, List<EvaluationScore> existingScores, boolean isManual) {
+            ScoredBy scoredBy, Double score, List<TemplateCriteria> allCriteria, List<EvaluationScore> existingScores,
+            boolean isManual) {
 
         EvaluationScore evalScore = null;
         if (existingScores != null) {
@@ -1122,7 +1238,8 @@ public class EvaluationRecordService {
         evalScore.setScoredBy(scoredBy);
         evalScore.setScore(score);
 
-        // 3.5: Ghi nhận audit log nếu đổi điểm cũ (khác null và khác điểm mới) và là thao tác thủ công (isManual)
+        // 3.5: Ghi nhận audit log nếu đổi điểm cũ (khác null và khác điểm mới) và là
+        // thao tác thủ công (isManual)
         if (isManual && oldScore != null && !oldScore.equals(score)) {
             String email = vn.system.app.common.util.SecurityUtil.getCurrentUserLogin().orElse(null);
             User performer = email != null ? userRepo.findByEmail(email) : null;
@@ -1138,7 +1255,8 @@ public class EvaluationRecordService {
         }
 
         // Tính weighted score
-        // KHÔNG nhân với sectionWeight vì criteriaWeight đã là trọng số tuyệt đối (theo frontend)
+        // KHÔNG nhân với sectionWeight vì criteriaWeight đã là trọng số tuyệt đối (theo
+        // frontend)
         double criteriaWeight = criteria.getWeight();
 
         // Nếu là sub-tiêu chí → lấy weight của tiêu chí cha
@@ -1180,8 +1298,7 @@ public class EvaluationRecordService {
                 .collect(java.util.stream.Collectors.toMap(
                         s -> s.getCriteria().getId(),
                         EvaluationScore::getScore,
-                        (s1, s2) -> s1
-                ));
+                        (s1, s2) -> s1));
 
         parentToSubs.forEach((parentId, subs) -> {
             TemplateCriteria parent = allCriteria.stream()
@@ -1260,6 +1377,31 @@ public class EvaluationRecordService {
         }
     }
 
+    /**
+     * Gác các hành động quản trị (điều chuyển người đánh giá, gia hạn):
+     * chỉ admin toàn hệ thống hoặc admin cấp công ty được phép, không dùng quyền
+     * XEM.
+     */
+    private void assertAdminAction(EvaluationRecord record) {
+        UserScopeContext.UserScope scope = UserScopeContext.get();
+        if (scope == null) {
+            throw new IdInvalidException("Bạn không có quyền thực hiện hành động này");
+        }
+        if (scope.isSuperAdmin() || scope.isAdminLevel()) {
+            return;
+        }
+        String employeeId = record.getEmployee() != null ? record.getEmployee().getId() : null;
+        if (scope.isCompanyLevel() && employeeId != null
+                && scope.companyIds() != null && !scope.companyIds().isEmpty()) {
+            for (Long companyId : scope.companyIds()) {
+                if (userPositionRepo.findUserIdsByCompanyId(companyId).contains(employeeId)) {
+                    return;
+                }
+            }
+        }
+        throw new IdInvalidException("Bạn không có quyền thực hiện hành động này");
+    }
+
     private boolean canViewRecord(EvaluationRecord record, User requester) {
         if (record == null || requester == null) {
             return false;
@@ -1329,8 +1471,7 @@ public class EvaluationRecordService {
                 && user.getRole().getPermissions() != null
                 && user.getRole().getPermissions().stream()
                         .filter(Objects::nonNull)
-                        .anyMatch(permission ->
-                                "GET".equalsIgnoreCase(permission.getMethod())
+                        .anyMatch(permission -> "GET".equalsIgnoreCase(permission.getMethod())
                                 && "EVALUATION_PERIOD".equals(permission.getModule())
                                 && "/api/v1/evaluation/records".equals(permission.getApiPath()));
     }
@@ -1443,14 +1584,16 @@ public class EvaluationRecordService {
     }
 
     private String formatInstant(Instant instant) {
-        if (instant == null) return "";
+        if (instant == null)
+            return "";
         java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
                 .withZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
         return formatter.format(instant);
     }
 
     private String getDeadlinePhaseLabel(ExtendRecordDeadlineRequest.Phase phase) {
-        if (phase == null) return "không xác định";
+        if (phase == null)
+            return "không xác định";
         return switch (phase) {
             case EMPLOYEE -> "Nhân viên tự đánh giá";
             case MANAGER -> "Quản lý trực tiếp chấm";
@@ -1460,7 +1603,8 @@ public class EvaluationRecordService {
 
     private void notifyDeadlineExtended(EvaluationRecord record, User recipient, String phaseLabel,
             Instant newDeadline, String actionLink, String reason) {
-        if (recipient == null || newDeadline == null) return;
+        if (recipient == null || newDeadline == null)
+            return;
         String employeeName = record.getEmployee() != null ? record.getEmployee().getName() : "nhân viên";
         String reasonText = reason != null && !reason.isBlank()
                 ? String.format(" Lý do: %s", reason.trim())
@@ -1472,23 +1616,24 @@ public class EvaluationRecordService {
     }
 
     private void extendEmployeeDeadline(EvaluationRecord record, Instant deadline, boolean cascade) {
-        if (record.getEmployeeSubmittedAt() != null 
-                || (record.getStatus() != RecordStatus.NOT_STARTED 
-                    && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING)) {
-            throw new IdInvalidException("Chỉ có thể gia hạn nhân viên khi bản đánh giá còn ở bước nhân viên tự đánh giá");
+        if (record.getEmployeeSubmittedAt() != null
+                || (record.getStatus() != RecordStatus.NOT_STARTED
+                        && record.getStatus() != RecordStatus.EMPLOYEE_DRAFTING)) {
+            throw new IdInvalidException(
+                    "Chỉ có thể gia hạn nhân viên khi bản đánh giá còn ở bước nhân viên tự đánh giá");
         }
-        
+
         if (cascade) {
             Instant oldEmployeeDeadline = getEffectiveEmployeeDeadline(record);
             if (oldEmployeeDeadline != null && deadline.isAfter(oldEmployeeDeadline)) {
                 java.time.Duration diff = java.time.Duration.between(oldEmployeeDeadline, deadline);
-                
+
                 // Tự động tịnh tiến hạn của Quản lý
                 Instant oldManagerDeadline = getEffectiveManagerDeadline(record);
                 if (oldManagerDeadline != null) {
                     record.setManagerDeadlineOverride(oldManagerDeadline.plus(diff));
                 }
-                
+
                 // Tự động tịnh tiến hạn của Người duyệt
                 Instant oldApprovalDeadline = getEffectiveApprovalDeadline(record);
                 if (oldApprovalDeadline != null) {
@@ -1496,7 +1641,7 @@ public class EvaluationRecordService {
                 }
             }
         }
-        
+
         record.setEmployeeDeadlineOverride(deadline);
 
         // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
@@ -1516,12 +1661,12 @@ public class EvaluationRecordService {
                         && record.getStatus() != RecordStatus.REVISION_NEEDED)) {
             throw new IdInvalidException("Chỉ có thể gia hạn quản lý khi bản đánh giá đang ở bước quản lý chấm/sửa");
         }
-        
+
         if (cascade) {
             Instant oldManagerDeadline = getEffectiveManagerDeadline(record);
             if (oldManagerDeadline != null && deadline.isAfter(oldManagerDeadline)) {
                 java.time.Duration diff = java.time.Duration.between(oldManagerDeadline, deadline);
-                
+
                 // Tự động tịnh tiến hạn của Người duyệt
                 Instant oldApprovalDeadline = getEffectiveApprovalDeadline(record);
                 if (oldApprovalDeadline != null) {
@@ -1529,7 +1674,7 @@ public class EvaluationRecordService {
                 }
             }
         }
-        
+
         record.setManagerDeadlineOverride(deadline);
 
         // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
@@ -1554,7 +1699,7 @@ public class EvaluationRecordService {
         if (record.getApprovedAt() != null || record.getStatus() != RecordStatus.PENDING_APPROVAL) {
             throw new IdInvalidException("Chỉ có thể gia hạn phê duyệt khi bản đánh giá đang chờ phê duyệt");
         }
-        
+
         record.setApprovalDeadlineOverride(deadline);
 
         // Kiểm tra tính hợp lệ về mặt logic sau khi tịnh tiến
@@ -1591,7 +1736,8 @@ public class EvaluationRecordService {
             switch (entry.getKey()) {
                 case EMPLOYEE -> {
                     if (currentPhase != ExtendRecordDeadlineRequest.Phase.EMPLOYEE) {
-                        throw new IdInvalidException("Không thể chỉnh hạn nhân viên khi hồ sơ đã qua bước nhân viên tự đánh giá");
+                        throw new IdInvalidException(
+                                "Không thể chỉnh hạn nhân viên khi hồ sơ đã qua bước nhân viên tự đánh giá");
                     }
                     record.setEmployeeDeadlineOverride(targetDeadline);
                 }
@@ -1665,7 +1811,8 @@ public class EvaluationRecordService {
     }
 
     private void sendNotification(User recipient, String type, String content, String actionLink) {
-        if (recipient == null) return;
+        if (recipient == null)
+            return;
         eventPublisher.publishEvent(new vn.system.app.modules.notification.event.AppNotificationEvent(
                 List.of(recipient.getId()), "EVALUATION", type, content, actionLink));
     }

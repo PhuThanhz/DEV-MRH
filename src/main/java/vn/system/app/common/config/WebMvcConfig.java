@@ -1,10 +1,16 @@
 package vn.system.app.common.config;
 
+import java.lang.reflect.Type;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.ResourceRegionHttpMessageConverter;
+import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -13,6 +19,17 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Value("${lotusgroup.upload-file.dir}")
     private String uploadDir;
+
+    @Override
+    public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+        converters.add(0, new ResourceRegionHttpMessageConverter() {
+            @Override
+            public boolean canWrite(Type type, Class<?> clazz, MediaType mediaType) {
+                return (clazz != null && ResourceRegion.class.isAssignableFrom(clazz))
+                        || super.canWrite(type, clazz, mediaType);
+            }
+        });
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
