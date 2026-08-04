@@ -44,13 +44,14 @@ public class AccountingApprovalDelegationService {
     }
 
     @Transactional(readOnly = true)
-    public ResultPaginationDTO list(Pageable pageable, String keyword, String status) {
+    public ResultPaginationDTO list(Pageable pageable, String keyword, String status, Long companyId) {
         UserScopeContext.UserScope scope = UserScopeContext.get();
         if (scope == null) {
             return emptyPage(pageable);
         }
         Page<AccountingApprovalDelegation> page = delegationRepository.findVisible(scope.isSuperAdmin() || scope.isAdminLevel(), scope.isCompanyLevel(), scope.userId(),
                 scope.companyIds() == null || scope.companyIds().isEmpty() ? List.of(-1L) : scope.companyIds(),
+                companyId,
                 keyword == null || keyword.isBlank() ? null : keyword.trim(), status == null || status.isBlank() ? null : status.toUpperCase(Locale.ROOT), Instant.now(), pageable);
         return toPage(page, pageable);
     }
@@ -304,7 +305,9 @@ public class AccountingApprovalDelegationService {
                 .reason(delegation.getReason())
                 .status(delegation.getStatus())
                 .createdAt(delegation.getCreatedAt())
+                .createdBy(delegation.getCreatedBy())
                 .revokedAt(delegation.getRevokedAt())
+                .revokedBy(delegation.getRevokedBy())
                 .build();
     }
 }

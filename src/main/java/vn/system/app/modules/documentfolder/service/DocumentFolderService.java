@@ -2,7 +2,11 @@ package vn.system.app.modules.documentfolder.service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -16,13 +20,13 @@ import vn.system.app.modules.documentfolder.domain.DocumentFolder;
 import vn.system.app.modules.documentfolder.domain.request.DocumentFolderRequest;
 import vn.system.app.modules.documentfolder.domain.response.ResDocumentFolderDTO;
 import vn.system.app.modules.documentfolder.repository.DocumentFolderRepository;
+import vn.system.app.modules.documentcategory.domain.DocumentCategory;
+import vn.system.app.modules.documentcategory.repository.DocumentCategoryRepository;
 import vn.system.app.modules.user.domain.User;
 import vn.system.app.modules.user.domain.response.ResUserDTO;
 import vn.system.app.modules.user.repository.UserRepository;
 import vn.system.app.modules.userposition.repository.UserPositionRepository;
 import org.springframework.context.annotation.Lazy;
-
-import java.util.Set;
 
 import vn.system.app.modules.document.domain.Document;
 import vn.system.app.modules.document.domain.DocumentShortcut;
@@ -34,7 +38,16 @@ import vn.system.app.modules.document.service.DocumentService;
 @Service
 public class DocumentFolderService {
 
+    private static final String ACCOUNTING_CATEGORY_CODE = "ACCOUNTING_DOC";
+    private static final Set<String> LEGACY_DEFAULT_FOLDER_NAMES = Set.of(
+            "01_Hóa đơn & Chứng từ",
+            "02_Lương & Thuế",
+            "03_Hợp đồng & Quyết định",
+            "04_Bằng cấp & Chứng chỉ",
+            "05_Tài liệu khác");
+
     private final DocumentFolderRepository repository;
+    private final DocumentCategoryRepository documentCategoryRepository;
     private final UserRepository userRepository;
     private final UserPositionRepository userPositionRepository;
     private final DocumentRepository documentRepository;
@@ -43,12 +56,14 @@ public class DocumentFolderService {
 
     public DocumentFolderService(
             DocumentFolderRepository repository,
+            DocumentCategoryRepository documentCategoryRepository,
             UserRepository userRepository,
             UserPositionRepository userPositionRepository,
             DocumentRepository documentRepository,
             DocumentShortcutRepository shortcutRepository,
             @Lazy DocumentService documentService) {
         this.repository = repository;
+        this.documentCategoryRepository = documentCategoryRepository;
         this.userRepository = userRepository;
         this.userPositionRepository = userPositionRepository;
         this.documentRepository = documentRepository;
@@ -122,38 +137,94 @@ public class DocumentFolderService {
     }
 
     /**
-     * Tự động khởi tạo thư mục cho năm hiện tại
+     * Khởi tạo và đồng bộ thư mục năm hiện tại theo danh mục loại văn bản.
+     *
+     * Thư mục có documentCategoryId là thư mục do hệ thống quản lý. Thư mục do
+     * người dùng tự tạo không bị đổi tên/xóa trong quá trình đồng bộ.
      */
     @Transactional
     public void initDefaultFoldersIfNecessary(String ownerId) {
         int currentYear = LocalDate.now().getYear();
         String yearFolderName = "Năm " + currentYear;
 
-        boolean exists = repository.existsByOwnerIdAndParentIsNullAndFolderName(ownerId, yearFolderName);
-        if (!exists) {
-            // Tạo thư mục năm mới
-            DocumentFolder yearFolder = new DocumentFolder();
-            yearFolder.setFolderName(yearFolderName);
-            yearFolder.setOwnerId(ownerId);
-            yearFolder = repository.save(yearFolder);
+        DocumentFolder yearFolder = repository.findByOwnerIdAndParentIsNull(ownerId).stream()
+                .filter(folder -> yearFolderName.equals(folder.getFolderName()))
+                .findFirst()
+                .orElseGet(() -> {
+            DocumentFolder newYearFolder = new DocumentFolder();
+            newYearFolder.setFolderName(yearFolderName);
+            newYearFolder.setOwnerId(ownerId);
+            newYearFolder.setFolderType("PERSONAL");
+            return repository.save(newYearFolder);
+        });
 
-            // Các thư mục con mặc định
-            List<String> subFolders = List.of(
-                "01_Hóa đơn & Chứng từ",
-                "02_Lương & Thuế",
-                "03_Hợp đồng & Quyết định",
-                "04_Bằng cấp & Chứng chỉ",
-                "05_Tài liệu khác"
-            );
+        List<DocumentCategory> activeCategories = documentCategoryRepository.findByActiveTrueOrderByIdAsc().stream()
+                .filter(category -> !ACCOUNTING_CATEGORY_CODE.equals(category.getCategoryCode()))
+                .toList();
 
-            for (String sub : subFolders) {
-                DocumentFolder subFolder = new DocumentFolder();
-                subFolder.setFolderName(sub);
-                subFolder.setParent(yearFolder);
-                subFolder.setOwnerId(ownerId);
-                repository.save(subFolder);
-            }
+        List<DocumentFolder> currentChildren = new ArrayList<>(yearFolder.getChildren());
+        Map<Long, DocumentFolder> managedFoldersByCategoryId = currentChildren.stream()
+                .filter(folder -> folder.getDocumentCategoryId() != null)
+                .collect(Collectors.toMap(
+                        DocumentFolder::getDocumentCategoryId,
+                        folder -> folder,
+                        (first, duplicate) -> first,
+                        HashMap::new));
+
+        Set<Long> activeCategoryIds = activeCategories.stream()
+                .map(DocumentCategory::getId)
+                .collect(Collectors.toSet());
+
+        List<DocumentFolder> foldersToRemove = currentChildren.stream()
+                .filter(folder -> shouldRemoveManagedFolder(folder, activeCategoryIds)
+                        || shouldRemoveLegacyDefaultFolder(folder))
+                .toList();
+        if (!foldersToRemove.isEmpty()) {
+            yearFolder.getChildren().removeAll(foldersToRemove);
+            repository.deleteAll(foldersToRemove);
         }
+
+        for (int index = 0; index < activeCategories.size(); index++) {
+            DocumentCategory category = activeCategories.get(index);
+            String expectedFolderName = buildCategoryFolderName(index, category.getCategoryName());
+            DocumentFolder categoryFolder = managedFoldersByCategoryId.get(category.getId());
+
+            if (categoryFolder == null || foldersToRemove.contains(categoryFolder)) {
+                categoryFolder = new DocumentFolder();
+                categoryFolder.setParent(yearFolder);
+                categoryFolder.setOwnerId(ownerId);
+                categoryFolder.setFolderType("PERSONAL");
+                categoryFolder.setDocumentCategoryId(category.getId());
+                yearFolder.getChildren().add(categoryFolder);
+            }
+
+            if (!Objects.equals(categoryFolder.getFolderName(), expectedFolderName)) {
+                categoryFolder.setFolderName(expectedFolderName);
+            }
+            repository.save(categoryFolder);
+        }
+    }
+
+    private boolean shouldRemoveManagedFolder(DocumentFolder folder, Set<Long> activeCategoryIds) {
+        return folder.getDocumentCategoryId() != null
+                && !activeCategoryIds.contains(folder.getDocumentCategoryId())
+                && isFolderEmpty(folder);
+    }
+
+    private boolean shouldRemoveLegacyDefaultFolder(DocumentFolder folder) {
+        return folder.getDocumentCategoryId() == null
+                && LEGACY_DEFAULT_FOLDER_NAMES.contains(folder.getFolderName())
+                && isFolderEmpty(folder);
+    }
+
+    private boolean isFolderEmpty(DocumentFolder folder) {
+        return folder.getChildren().isEmpty()
+                && documentRepository.findByFolder_Id(folder.getId()).isEmpty()
+                && shortcutRepository.findByFolderId(folder.getId()).isEmpty();
+    }
+
+    private String buildCategoryFolderName(int index, String categoryName) {
+        return String.format("%02d_%s", index + 1, categoryName.trim());
     }
 
     /**
@@ -453,6 +524,7 @@ public class DocumentFolderService {
 
         dto.setFolderType(e.getFolderType());
         dto.setCompanyId(e.getCompanyId());
+        dto.setDocumentCategoryId(e.getDocumentCategoryId());
 
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());

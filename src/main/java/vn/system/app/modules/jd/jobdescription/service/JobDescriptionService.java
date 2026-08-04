@@ -59,6 +59,89 @@ public class JobDescriptionService {
     private final JobDescriptionRequirementService requirementService;
     private final JobDescriptionTaskService taskService;
     private final JobDescriptionPositionService positionService;
+    private final vn.system.app.modules.userposition.repository.UserPositionRepository userPositionRepository;
+    private final vn.system.app.modules.jd.jobdescriptiontask.repository.JobDescriptionTaskItemRepository jobDescriptionTaskItemRepository;
+
+    @Transactional(readOnly = true)
+    public List<vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskDTO> fetchJdTasksByUser(String userId) {
+        List<vn.system.app.modules.userposition.domain.UserPosition> positions = userPositionRepository.findByUser_IdAndActiveTrue(userId);
+        List<JobDescription> jds = new java.util.ArrayList<>();
+
+        if (!positions.isEmpty()) {
+            List<Long> compTitleIds = positions.stream()
+                    .map(vn.system.app.modules.userposition.domain.UserPosition::getCompanyJobTitle)
+                    .filter(java.util.Objects::nonNull)
+                    .map(vn.system.app.modules.companyjobtitle.domain.CompanyJobTitle::getId)
+                    .collect(Collectors.toList());
+
+            List<Long> deptTitleIds = positions.stream()
+                    .map(vn.system.app.modules.userposition.domain.UserPosition::getDepartmentJobTitle)
+                    .filter(java.util.Objects::nonNull)
+                    .map(vn.system.app.modules.departmentjobtitle.domain.DepartmentJobTitle::getId)
+                    .collect(Collectors.toList());
+
+            List<Long> secTitleIds = positions.stream()
+                    .map(vn.system.app.modules.userposition.domain.UserPosition::getSectionJobTitle)
+                    .filter(java.util.Objects::nonNull)
+                    .map(vn.system.app.modules.sectionjobtitle.domain.SectionJobTitle::getId)
+                    .collect(Collectors.toList());
+
+            if (compTitleIds.isEmpty()) compTitleIds = List.of(-1L);
+            if (deptTitleIds.isEmpty()) deptTitleIds = List.of(-1L);
+            if (secTitleIds.isEmpty()) secTitleIds = List.of(-1L);
+
+            jds = repository.findPublishedJdsByJobTitles(compTitleIds, deptTitleIds, secTitleIds);
+        }
+
+        if (jds.isEmpty()) {
+            jds = repository.findByStatus("PUBLISHED");
+            if (jds.isEmpty()) {
+                jds = repository.findAll();
+            }
+        }
+
+        List<Long> taskIds = jds.stream()
+                .filter(jd -> jd.getTasks() != null)
+                .flatMap(jd -> jd.getTasks().stream())
+                .map(vn.system.app.modules.jd.jobdescriptiontask.domain.JobDescriptionTask::getId)
+                .collect(Collectors.toList());
+
+        // Batch fetch items để tránh N+1 query trong vòng lặp bên dưới
+        java.util.Map<Long, List<vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskItemDTO>> itemsByTaskId =
+                new java.util.HashMap<>();
+        if (!taskIds.isEmpty()) {
+            for (vn.system.app.modules.jd.jobdescriptiontask.domain.JobDescriptionTaskItem item :
+                    jobDescriptionTaskItemRepository.findByJobDescriptionTask_IdInOrderByOrderNo(taskIds)) {
+                vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskItemDTO itemDto =
+                        new vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskItemDTO();
+                itemDto.setId(item.getId());
+                itemDto.setOrderNo(item.getOrderNo());
+                itemDto.setContent(item.getContent());
+                itemsByTaskId.computeIfAbsent(item.getJobDescriptionTask().getId(), k -> new java.util.ArrayList<>())
+                        .add(itemDto);
+            }
+        }
+
+        List<vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskDTO> result = new java.util.ArrayList<>();
+
+        for (JobDescription jd : jds) {
+            if (jd.getTasks() != null) {
+                for (vn.system.app.modules.jd.jobdescriptiontask.domain.JobDescriptionTask task : jd.getTasks()) {
+                    vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskDTO dto = new vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskDTO();
+                    dto.setId(task.getId());
+                    dto.setJobDescriptionId(jd.getId());
+                    dto.setJobDescriptionCode(jd.getCode());
+                    dto.setOrderNo(task.getOrderNo());
+                    dto.setTitle(task.getTitle());
+                    dto.setItems(itemsByTaskId.getOrDefault(task.getId(), java.util.Collections.emptyList()));
+
+                    result.add(dto);
+                }
+            }
+        }
+
+        return result;
+    }
 
     /*
      * ==========================================

@@ -91,4 +91,11 @@ public class JobDescriptionController {
     public ResponseEntity<ResultPaginationDTO> fetchAllJd(Pageable pageable) {
         return ResponseEntity.ok(service.fetchAllJd(pageable));
     }
+
+    @GetMapping("/job-descriptions/by-user/{userId}")
+    @ApiMessage("Danh sách nhiệm vụ JD gợi ý theo nhân viên")
+    public ResponseEntity<java.util.List<vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskDTO>> fetchJdTasksByUser(
+            @PathVariable("userId") String userId) {
+        return ResponseEntity.ok(service.fetchJdTasksByUser(userId));
+    }
 }

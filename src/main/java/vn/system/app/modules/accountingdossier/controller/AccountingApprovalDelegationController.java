@@ -30,8 +30,10 @@ public class AccountingApprovalDelegationController {
     @GetMapping
     @ApiMessage("Danh sách ủy quyền duyệt chứng từ kế toán")
     public ResponseEntity<ResultPaginationDTO> list(Pageable pageable,
-            @RequestParam(required = false) String keyword, @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(service.list(pageable, keyword, status));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long companyId) {
+        return ResponseEntity.ok(service.list(pageable, keyword, status, companyId));
     }
 
     @PostMapping

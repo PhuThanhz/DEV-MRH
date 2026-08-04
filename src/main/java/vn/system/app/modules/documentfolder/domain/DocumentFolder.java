@@ -12,7 +12,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import vn.system.app.common.util.SecurityUtil;
 
 @Entity
-@Table(name = "document_folders")
+@Table(
+        name = "document_folders",
+        indexes = @Index(
+                name = "idx_document_folders_document_category",
+                columnList = "document_category_id"))
 @Getter
 @Setter
 @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
@@ -42,6 +46,16 @@ public class DocumentFolder {
 
     @Column(name = "company_id")
     private Long companyId;
+
+    /**
+     * Danh mục loại văn bản dùng để sinh thư mục hệ thống trong kho cá nhân.
+     *
+     * Chỉ lưu id thay vì tạo khóa ngoại để việc xóa danh mục không làm mất hoặc
+     * khóa các thư mục cũ đang chứa dữ liệu. Giá trị null nghĩa là thư mục do
+     * người dùng tự tạo (hoặc thư mục legacy đã được giữ lại).
+     */
+    @Column(name = "document_category_id")
+    private Long documentCategoryId;
 
     private Instant createdAt;
     private Instant updatedAt;

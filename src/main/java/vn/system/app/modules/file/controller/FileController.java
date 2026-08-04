@@ -28,15 +28,18 @@ import vn.system.app.common.util.annotation.ApiMessage;
 import vn.system.app.common.util.error.StorageException;
 import vn.system.app.modules.file.domain.response.ResUploadFileDTO;
 import vn.system.app.modules.file.service.FileService;
+import vn.system.app.modules.task.service.TaskAttachmentService;
 
 @RestController
 @RequestMapping("/api/v1")
 public class FileController {
 
         private final FileService fileService;
+        private final TaskAttachmentService taskAttachmentService;
 
-        public FileController(FileService fileService) {
+        public FileController(FileService fileService, TaskAttachmentService taskAttachmentService) {
                 this.fileService = fileService;
+                this.taskAttachmentService = taskAttachmentService;
         }
 
         // =========================
@@ -154,6 +157,10 @@ public class FileController {
                         @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader)
                         throws StorageException, IOException {
 
+                if (!taskAttachmentService.canCurrentUserAccessFile(fileName, folder)) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
+
                 long fileLength = fileService.getFileLength(fileName, folder);
                 if (fileLength == 0) {
                         throw new StorageException("File with name = " + fileName + " not found.");
@@ -210,8 +217,19 @@ public class FileController {
         @GetMapping("/files")
         @ApiMessage("Download a file")
         public ResponseEntity<Resource> download(
-                        @RequestParam("fileName") String fileName,
-                        @RequestParam("folder") String folder) throws StorageException, FileNotFoundException {
+                        @RequestParam(value = "fileName", required = false) String fileName,
+                        @RequestParam(value = "folder", required = false) String folder) throws StorageException, FileNotFoundException {
+
+                if (fileName == null || fileName.trim().isEmpty() || "undefined".equalsIgnoreCase(fileName)) {
+                        throw new StorageException("File name is missing or invalid.");
+                }
+                if (folder == null || folder.trim().isEmpty() || "undefined".equalsIgnoreCase(folder)) {
+                        folder = "documents";
+                }
+
+                if (!taskAttachmentService.canCurrentUserAccessFile(fileName, folder)) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                }
 
                 long fileLength = fileService.getFileLength(fileName, folder);
                 if (fileLength == 0) {

@@ -13,8 +13,12 @@ import vn.system.app.common.util.error.IdInvalidException;
 import vn.system.app.modules.jd.jobdescription.domain.JobDescription;
 
 import vn.system.app.modules.jd.jobdescriptiontask.domain.JobDescriptionTask;
+import vn.system.app.modules.jd.jobdescriptiontask.domain.JobDescriptionTaskItem;
+import vn.system.app.modules.jd.jobdescriptiontask.domain.request.ReqJobDescriptionTaskItemDTO;
 import vn.system.app.modules.jd.jobdescriptiontask.domain.request.ReqTaskDTO;
+import vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResJobDescriptionTaskItemDTO;
 import vn.system.app.modules.jd.jobdescriptiontask.domain.response.ResTaskDTO;
+import vn.system.app.modules.jd.jobdescriptiontask.repository.JobDescriptionTaskItemRepository;
 import vn.system.app.modules.jd.jobdescriptiontask.repository.JobDescriptionTaskRepository;
 
 @Service
@@ -22,6 +26,7 @@ import vn.system.app.modules.jd.jobdescriptiontask.repository.JobDescriptionTask
 public class JobDescriptionTaskService {
 
     private final JobDescriptionTaskRepository repository;
+    private final JobDescriptionTaskItemRepository itemRepository;
 
     /*
      * CREATE FROM JD
@@ -39,9 +44,10 @@ public class JobDescriptionTaskService {
             entity.setJobDescription(jd);
             entity.setOrderNo(req.getOrderNo());
             entity.setTitle(req.getTitle());
-            entity.setContent(req.getContent());
 
-            repository.save(entity);
+            entity = repository.save(entity);
+
+            saveItems(entity, req.getItems());
         }
     }
 
@@ -64,6 +70,7 @@ public class JobDescriptionTaskService {
 
         for (JobDescriptionTask old : existing) {
             if (!keepIds.contains(old.getId())) {
+                itemRepository.deleteByJobDescriptionTask_Id(old.getId());
                 repository.delete(old);
             }
         }
@@ -85,10 +92,29 @@ public class JobDescriptionTaskService {
             entity.setJobDescription(jd);
             entity.setOrderNo(req.getOrderNo());
             entity.setTitle(req.getTitle());
-            entity.setContent(req.getContent());
 
-            repository.save(entity);
+            entity = repository.save(entity);
+
+            // Xóa hết mục con cũ rồi tạo lại theo danh sách mới (đơn giản, tránh lệch orderNo)
+            itemRepository.deleteByJobDescriptionTask_Id(entity.getId());
+            saveItems(entity, req.getItems());
         }
+    }
+
+    private void saveItems(JobDescriptionTask task, List<ReqJobDescriptionTaskItemDTO> items) {
+
+        if (items == null || items.isEmpty())
+            return;
+
+        List<JobDescriptionTaskItem> entities = items.stream().map(itemReq -> {
+            JobDescriptionTaskItem item = new JobDescriptionTaskItem();
+            item.setJobDescriptionTask(task);
+            item.setOrderNo(itemReq.getOrderNo());
+            item.setContent(itemReq.getContent());
+            return item;
+        }).collect(Collectors.toList());
+
+        itemRepository.saveAll(entities);
     }
 
     /*
@@ -108,8 +134,19 @@ public class JobDescriptionTaskService {
         res.setId(task.getId());
         res.setOrderNo(task.getOrderNo());
         res.setTitle(task.getTitle());
-        res.setContent(task.getContent());
+
+        List<JobDescriptionTaskItem> items = itemRepository.findByJobDescriptionTask_IdOrderByOrderNo(task.getId());
+        res.setItems(items.stream().map(this::convertItemToDTO).collect(Collectors.toList()));
+
         return res;
+    }
+
+    private ResJobDescriptionTaskItemDTO convertItemToDTO(JobDescriptionTaskItem item) {
+        ResJobDescriptionTaskItemDTO dto = new ResJobDescriptionTaskItemDTO();
+        dto.setId(item.getId());
+        dto.setOrderNo(item.getOrderNo());
+        dto.setContent(item.getContent());
+        return dto;
     }
 
     /*
@@ -117,6 +154,7 @@ public class JobDescriptionTaskService {
      */
     @Transactional
     public void delete(Long id) {
+        itemRepository.deleteByJobDescriptionTask_Id(id);
         repository.deleteById(id);
     }
 

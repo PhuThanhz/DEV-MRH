@@ -26,5 +26,7 @@ public class ResAccountingApprovalDelegationDTO {
     private String reason;
     private DelegationStatus status;
     private Instant createdAt;
+    private String createdBy;
     private Instant revokedAt;
+    private String revokedBy;
 }

@@ -22,5 +22,7 @@ public interface DocumentCategoryRepository extends
 
     List<DocumentCategory> findByActiveTrue();
 
+    List<DocumentCategory> findByActiveTrueOrderByIdAsc();
+
     List<DocumentCategory> findByMappingProcedureTrue();
 }

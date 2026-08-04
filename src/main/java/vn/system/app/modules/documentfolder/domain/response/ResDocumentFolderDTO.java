@@ -15,6 +15,7 @@ public class ResDocumentFolderDTO {
     private String ownerId;
     private String folderType;
     private Long companyId;
+    private Long documentCategoryId;
     private Long documentCount;
     private List<ResDocumentFolderDTO> children;
 

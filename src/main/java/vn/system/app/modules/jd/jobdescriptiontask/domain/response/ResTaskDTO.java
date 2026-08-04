@@ -1,5 +1,7 @@
 package vn.system.app.modules.jd.jobdescriptiontask.domain.response;
 
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,6 +15,6 @@ public class ResTaskDTO {
 
     private String title;
 
-    private String content;
+    private List<ResJobDescriptionTaskItemDTO> items;
 
 }

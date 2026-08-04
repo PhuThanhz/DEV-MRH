@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +26,13 @@ import vn.system.app.modules.documentcategory.repository.DocumentCategoryReposit
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.core.env.Environment;
 
+/**
+ * Seed dữ liệu dev. @Order(1) đảm bảo chạy trước các runner phụ thuộc vào dữ liệu
+ * seed này (vd JobDescriptionItemBackfillRunner cần seed job_description_tasks
+ * đã tồn tại thì mới tách được sang bảng item).
+ */
 @Service
+@Order(1)
 public class DatabaseInitializer implements CommandLineRunner {
     private static final String ACCOUNTING_DOSSIERS_MODULE = "ACCOUNTING_DOSSIERS";
     private static final Set<String> ALL_ACCOUNTING_DOSSIERS_SUBMODULES = Set.of(
@@ -475,6 +482,8 @@ public class DatabaseInitializer implements CommandLineRunner {
         seedEvaluationPermissionsAndRole();
         seedEvaluationTemplateDeletePermission();
         seedEvaluationReassignPermission();
+        seedTaskPermissionsAndRole(isProd);
+        seedApprovalDelegationPermissionsAndRole();
         syncFullPermissionRoles();
 
         if (countRoles == 0) {
@@ -542,6 +551,9 @@ public class DatabaseInitializer implements CommandLineRunner {
             seedUatUsers();
             seedAccountingApprovalDelegations();
         }
+
+        // Đảm bảo 100% user trong DB (kể cả cũ hay mới) đều có user_positions & user_info
+        ensureAllUsersHavePositionsAndInfo();
 
         if (countPermissions > 0 && countRoles > 0 && countUsers > 0) {
             System.out.println(">>> SKIP INIT DATABASE ~ ALREADY HAVE DATA...");
@@ -790,7 +802,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     }
 
     private Role saveRole(Role role) {
-        Role saved = role.getId() == 0 ? this.roleRepository.save(role) : role;
+        Role saved = this.roleRepository.save(role);
         this.roleCache.put(saved.getName(), saved);
         return saved;
     }
@@ -1049,6 +1061,125 @@ public class DatabaseInitializer implements CommandLineRunner {
         addPermissionsToRoleIfMissing("KETOANTRUONG", delegationPermissions);
     }
 
+    private void seedTaskPermissionsAndRole(boolean isProd) {
+        List<Permission> newPerms = new ArrayList<>();
+
+        final String taskModule = "TASKS";
+        addPermissionIfMissing(newPerms, "Xem danh sách tác vụ", "/api/v1/tasks", "GET", taskModule);
+        addPermissionIfMissing(newPerms, "Xem lịch tác vụ", "/api/v1/tasks/calendar", "GET", taskModule);
+        addPermissionIfMissing(newPerms, "Tạo mới tác vụ", "/api/v1/tasks", "POST", taskModule);
+        addPermissionIfMissing(newPerms, "Xem chi tiết tác vụ", "/api/v1/tasks/{id}", "GET", taskModule);
+        addPermissionIfMissing(newPerms, "Cập nhật tác vụ", "/api/v1/tasks/{id}", "PUT", taskModule);
+        addPermissionIfMissing(newPerms, "Chuyển trạng thái tác vụ", "/api/v1/tasks/{id}/status", "PATCH", taskModule);
+        addPermissionIfMissing(newPerms, "Hủy tác vụ", "/api/v1/tasks/{id}/cancel", "POST", taskModule);
+        addPermissionIfMissing(newPerms, "Xóa cứng tác vụ", "/api/v1/tasks/{id}", "DELETE", taskModule);
+        addPermissionIfMissing(newPerms, "Nộp kết quả nghiệm thu tác vụ", "/api/v1/tasks/{id}/submit-result", "POST", taskModule);
+        addPermissionIfMissing(newPerms, "Thẩm định nghiệm thu tác vụ", "/api/v1/tasks/{id}/approve", "POST", taskModule);
+        addPermissionIfMissing(newPerms, "Báo cáo tổng kết công việc", "/api/v1/tasks/summary-report", "GET", taskModule);
+        addPermissionIfMissing(newPerms, "Xuất báo cáo tổng kết công việc Excel", "/api/v1/tasks/summary-report/export", "GET", taskModule);
+
+        final String checklistModule = "TASK_CHECKLISTS";
+        addPermissionIfMissing(newPerms, "Tạo mục kiểm tra", "/api/v1/tasks/{id}/checklists", "POST", checklistModule);
+        addPermissionIfMissing(newPerms, "Cập nhật mục kiểm tra", "/api/v1/tasks/{id}/checklists/{checklistId}", "PUT", checklistModule);
+        addPermissionIfMissing(newPerms, "Tick hoàn thành mục kiểm tra", "/api/v1/tasks/{id}/checklists/{checklistId}/toggle", "PATCH", checklistModule);
+        addPermissionIfMissing(newPerms, "Xóa mục kiểm tra", "/api/v1/tasks/{id}/checklists/{checklistId}", "DELETE", checklistModule);
+        addPermissionIfMissing(newPerms, "Xem danh sách mục kiểm tra", "/api/v1/tasks/{id}/checklists", "GET", checklistModule);
+
+        final String commentModule = "TASK_COMMENTS";
+        addPermissionIfMissing(newPerms, "Gửi bình luận tác vụ", "/api/v1/tasks/{id}/comments", "POST", commentModule);
+        addPermissionIfMissing(newPerms, "Xem danh sách bình luận tác vụ", "/api/v1/tasks/{id}/comments", "GET", commentModule);
+
+        final String attachmentModule = "TASK_ATTACHMENTS";
+        addPermissionIfMissing(newPerms, "Đăng ký file đính kèm tác vụ", "/api/v1/tasks/{id}/attachments", "POST", attachmentModule);
+        addPermissionIfMissing(newPerms, "Xem danh sách file đính kèm tác vụ", "/api/v1/tasks/{id}/attachments", "GET", attachmentModule);
+
+        final String jdModule = "JOB_DESCRIPTIONS";
+        addPermissionIfMissing(newPerms, "Xem danh sách nhiệm vụ JD gợi ý theo nhân viên", "/api/v1/job-descriptions/by-user/{userId}", "GET", jdModule);
+
+        final String employeeModule = "EMPLOYEES";
+        addPermissionIfMissing(newPerms, "Xem danh sách nhân viên", "/api/v1/employees", "GET", employeeModule);
+        addPermissionIfMissing(newPerms, "Xem chi tiết nhân viên", "/api/v1/employees/{id}", "GET", employeeModule);
+        addPermissionIfMissing(newPerms, "Tạo mới nhân viên", "/api/v1/employees", "POST", employeeModule);
+        addPermissionIfMissing(newPerms, "Cập nhật nhân viên", "/api/v1/employees", "PUT", employeeModule);
+        addPermissionIfMissing(newPerms, "Xóa nhân viên", "/api/v1/employees/{id}", "DELETE", employeeModule);
+
+        if (!newPerms.isEmpty()) {
+            savePermissions(newPerms);
+            System.out.println(">>> SEED: TASK & EMPLOYEE module permissions created");
+        }
+
+        List<Permission> taskPermissions = allPermissions().stream()
+                .filter(p -> taskModule.equals(p.getModule()) || checklistModule.equals(p.getModule())
+                        || commentModule.equals(p.getModule()) || attachmentModule.equals(p.getModule()))
+                .toList();
+
+        List<Permission> userJdReadPermissions = allPermissions().stream()
+                .filter(p -> ("USERS".equals(p.getModule()) && "GET".equalsIgnoreCase(p.getMethod()) && "/api/v1/users".equals(p.getApiPath()))
+                        || ("/api/v1/job-descriptions/by-user/{userId}".equals(p.getApiPath()))
+                        || (employeeModule.equals(p.getModule()) && "GET".equalsIgnoreCase(p.getMethod())))
+                .toList();
+
+        List<Role> allRoles = roleRepository.findAll();
+        for (Role r : allRoles) {
+            addPermissionsToRoleIfMissing(r.getName(), taskPermissions);
+            addPermissionsToRoleIfMissing(r.getName(), userJdReadPermissions);
+        }
+
+        if (!isProd) {
+            Role deptMgrRole = findRole("DEPARTMENT_MANAGER");
+            Role employeeRole = findRole("EMPLOYEE");
+
+            User taskMgr = createUserIfNotExist("manager.task@gmail.com", "Trưởng Phòng Giao Việc Test", deptMgrRole != null ? deptMgrRole : findRole("SUPER_ADMIN"));
+            User taskAssignee = createUserIfNotExist("assignee.task@gmail.com", "Nhân Viên Làm Chính Test", employeeRole != null ? employeeRole : findRole("SUPER_ADMIN"));
+            User taskCollab = createUserIfNotExist("collab.task@gmail.com", "Nhân Viên Phối Hợp Test", employeeRole != null ? employeeRole : findRole("SUPER_ADMIN"));
+            User taskObserver = createUserIfNotExist("observer.task@gmail.com", "Nhân Viên Quan Sát Test", employeeRole != null ? employeeRole : findRole("SUPER_ADMIN"));
+            User taskDelegate = createUserIfNotExist("delegate.task@gmail.com", "Nhân Viên Nhận Ủy Quyền Test", employeeRole != null ? employeeRole : findRole("SUPER_ADMIN"));
+
+            if (taskAssignee != null && taskMgr != null && taskAssignee.getDirectManager() == null) {
+                taskAssignee.setDirectManager(taskMgr);
+                this.userRepository.save(taskAssignee);
+            }
+
+            ensureUserPositionAndInfo(taskMgr, "NV-TASK-MGR", "0900000101", "MALE");
+            ensureUserPositionAndInfo(taskAssignee, "NV-TASK-ASN", "0900000102", "FEMALE");
+            ensureUserPositionAndInfo(taskCollab, "NV-TASK-CLB", "0900000103", "MALE");
+            ensureUserPositionAndInfo(taskObserver, "NV-TASK-OBS", "0900000104", "FEMALE");
+            ensureUserPositionAndInfo(taskDelegate, "NV-TASK-DLG", "0900000105", "MALE");
+
+            User mgrUser = this.userRepository.findByEmail("manager@gmail.com");
+            User creatorUser = this.userRepository.findByEmail("creator@gmail.com");
+            User adminUser = this.userRepository.findByEmail("admin@gmail.com");
+            ensureUserPositionAndInfo(mgrUser, "NV-MGR-01", "0900000106", "MALE");
+            ensureUserPositionAndInfo(creatorUser, "NV-CTR-01", "0900000107", "FEMALE");
+            ensureUserPositionAndInfo(adminUser, "NV-ADM-01", "0900000108", "MALE");
+
+            seedSampleJdTasksIfNotExist();
+        }
+    }
+
+    private void seedApprovalDelegationPermissionsAndRole() {
+        List<Permission> newPerms = new ArrayList<>();
+        final String delegationModule = "APPROVAL_DELEGATIONS";
+        addPermissionIfMissing(newPerms, "Tạo mới ủy quyền duyệt", "/api/v1/approval-delegations", "POST", delegationModule);
+        addPermissionIfMissing(newPerms, "Xem danh sách ủy quyền duyệt của tôi", "/api/v1/approval-delegations/mine", "GET", delegationModule);
+        addPermissionIfMissing(newPerms, "Xem danh sách ủy quyền duyệt người khác giao cho tôi", "/api/v1/approval-delegations/delegated-to-me", "GET", delegationModule);
+        addPermissionIfMissing(newPerms, "Thu hồi ủy quyền duyệt", "/api/v1/approval-delegations/{id}/revoke", "POST", delegationModule);
+
+        if (!newPerms.isEmpty()) {
+            savePermissions(newPerms);
+            System.out.println(">>> SEED: APPROVAL_DELEGATIONS permissions created");
+        }
+
+        List<Permission> delegationPermissions = allPermissions().stream()
+                .filter(p -> delegationModule.equals(p.getModule()))
+                .toList();
+
+        List<Role> allRoles = roleRepository.findAll();
+        for (Role r : allRoles) {
+            addPermissionsToRoleIfMissing(r.getName(), delegationPermissions);
+        }
+    }
+
     private void seedEvaluationPermissionsAndRole() {
         List<Permission> newPerms = new ArrayList<>();
 
@@ -1218,15 +1349,26 @@ public class DatabaseInitializer implements CommandLineRunner {
         Role ketoanRole = findRole("KETOAN");
         Role ketoanTruongRole = findRole("KETOANTRUONG");
 
-        createUserIfNotExist("emp1@lotte.vn", "UAT EMP 1 Gương mẫu", ketoanRole);
-        createUserIfNotExist("emp2@lotte.vn", "UAT EMP 2 Nghỉ việc", ketoanRole);
-        createUserIfNotExist("emp3@lotte.vn", "UAT EMP 3 Hay quên", ketoanRole);
-        createUserIfNotExist("mgr1@lotte.vn", "UAT MGR 1 Quản lý", ketoanTruongRole);
-        createUserIfNotExist("mgr2@lotte.vn", "UAT MGR 2 Quản lý mới", ketoanTruongRole);
-        createUserIfNotExist("director@lotte.vn", "UAT Director / Approver", ketoanTruongRole);
+        User emp1 = createUserIfNotExist("emp1@lotte.vn", "UAT EMP 1 Gương mẫu", ketoanRole);
+        ensureUserPositionAndInfo(emp1, "NV-UAT-01", "0911111111", "MALE");
+
+        User emp2 = createUserIfNotExist("emp2@lotte.vn", "UAT EMP 2 Nghỉ việc", ketoanRole);
+        ensureUserPositionAndInfo(emp2, "NV-UAT-02", "0922222222", "FEMALE");
+
+        User emp3 = createUserIfNotExist("emp3@lotte.vn", "UAT EMP 3 Hay quên", ketoanRole);
+        ensureUserPositionAndInfo(emp3, "NV-UAT-03", "0933333333", "MALE");
+
+        User mgr1 = createUserIfNotExist("mgr1@lotte.vn", "UAT MGR 1 Quản lý", ketoanTruongRole);
+        ensureUserPositionAndInfo(mgr1, "NV-UAT-MGR1", "0944444444", "MALE");
+
+        User mgr2 = createUserIfNotExist("mgr2@lotte.vn", "UAT MGR 2 Quản lý mới", ketoanTruongRole);
+        ensureUserPositionAndInfo(mgr2, "NV-UAT-MGR2", "0955555555", "FEMALE");
+
+        User director = createUserIfNotExist("director@lotte.vn", "UAT Director / Approver", ketoanTruongRole);
+        ensureUserPositionAndInfo(director, "NV-UAT-DIR", "0966666666", "MALE");
     }
 
-    private void createUserIfNotExist(String email, String name, Role role) {
+    private User createUserIfNotExist(String email, String name, Role role) {
         User user = this.userRepository.findByEmail(email);
         if (user == null) {
             user = new User();
@@ -1235,8 +1377,148 @@ public class DatabaseInitializer implements CommandLineRunner {
             user.setPassword(this.passwordEncoder.encode("123456"));
             user.setActive(true);
             user.setRole(role);
-            this.userRepository.save(user);
-            System.out.println(">>> SEED: UAT User created: " + email);
+            user = this.userRepository.save(user);
+            System.out.println(">>> SEED: Test User created: " + email);
+        }
+        return user;
+    }
+
+    private void ensureUserPositionAndInfo(User user, String employeeCode, String phone, String gender) {
+        if (user == null || user.getId() == null) return;
+        try {
+            String userId = user.getId();
+            Integer infoCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_info WHERE user_id = ?", Integer.class, userId);
+            if (infoCount == null || infoCount == 0) {
+                jdbcTemplate.update(
+                    "INSERT INTO user_info (user_id, employee_code, phone, gender, created_at, created_by) VALUES (?, ?, ?, ?, NOW(), 'system')",
+                    userId, employeeCode, phone, gender);
+            }
+
+            Long deptJobTitleId = null;
+            try {
+                deptJobTitleId = jdbcTemplate.queryForObject(
+                    "SELECT djt.id FROM department_job_titles djt JOIN departments d ON djt.department_id = d.id WHERE d.company_id = 1 LIMIT 1",
+                    Long.class);
+            } catch (Exception ex) {
+                try {
+                    deptJobTitleId = jdbcTemplate.queryForObject("SELECT id FROM department_job_titles LIMIT 1", Long.class);
+                } catch (Exception e2) {}
+            }
+
+            if (deptJobTitleId != null) {
+                Integer posCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM user_positions WHERE user_id = ?", Integer.class, userId);
+                if (posCount == null || posCount == 0) {
+                    jdbcTemplate.update(
+                        "INSERT INTO user_positions (active, created_at, department_job_title_id, source, user_id, created_by, updated_by) VALUES " +
+                        "(1, NOW(), ?, 'DEPARTMENT', ?, 'system', 'system')",
+                        deptJobTitleId, userId);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> SEED: Error linking user position for " + user.getEmail() + ": " + e.getMessage());
+        }
+    }
+
+    private void ensureAllUsersHavePositionsAndInfo() {
+        try {
+            Long deptJobTitleId = null;
+            try {
+                deptJobTitleId = jdbcTemplate.queryForObject(
+                    "SELECT djt.id FROM department_job_titles djt JOIN departments d ON djt.department_id = d.id WHERE d.company_id = 1 LIMIT 1",
+                    Long.class);
+            } catch (Exception ex) {
+                try {
+                    deptJobTitleId = jdbcTemplate.queryForObject("SELECT id FROM department_job_titles LIMIT 1", Long.class);
+                } catch (Exception e2) {}
+            }
+
+            if (deptJobTitleId != null) {
+                List<String> userIdsWithoutPosition = jdbcTemplate.queryForList(
+                    "SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM user_positions WHERE user_id IS NOT NULL)",
+                    String.class);
+
+                for (String uId : userIdsWithoutPosition) {
+                    jdbcTemplate.update(
+                        "INSERT INTO user_positions (active, created_at, department_job_title_id, source, user_id, created_by, updated_by) VALUES " +
+                        "(1, NOW(), ?, 'DEPARTMENT', ?, 'system', 'system')",
+                        deptJobTitleId, uId);
+                }
+                if (!userIdsWithoutPosition.isEmpty()) {
+                    System.out.println(">>> SEED: Linked user_positions for " + userIdsWithoutPosition.size() + " users missing positions.");
+                }
+            }
+
+            List<String> userIdsWithoutInfo = jdbcTemplate.queryForList(
+                "SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM user_info WHERE user_id IS NOT NULL)",
+                String.class);
+
+            int idx = 1;
+            for (String uId : userIdsWithoutInfo) {
+                String empCode = "NV-AUTO-" + String.format("%04d", idx++);
+                jdbcTemplate.update(
+                    "INSERT INTO user_info (user_id, employee_code, phone, gender, created_at, created_by) VALUES (?, ?, '0900000000', 'MALE', NOW(), 'system')",
+                    uId, empCode);
+            }
+            if (!userIdsWithoutInfo.isEmpty()) {
+                System.out.println(">>> SEED: Linked user_info for " + userIdsWithoutInfo.size() + " users missing info.");
+            }
+        } catch (Exception e) {
+            System.err.println(">>> SEED: Error in ensureAllUsersHavePositionsAndInfo: " + e.getMessage());
+        }
+    }
+
+    private void seedSampleJdTasksIfNotExist() {
+        try {
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM job_descriptions", Integer.class);
+            if (count == null || count == 0) {
+                Long djtId = null;
+                try {
+                    djtId = jdbcTemplate.queryForObject("SELECT id FROM department_job_titles LIMIT 1", Long.class);
+                } catch (Exception ex) {}
+
+                if (djtId != null) {
+                    jdbcTemplate.update(
+                        "INSERT INTO job_descriptions (code, status, department_job_title_id, version, created_at, created_by) " +
+                        "VALUES ('JD-MGR-01', 'PUBLISHED', ?, 1, NOW(), 'system')", djtId);
+
+                    Long jdId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+                    if (jdId != null) {
+                        jdbcTemplate.update(
+                            "INSERT INTO job_description_tasks (job_description_id, order_no, title, content, created_at, created_by) VALUES " +
+                            "(?, 1, 'Lập kế hoạch & Theo dõi tiến độ công việc tuần/tháng', 'Xây dựng kế hoạch làm việc cho bộ phận và phân công nhiệm vụ', NOW(), 'system'), " +
+                            "(?, 2, 'Kiểm soát & Đánh giá kết quả thực hiện KPI phòng ban', 'Rà soát chỉ số KPI định kỳ và đề xuất giải pháp cải tiến', NOW(), 'system'), " +
+                            "(?, 3, 'Thẩm định & Phê duyệt bộ chứng từ/hồ sơ nghiệm thu', 'Kiểm tra tính hợp lệ và phê duyệt các chứng từ thuộc thẩm quyền', NOW(), 'system'), " +
+                            "(?, 4, 'Đào tạo & Quản lý phát triển năng lực nhân viên', 'Hướng dẫn quy trình làm việc và hỗ trợ giải quyết vướng mắc cho nhân sự', NOW(), 'system'), " +
+                            "(?, 5, 'Phối hợp liên phòng ban & Báo cáo Ban Giám đốc', 'Tham gia các cuộc họp giao ban và tổng hợp báo cáo kết quả hoạt động', NOW(), 'system')",
+                            jdId, jdId, jdId, jdId, jdId);
+                        System.out.println(">>> SEED: Sample Published JD & JD Tasks created successfully");
+                    }
+                }
+            } else {
+                // Ensure existing JDs are PUBLISHED so dropdown query findPublishedJdsByJobTitles finds them!
+                jdbcTemplate.update("UPDATE job_descriptions SET status = 'PUBLISHED' WHERE status IS NULL OR status = 'DRAFT' LIMIT 5");
+
+                // Check if any job_description_tasks exist, if not, add sample tasks to existing JDs!
+                Integer taskCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM job_description_tasks", Integer.class);
+                if (taskCount == null || taskCount == 0) {
+                    List<Long> jdIds = jdbcTemplate.queryForList("SELECT id FROM job_descriptions LIMIT 5", Long.class);
+                    for (Long jdId : jdIds) {
+                        jdbcTemplate.update(
+                            "INSERT INTO job_description_tasks (job_description_id, order_no, title, content, created_at, created_by) VALUES " +
+                            "(?, 1, 'Lập kế hoạch & Theo dõi tiến độ công việc tuần/tháng', 'Xây dựng kế hoạch làm việc cho bộ phận và phân công nhiệm vụ', NOW(), 'system'), " +
+                            "(?, 2, 'Kiểm soát & Đánh giá kết quả thực hiện KPI phòng ban', 'Rà soát chỉ số KPI định kỳ và đề xuất giải pháp cải tiến', NOW(), 'system'), " +
+                            "(?, 3, 'Thẩm định & Phê duyệt bộ chứng từ/hồ sơ nghiệm thu', 'Kiểm tra tính hợp lệ và phê duyệt các chứng từ thuộc thẩm quyền', NOW(), 'system'), " +
+                            "(?, 4, 'Đào tạo & Quản lý phát triển năng lực nhân viên', 'Hướng dẫn quy trình làm việc và hỗ trợ giải quyết vướng mắc cho nhân sự', NOW(), 'system'), " +
+                            "(?, 5, 'Phối hợp liên phòng ban & Báo cáo Ban Giám đốc', 'Tham gia các cuộc họp giao ban và tổng hợp báo cáo kết quả hoạt động', NOW(), 'system')",
+                            jdId, jdId, jdId, jdId, jdId);
+                    }
+                    System.out.println(">>> SEED: Added sample JD Tasks to existing JDs");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> SEED: Error seeding sample JDs: " + e.getMessage());
         }
     }
 }

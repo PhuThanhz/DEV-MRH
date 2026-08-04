@@ -55,4 +55,21 @@ public interface JobDescriptionRepository
             ")")
     Page<JobDescription> findRejectedByUser(
             @Param("userId") String userId, Pageable pageable);
+
+    @Query("""
+        SELECT DISTINCT jd FROM JobDescription jd
+        LEFT JOIN jd.companyJobTitle cjt
+        LEFT JOIN jd.departmentJobTitle djt
+        LEFT JOIN jd.sectionJobTitle sjt
+        WHERE jd.status = 'PUBLISHED'
+        AND (
+            (cjt IS NOT NULL AND cjt.id IN :companyJobTitleIds) OR
+            (djt IS NOT NULL AND djt.id IN :departmentJobTitleIds) OR
+            (sjt IS NOT NULL AND sjt.id IN :sectionJobTitleIds)
+        )
+    """)
+    List<JobDescription> findPublishedJdsByJobTitles(
+            @Param("companyJobTitleIds") List<Long> companyJobTitleIds,
+            @Param("departmentJobTitleIds") List<Long> departmentJobTitleIds,
+            @Param("sectionJobTitleIds") List<Long> sectionJobTitleIds);
 }

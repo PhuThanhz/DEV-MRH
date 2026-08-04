@@ -1,5 +1,7 @@
 package vn.system.app.modules.jd.jobdescriptionrequirement.domain.request;
 
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,14 +9,6 @@ import lombok.Setter;
 @Setter
 public class ReqRequirementDTO {
 
-    private String knowledge;
-
-    private String experience;
-
-    private String skills;
-
-    private String qualities;
-
-    private String otherRequirements;
+    private List<ReqRequirementItemDTO> items;
 
 }

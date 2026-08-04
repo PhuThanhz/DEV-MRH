@@ -1,5 +1,7 @@
 package vn.system.app.modules.jd.jobdescriptiontask.domain.request;
 
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,12 +9,12 @@ import lombok.Setter;
 @Setter
 public class ReqTaskDTO {
 
-    private Long id; // ← THÊM
+    private Long id;
 
     private Integer orderNo;
 
     private String title;
 
-    private String content;
+    private List<ReqJobDescriptionTaskItemDTO> items;
 
 }

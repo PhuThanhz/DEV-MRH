@@ -36,7 +36,7 @@ public class FormatRestResponse implements ResponseBodyAdvice<Object> {
         RestResponse<Object> res = new RestResponse<Object>();
         res.setStatusCode(status);
 
-        if (body instanceof String || body instanceof Resource || body instanceof ResourceRegion) {
+        if (body instanceof String || body instanceof Resource || body instanceof ResourceRegion || body instanceof byte[]) {
             return body;
         }
 
